@@ -95,12 +95,19 @@ section <- function(...) { cat("\n== ", ..., " ==\n", sep = ""); flush(stdout())
 }
 
 #' Reduce a token stream to its meaning-carrying canonical form.
+#'
+#' Source line numbers are carried alongside, because a failure reported as
+#' "differs at position 4213" on a 31,439-token stream is not something anyone
+#' can act on. Every canonical entry knows the script line it came from.
+#'
+#' @return list(canon = character, line = integer), the two parallel.
 canonical_stream <- function(tokens) {
   keep <- !(tokens$type %in% c("WS", "COMMENT", "VOID"))
   ty <- tokens$type[keep]
   tx <- tokens$text[keep]
+  ln <- tokens$line[keep]
   n <- length(ty)
-  if (n == 0) return(character(0))
+  if (n == 0) return(list(canon = character(0), line = integer(0)))
 
   lower <- tolower(tx)
   prev_is_as <- c(FALSE, ty[-n] == "WORD" & lower[-n] == "as")
@@ -125,7 +132,8 @@ canonical_stream <- function(tokens) {
 
   # collapse a self-alias (X AS X) to X, on BOTH sides. An alias that is not
   # a self-alias does not collapse, so a pass that rewrote X AS Y into X AS X
-  # still shows up as a difference.
+  # still shows up as a difference. The surviving entry keeps the line of the
+  # field itself.
   if (n >= 3) {
     drop <- logical(n)
     i <- 1L
@@ -136,34 +144,87 @@ canonical_stream <- function(tokens) {
         i <- i + 3L
       } else i <- i + 1L
     }
-    out <- out[!drop]
+    out <- out[!drop]; ln <- ln[!drop]
   }
-  out
+  list(canon = out, line = ln)
 }
 
+# A single canonical entry can be enormous - a bracketed INLINE block holds
+# its whole data table in one token. Truncate for display, or one dropped
+# field prints twenty lines of inline data four times over.
+.short <- function(x, n = 44L) {
+  x <- gsub("[\r\n\t]+", " ", x)
+  ifelse(nchar(x) > n, paste0(substr(x, 1L, n - 3L), "..."), x)
+}
+
+# render a window of canonical entries, tagged with the lines they span
+.window <- function(canon, line, i, span = 4L) {
+  if (length(canon) == 0L) return("(empty)")
+  lo <- max(1L, i - span); hi <- min(length(canon), i + span)
+  sprintf("lines %d-%d: %s", line[lo], line[hi],
+          paste(.short(canon[lo:hi]), collapse = " "))
+}
+
+.tail <- function(v, from) if (from > length(v)) character(0) else v[from:length(v)]
+
 #' Assert two token streams are semantically equivalent.
-#' @return TRUE, or a character description of the first differences.
-check_equivalent <- function(before, after, max_report = 5) {
-  a <- canonical_stream(before)
-  b <- canonical_stream(after)
+#' @return TRUE, or a character vector describing the first differences,
+#'   each located by SOURCE LINE rather than by canonical index.
+check_equivalent <- function(before, after, max_report = 3) {
+  A <- canonical_stream(before); B <- canonical_stream(after)
+  a <- A$canon; b <- B$canon
   if (identical(a, b)) return(TRUE)
 
-  msg <- c(sprintf("canonical length: before=%d after=%d", length(a), length(b)))
+  msg <- sprintf("canonical length: before=%d after=%d", length(a), length(b))
   m <- min(length(a), length(b))
   d <- which(a[seq_len(m)] != b[seq_len(m)])
+
   if (length(d) == 0) {
-    longer <- if (length(a) > length(b)) "before" else "after"
-    extra <- if (length(a) > length(b)) a[(m + 1):length(a)] else b[(m + 1):length(b)]
-    msg <- c(msg, sprintf("%s has %d extra token(s), first: %s",
-                          longer, abs(length(a) - length(b)),
-                          paste(head(extra, 5), collapse = " ")))
-  } else {
-    for (i in head(d, max_report)) {
-      lo <- max(1L, i - 3L)
-      msg <- c(msg, sprintf("at %d: before=%s | after=%s", i, a[i], b[i]),
-               sprintf("   context before: %s", paste(a[lo:min(i + 3L, length(a))], collapse = " ")),
-               sprintf("   context after : %s", paste(b[lo:min(i + 3L, length(b))], collapse = " ")))
-    }
+    # identical prefix, so one side simply has more at the end
+    long_is_before <- length(a) > length(b)
+    extra  <- if (long_is_before) a[(m + 1):length(a)] else b[(m + 1):length(b)]
+    exline <- if (long_is_before) A$line[(m + 1):length(a)] else B$line[(m + 1):length(b)]
+    msg <- c(msg,
+             sprintf("streams agree for %d entries, then %s has %d extra",
+                     m, if (long_is_before) "before" else "after", length(extra)),
+             sprintf("  first extra at source line %d: %s",
+                     exline[1], paste(head(extra, 6), collapse = " ")))
+    if (m > 0) msg <- c(msg, sprintf("  last agreeing entry was at source line %d",
+                                     if (long_is_before) A$line[m] else B$line[m]))
+    return(msg)
+  }
+
+  i <- d[1]
+
+  # A single insertion or deletion makes every later entry mismatch, which
+  # would otherwise be reported as thousands of differences. Detect it: if
+  # skipping one entry on the longer side realigns the rest, that is what
+  # happened, and saying so is far more useful than listing the cascade.
+  if (length(a) == length(b) + 1L && identical(.tail(a, i + 1L), .tail(b, i))) {
+    return(c(msg,
+             sprintf("one entry REMOVED, at source line %d: %s", A$line[i], .short(a[i])),
+             sprintf("  ctx before %s", .window(a, A$line, i)),
+             sprintf("  ctx after  %s", .window(b, B$line, i))))
+  }
+  if (length(b) == length(a) + 1L && identical(.tail(b, i + 1L), .tail(a, i))) {
+    return(c(msg,
+             sprintf("one entry ADDED, at source line %d: %s", B$line[i], .short(b[i])),
+             sprintf("  ctx before %s", .window(a, A$line, i)),
+             sprintf("  ctx after  %s", .window(b, B$line, i))))
+  }
+
+  n_shown <- min(length(d), max_report)
+  msg <- c(msg, sprintf("%d differing entr%s; first %d shown%s",
+                        length(d), if (length(d) == 1L) "y" else "ies", n_shown,
+                        if (length(a) != length(b))
+                          " (lengths differ, so later entries may just be shifted)" else ""))
+  for (i in head(d, max_report)) {
+    msg <- c(msg,
+             sprintf("  source line %d (before) / %d (after)", A$line[i], B$line[i]),
+             sprintf("    before: %s", .short(a[i])),
+             sprintf("    after : %s", .short(b[i])),
+             sprintf("    ctx before %s", .window(a, A$line, i)),
+             sprintf("    ctx after  %s", .window(b, B$line, i)))
   }
   msg
 }
