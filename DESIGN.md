@@ -77,7 +77,26 @@ statement, so the existing "skip SELECT" convention already covers them — 100%
 of the connector parameters in the stress fixture fall inside a skipped
 region.
 
-### 1.5 Statement `IF ... THEN` and function `IF(...)` share a keyword
+### 1.5 An un-aliased field and a self-aliased field load identically
+
+```qlik
+[T1]: LOAD * INLINE [ A, B
+1, 2 ];
+[T2]: NOCONCATENATE LOAD A, B         RESIDENT T1;
+[T3]: NOCONCATENATE LOAD A AS A, B AS B RESIDENT T1;
+```
+
+T2 and T3 produce identical field names and values. Verified in Qlik,
+2026-08-14, including with `SET HideSuffix = '%'` active, which matters
+because so many keys in these scripts end in `Id%`.
+
+This is the assumption `ensure_explicit_aliases` rests on, and it is the pass
+that changes the most — +47,217 characters on the stress fixture, more than
+every other pass combined. It is also encoded in `verify.R`, which collapses
+`X AS X` to `X` on both sides of the equivalence check; if this were false,
+that check would pass while the script's behaviour had changed.
+
+### 1.6 Statement `IF ... THEN` and function `IF(...)` share a keyword
 
 In the stress fixture: 132 `if` tokens but only 15 `then`. So roughly 117 are
 the *function* and 15 are control flow. Any pass that treats `IF` structurally
@@ -413,7 +432,7 @@ depth, which means a new **block-structure scanner**, a sibling to
 - control flow: `FOR`/`NEXT` (28/21 in the fixture), `SUB`/`END SUB`,
   `IF`/`THEN`/`ENDIF` (15 statement-level), `DO`/`LOOP`, `SWITCH`/`CASE`
 - statement boundaries and `///$tab` sections (63 in the fixture)
-- the distinction in §1.5 between statement `IF` and function `IF(`
+- the distinction in §1.6 between statement `IF` and function `IF(`
 
 Note this pass will produce large diffs by nature, which weakens the
 reviewability the `$changes` logs otherwise give. Worth deciding how to keep

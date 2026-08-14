@@ -83,6 +83,11 @@ section <- function(...) { cat("\n== ", ..., " ==\n", sep = ""); flush(stdout())
 #
 # Comma relocation needs no rule: moving a comma from trailing to leading
 # does not change token ORDER, only the whitespace around it.
+#
+# Each of those normalisations is an assumption about Qlik, and the check is
+# only as correct as they are. They are recorded in DESIGN.md §1 with their
+# verification status - notably §1.5, that LOAD X and LOAD X AS X load
+# identically, which is what licenses collapsing X AS X here.
 
 .unquote <- function(s, q) {
   inner <- substr(s, 2, nchar(s) - 1)
