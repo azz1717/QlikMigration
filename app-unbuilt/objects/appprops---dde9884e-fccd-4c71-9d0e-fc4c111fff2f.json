@@ -1,0 +1,24 @@
+{
+  "qInfo": {
+    "qId": "dde9884e-fccd-4c71-9d0e-fc4c111fff2f",
+    "qType": "appprops"
+  },
+  "qMetaDef": {},
+  "sheetTitleBgColor": {
+    "color": "#1c2b39",
+    "index": 19
+  },
+  "sheetTitleGradientColor": {
+    "color": "#1c2b39",
+    "index": 19
+  },
+  "sheetTitleColor": "",
+  "sheetLogoThumbnail": {
+    "qStaticContentUrlDef": {}
+  },
+  "sheetLogoPosition": "",
+  "rtl": false,
+  "theme": "NIAATheme",
+  "disableCellNavMenu": false,
+  "defaultBookmarkId": null
+}

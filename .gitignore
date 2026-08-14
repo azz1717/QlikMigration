@@ -1,0 +1,24 @@
+# R session artifacts
+.Rhistory
+.RData
+.Rapp.history
+.Rproj.user/
+*.Rproj
+
+# profiler output
+*.Rprof
+prof_*.out
+
+# Generated pipeline output - regenerate with run_pipeline.R.
+# Not tracked: these are derived from the tracked sources, and git history
+# now provides the regression baseline they used to serve as (check out an
+# older commit and re-run to reproduce any previous output).
+script_out.txt
+script_out2.txt
+scratch_full_out.qvs
+
+# benchmark / profiling scratch
+chunk_timings.rds
+
+# Claude Code settings that are local to this machine
+.claude/settings.local.json

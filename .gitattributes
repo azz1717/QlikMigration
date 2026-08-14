@@ -1,0 +1,5 @@
+# No end-of-line conversion - store and check out every file exactly as it sits
+# on disk, regardless of core.autocrlf. The .R sources are LF and the Qlik
+# fixtures are CRLF; this keeps both stable instead of rewriting them on
+# checkout and creating diff noise.
+* -text
