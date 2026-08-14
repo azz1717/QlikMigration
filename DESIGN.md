@@ -284,9 +284,15 @@ alias column becomes stable everywhere. Also worth knowing that most editors
 can insert spaces on a Tab keypress, which would give identical typing effort
 with portable output.
 
-**Unverified:** what tab width the Qlik Cloud script editor renders at. If it
-is not 4, the alignment is decorative in the place these scripts are actually
-read.
+**Verified:** the Qlik Cloud data load editor renders at tab width 4 (checked
+by Adam, 2026-08-14), which is where these scripts are actually read. One
+residual risk: if that is a per-user preference rather than a tenant default,
+a colleague could still see 8.
+
+Expect the breakage to show up outside Qlik. It was first noticed by editing
+in Notepad++ (4) and viewing in notepad.exe, which uses 8 — the file was
+fine, the viewer was not. A tab-aligned script only looks right in tools set
+to 4, so diff tools, terminals and web views will show it ragged.
 
 ### 3.7 Verification compares token streams, not a parsed model
 
