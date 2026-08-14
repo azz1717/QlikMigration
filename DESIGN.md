@@ -232,19 +232,159 @@ deep. Re-indenting those rewrites nearly every line, discards alignment that
 may carry meaning, and makes the diff unreviewable. The block scanner should
 be built so expression-level indenting can be added later without rework.
 
+### 3.6 Indentation uses tabs, at width 4
+
+**Decision:** emit tab characters, and accept that alias alignment (§4.6) is
+only correct when rendered at tab width 4.
+
+**Why:** hand-editing a space-padded file means re-padding by hand every time
+a field name changes length. Tabs keep that ergonomic.
+
+**The cost, measured:** tab-run alignment cannot hold at two tab widths at
+once. A tab does not advance a fixed distance — it advances to the *next
+multiple* of the tab width. Short lines therefore need many tabs and long
+lines few, so when the width changes they diverge:
+
+| field | tabs needed to reach col 40 @ width 4 | lands @ width 4 | lands @ width 8 |
+|---|---:|---:|---:|
+| `, [A]` | 9 | 40 | 72 |
+| `, IF(x > 1, 'yes', 'no')` | 4 | 40 | 56 |
+
+The drift is `(difference in tab count) × 4`. Choosing a target column that is
+a multiple of 8 does **not** help — tested at 40, 48, 56, 64, 80, 96 and 136,
+every one aligns at width 4 and breaks at width 8. Only a line needing zero
+tabs is width-independent, and if every line needed the same tab count there
+would be no alignment happening.
+
+So this is a genuine trade, not an oversight: tabs for editing ergonomics,
+paid for with single-width alignment.
+
+**Escape hatch if that proves annoying:** tabs for the structural indent,
+spaces only for the padding before `AS`. Indent width stays adjustable and the
+alias column becomes stable everywhere. Also worth knowing that most editors
+can insert spaces on a Tab keypress, which would give identical typing effort
+with portable output.
+
+**Unverified:** what tab width the Qlik Cloud script editor renders at. If it
+is not 4, the alignment is decorative in the place these scripts are actually
+read.
+
 ---
 
-## 4. Roadmap
+## 4. Target format specification
 
-Three passes remain from the original list. Grouping follows §3.4.
+Derived from `formatexample.txt` — a hand-written before/after illustration —
+plus the decisions taken from it on 2026-08-14. The illustration is the
+*intent*; this section is the rule. Where the two disagree, this wins: the
+example was hand-edited and contained known slips (a missed quote conversion,
+a double space, trailing whitespace).
 
-### 4.1 Intra-line spacing — not started
+Each rule notes the pass that implements it, or that none does yet.
+
+### 4.1 Casing — implemented (`enforce_reserved_word_case`)
+
+- Statement keywords, prefixes and clause words: UPPER.
+- Built-in functions: UPPER, **in call position only**.
+- Field names, variable names and user-defined `SUB` names: untouched.
+
+### 4.2 References — implemented (`enforce_bracket_references`)
+
+All field and alias references in square brackets.
+
+### 4.3 Aliasing — implemented (`ensure_explicit_aliases`)
+
+Every field carries an explicit `AS` alias.
+
+### 4.4 Field separators — partly implemented (`enforce_leading_commas`)
+
+- Leading commas, one space after: `, [Field]`.
+- The first field is padded with two spaces so its content starts in the same
+  column as the `, ` lines below it.
+- No trailing comma before `FROM` / `RESIDENT`.
+
+The existing pass relocates the comma. Padding and the leading space are not
+implemented.
+
+### 4.5 Indentation — not implemented
+
+Tabs, **tab width 4**. Not spaces (see §3.6).
+
+| element | indent |
+|---|---|
+| table label, `LOAD`, `FROM`, statement prefixes | 1 tab |
+| field lines | 2 tabs |
+| true developer comments | **column 0** |
+
+Comments sit at column 0 deliberately, so they stand out against the indented
+code. That only reads as a signal because commented-out code is removed
+(§4.10) — otherwise dead field references would compete for the same
+attention.
+
+### 4.6 Alias alignment — not implemented
+
+Within a LOAD block, every `AS` is aligned to one column. The column is sized
+from the widest field line **in that block**, so one enormous expression
+widens only its own block rather than the whole file.
+
+### 4.7 Intra-line spacing — not implemented
+
+- One space after every comma.
+- One space either side of every binary operator: arithmetic (`+ - * /`),
+  comparison (`= <> > < >= <=`), concatenation (`&`), logical
+  (`AND OR NOT`).
+- No double spaces.
+
+### 4.8 Vertical spacing — not implemented
+
+- No blank lines inside a statement.
+- Exactly **two** blank lines between statements.
+
+### 4.9 FROM clause — not implemented
+
+Path, format spec and terminating semicolon on one line:
+`FROM [lib://...](qvd);`
+
+### 4.10 Comments — not implemented
+
+- Commented-out code is removed, each removal logged in `$changes` with the
+  **full original text** (not a preview) so it is auditable and revertible.
+- A comment counts as dead code only when **both** hold: it sits inside a
+  LOAD field list, **and** its body parses as a field reference or expression
+  (optionally with an `AS` alias, optionally with a trailing comma). Both
+  conditions are required so that prose notes written between fields survive.
+- Surviving comments move to column 0 (§4.5).
+
+### 4.11 Not yet specified
+
+The worked example covers a single `LOAD ... FROM` statement. These have no
+rule yet and must not be guessed at:
+
+- `RESIDENT` loads.
+- Prefix lines — `LEFT JOIN`, `CONCATENATE`, `LEFT KEEP ([Table])`: own line?
+  what indent?
+- Preceding LOAD (the `LOAD *, ... ; LOAD ...` pattern, which appears in the
+  real script).
+- Control-flow blocks — `FOR`/`NEXT`, `SUB`/`END SUB`, `IF`/`THEN`/`ENDIF`:
+  indent by nesting depth, or flat?
+- `SET` / `LET` statements.
+- `///$tab` section markers.
+- Blank-line rules around `SELECT` blocks, whose interiors are otherwise
+  skipped entirely (§2.3).
+
+---
+
+## 5. Roadmap
+
+Three passes remain from the original list. Grouping follows §3.4; the target
+they implement is §4.
+
+### 5.1 Intra-line spacing — not started
 
 Operates only on whitespace tokens containing no newline (3,528 in the stress
 fixture), which makes it cleanly independent of layout. Rules still to decide:
 space after commas, around operators, inside parentheses.
 
-### 4.2 Vertical layout — not started, needs new infrastructure
+### 5.2 Vertical layout — not started, needs new infrastructure
 
 Line breaks, indentation and blank lines between blocks, as one pass.
 
@@ -262,7 +402,7 @@ Note this pass will produce large diffs by nature, which weakens the
 reviewability the `$changes` logs otherwise give. Worth deciding how to keep
 it auditable before building it.
 
-### 4.3 Commented-out code removal — not started
+### 5.3 Commented-out code removal — not started
 
 Remove comments that are commented-out code, logging every removal in
 `$changes` so each is auditable and revertible.
@@ -271,7 +411,7 @@ The heuristic distinguishing dead code from explanatory prose is the hard
 part, and deletion is not recoverable from the output alone — the change log
 must carry the full original text, not a preview.
 
-### 4.4 Deferred: non-ASCII data quality
+### 5.4 Deferred: non-ASCII data quality
 
 Word-paste artefacts (`’ ‘ “ ” – — •`, non-breaking spaces) are widespread —
 204 lines in the stress fixture. Tempting to normalise, but **not all
