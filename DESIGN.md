@@ -119,8 +119,8 @@ and bracketed names containing characters that look like syntax. §1.1 is the
 sharpest example. Tokenizing once makes those regions structurally opaque,
 which is a stronger guarantee than any amount of careful regex.
 
-Token types: `COMMENT`, `DQUOTE`, `SQUOTE`, `BRACKET`, `WS`, `WORD`, `COMMA`,
-`SEMI`, `LPAREN`, `RPAREN`, `VOID`, `OTHER`.
+Token types: `COMMENT`, `DQUOTE`, `SQUOTE`, `BRACKET`, `WS`, `WORD`, `NUMBER`,
+`OPERATOR`, `COMMA`, `SEMI`, `LPAREN`, `RPAREN`, `VOID`, `OTHER`.
 
 ### 2.2 Shared scanners
 
@@ -412,6 +412,12 @@ widens only its own block rather than the whole file.
 - One space either side of every binary operator: arithmetic (`+ - * /`),
   comparison (`= <> > < >= <=`), concatenation (`&`), logical
   (`AND OR NOT`).
+- **No space immediately inside parentheses** — `IF(x, 1, 0)`, never
+  `IF( x, 1, 0 )`.
+- Two cases the token type cannot settle, so the pass must use context:
+  **unary minus** (`AddMonths(Today(), -12)` — the `-` binds to the literal
+  and takes no left space) and the **`LOAD *` wildcard**, which is typed
+  `OPERATOR` but is not one.
 - Runs of spaces collapse to one — **except in the line-leading region**,
   meaning the indentation and the separator that follows it. Everything from
   the start of the field's content onward is fair game.
@@ -484,8 +490,22 @@ what may be verified about it, so the split matters more than it looks.
 | phase | what it does | changes data? |
 |---|---|---|
 | **1. Style** | the passes in this repo | **no** — output must run like-for-like |
-| **2. Retargeting** | qvd paths and field names that have changed in the new environment | **yes**, deliberately |
-| **3. Performance** *(nice to have)* | dropping tables and loads nothing in the app actually uses; possibly the non-ASCII question (§6.4) | yes |
+| **2. Pruning** | drop tables and loads that nothing in the app actually uses | yes |
+| **3. Retargeting** | qvd paths and field names that have changed in the new environment | **yes**, deliberately |
+
+Pruning comes before retargeting — decided 2026-08-14, reversing the original
+order. Retargeting a table is work; retargeting a table that is then deleted
+is wasted work, and considerably worse where the source resource no longer
+exists and would have to be rebuilt purely to satisfy a reference nothing
+needs. Delete first, retarget only what survives.
+
+A supporting reason: pruning is decided by cross-referencing the script
+against `objects/*.json`, and those two agree with each other *today*. To the
+extent retargeting changes app-facing field names, doing it first pushes the
+script and the app definition out of step and makes the usage analysis harder
+than it need be.
+
+The non-ASCII question (§6.4) is separate again, and remains deferred.
 
 ### Phase 1 runs first, and not only for tidiness
 
@@ -502,11 +522,11 @@ to miss one, in the phase that actually alters data.
 
 Not just phase 1. Retargeting changes field name lengths, which disturbs the
 alias alignment (§4.6), so style has to be reapplied afterwards — and the same
-goes for phase 3 dropping loads.
+goes for pruning dropping whole loads.
 
 Reapplying **only** alignment would be the tempting shortcut, and is wrong: it
-assumes phase 2 emits output that is perfectly style-conformant except for
-widths. That assumption would have to stay true forever, in a second tool,
+assumes the later phases emit output that is perfectly style-conformant except
+for widths. That assumption would have to stay true forever, in a second tool,
 with nothing checking it. Every pass is idempotent and the whole pipeline is
 1.6s on the 13,870-line fixture, so re-running all of it costs nothing and
 removes the assumption.
@@ -518,8 +538,8 @@ carefully, a normaliser applied unconditionally afterwards.
 
 Semantic equivalence is violated by design in phases 2 and 3. So the
 automated safety net disappears exactly when changes start affecting data,
-which is why phase 2 needs a structural model of its own (§3.7) and why it is
-worth keeping the phases as separate tools with separate change logs and
+which is why those phases need a structural model of their own (§3.7) and why
+it is worth keeping each phase a separate tool with its own change log and
 separately reviewable output.
 
 ---
@@ -537,33 +557,37 @@ Scope: whitespace tokens containing **no newline** (3,528 of 11,711 in the
 stress fixture). Newline-bearing whitespace belongs to the layout pass (§3.4)
 and must not be touched here.
 
-#### Read this before writing any code
+#### The tokenizer groundwork is already done
 
-The tokenizer does **not** tokenize operators or numeric literals as units.
-Its `WORD` pattern must start with a letter or underscore, so digits and
-symbols fall through to the one-character catch-all:
+Until 2026-08-14 the tokenizer split operators and numbers into single
+characters — `>=` was two tokens, `30` was two — so "one space either side of
+each operator" would have produced `> =` and `3 0`. That is fixed: `NUMBER`
+and `OPERATOR` are now token types and multi-character operators match as
+single tokens (option 1 of the two that were on the table; the alternative was
+grouping `OTHER` runs privately inside this pass).
 
-| source | tokens | what naive spacing would produce |
-|---|---|---|
-| `>=` | `OTHER(>) OTHER(=)` | `> =` — **broken operator** |
-| `<>` | `OTHER(<) OTHER(>)` | `< >` — **broken operator** |
-| `30` | `OTHER(3) OTHER(0)` | `3 0` — **broken literal** |
-| `$(vFoo)` | `OTHER($) LPAREN(` | `$ (` — **breaks variable expansion** |
-| `,-12` | `COMMA OTHER(-) OTHER(1) OTHER(2)` | `, - 1 2` |
+The change was verified behaviour-neutral — pipeline output byte-identical on
+both fixtures, round-trip intact, full suite green — because nothing outside
+the tokenizer ever branched on `OTHER`.
 
-A rule of the form "put one space either side of each operator token" is
-therefore wrong at the token level, however right it looks in §4.7. Counts in
-`app-unbuilt/script.qvs`: 494 `,-N` arguments, 198 `&`, 41 `$(`, 35 of
-`>= <= <>`. None of this is hypothetical.
+So the pass can rely on:
 
-Two ways out, to be decided first:
+| source | tokens |
+|---|---|
+| `a >= 1` | `WORD(a) OPERATOR(>=) NUMBER(1)` |
+| `Today()-30` | `... RPAREN OPERATOR(-) NUMBER(30)` |
+| `[A] & ', '` | `BRACKET([A]) OPERATOR(&) SQUOTE(', ')` |
+| `$(vFoo)` | `OTHER($) LPAREN( WORD(vFoo) RPAREN)` |
 
-1. **Extend the tokenizer** with `NUMBER` and multi-character `OPERATOR`
-   types. Cleanest for every later pass, but it changes the shared foundation,
-   so the full suite must be re-run and the round-trip invariant re-checked.
-2. **Group runs of `OTHER` locally** inside the spacing pass. Leaves the
-   foundation alone; the grouping logic is then private to this pass and
-   unavailable to layout, which will likely want the same thing.
+Note `$` stays `OTHER` deliberately: a rule that spaces `OPERATOR` tokens
+therefore cannot break variable expansion.
+
+**Two things the token type still cannot settle**, so the pass needs context:
+
+- **Unary minus.** `AddMonths(Today(), -12)` — 494 instances of `,-N` in the
+  stress fixture. The `-` takes a space on its left only when it is binary.
+- **The `LOAD *` wildcard**, typed `OPERATOR` but not one. Spacing it as an
+  operator would produce `LOAD * ,`.
 
 #### Other traps, already paid for
 

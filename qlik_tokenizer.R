@@ -52,6 +52,18 @@
   "|[\\xF0-\\xF4][\\x80-\\xBF]{3}"  # 4-byte sequence
 )
 
+# EDITING THIS PATTERN
+#
+# Alternation is first-match-wins, so ORDER IS SIGNIFICANT. Two rules:
+#   - longer alternatives must precede their own prefixes. ">=" has to come
+#     before ">", or ">=" tokenizes as two tokens.
+#   - the UTF-8 catch-all stays LAST, and stays UTF-8-aware. Replacing it with
+#     "." would shatter every multibyte character into invalid fragments and
+#     break tolower() in the passes - see the byte-mode note above.
+# Matching runs in byte mode, so character classes are byte classes. That is
+# fine for the ASCII syntax below; do not add a class expecting it to match a
+# multibyte character.
+
 .qlik_token_pattern <- paste0(
   "//[^\n]*",                     # line comment
   "|/\\*[\\s\\S]*?\\*/",          # block comment
@@ -60,6 +72,9 @@
   "|\\[[^\\]]*\\]",               # bracketed identifier
   "|[ \t\r\n]+",                  # whitespace
   "|[A-Za-z_][A-Za-z0-9_.$%#]*",  # bare word / identifier / keyword
+  "|[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?",  # numeric literal
+  "|>=|<=|<>",                    # multi-char operators - BEFORE the single
+  "|[-+*/=<>&]",                  # single-char operators
   "|", .qlik_utf8_char            # anything else, one character at a time
 )
 
@@ -76,6 +91,12 @@
   if (tok == ";") return("SEMI")
   if (tok == "(") return("LPAREN")
   if (tok == ")") return("RPAREN")
+  if (grepl("^[0-9]", tok)) return("NUMBER")
+  # "*" is typed as an operator but is also the LOAD wildcard, and "-" is both
+  # binary and unary minus. The tokenizer cannot tell those apart; a pass that
+  # spaces operators has to check context.
+  if (tok %in% c(">=", "<=", "<>", "-", "+", "*", "/", "=", "<", ">", "&"))
+    return("OPERATOR")
   "OTHER"
 }
 
