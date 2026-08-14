@@ -1,0 +1,297 @@
+# verify.R
+#
+# Standing verification suite for the style pipeline. Run it after changing
+# any pass:
+#
+#     Rscript verify.R
+#
+# Exits non-zero if anything fails, so it can gate a commit.
+#
+# WHY THIS EXISTS
+#
+# Three signals were being relied on, and each has a blind spot:
+#
+#   $changes      is SELF-REPORTED and describes intent, not placement. A pass
+#                 logs "inserted AS [X] at line 42" and that entry stays true
+#                 even if splice_tokens() put it after the wrong token. A
+#                 dropped field produces no entry at all.
+#   golden diff   answers "did the output change since last time?" - useful
+#                 for regressions, and useless the moment output changes on
+#                 purpose, which is exactly what adding a pass does.
+#   round-trip    proves the TOKENIZER is lossless. It says nothing about
+#                 whether a pass corrupted anything.
+#
+# The semantic equivalence check below is invariant across every cosmetic
+# pass, present and future: it keeps holding while the output legitimately
+# changes. That matters most for the remaining passes (spacing, layout,
+# alignment), which are all whitespace manipulators - the class that can
+# corrupt content while reporting truthfully. A space inserted inside
+# [Grant Activity], making it [Grant  Activity], is a renamed field, logged
+# as "added a space", and invisible to every other check.
+#
+# LIMITS. This verifies the COSMETIC phase only. Retargeting changes field
+# names by design, so equivalence is violated on purpose there. And it proves
+# nothing changed outside the permitted set - not that Qlik agrees the two
+# scripts behave identically.
+
+setwd(tryCatch(dirname(sys.frame(1)$ofile), error = function(e) "C:/Rtools"))
+
+source("qlik_tokenizer.R")
+source("qlik_reserved_words.R")
+source("ensure_explicit_aliases.R")
+source("enforce_bracket_references.R")
+source("enforce_leading_commas.R")
+source("enforce_reserved_word_case.R")
+
+# ---- reporting ---------------------------------------------------------
+
+.fails <- 0L
+.checks <- 0L
+
+ok <- function(label, passed, detail = NULL) {
+  .checks <<- .checks + 1L
+  if (!passed) .fails <<- .fails + 1L
+  cat(sprintf("  [%s] %s\n", if (passed) "PASS" else "FAIL", label))
+  if (!passed && !is.null(detail)) cat(paste0("         ", detail, "\n"), sep = "")
+  flush(stdout())
+  invisible(passed)
+}
+
+section <- function(...) { cat("\n== ", ..., " ==\n", sep = ""); flush(stdout()) }
+
+# ---- semantic equivalence ----------------------------------------------
+# Reduce a token stream to the sequence of things that carry MEANING, with
+# every difference the cosmetic passes are ALLOWED to introduce normalised
+# away. Two streams that reduce to the same vector are equivalent as far as
+# the style guide is concerned.
+#
+# Normalisations, each matching exactly one permitted transformation:
+#
+#   whitespace / comments dropped        layout, spacing, comment removal
+#   [X] and "X" folded to REF:X          enforce_bracket_references
+#   'X' right of AS folded to REF:X      enforce_bracket_references (alias
+#                                        position only - a single-quoted
+#                                        token anywhere else is a LITERAL and
+#                                        stays distinct, so a literal turning
+#                                        into a field reference is caught)
+#   reserved words upper-cased           enforce_reserved_word_case, applied
+#                                        under the SAME call-position rule the
+#                                        pass uses, so a bare field named
+#                                        Year is NOT folded and a wrongly
+#                                        recased one is caught
+#   X AS X collapsed to X                ensure_explicit_aliases
+#
+# Comma relocation needs no rule: moving a comma from trailing to leading
+# does not change token ORDER, only the whitespace around it.
+
+.unquote <- function(s, q) {
+  inner <- substr(s, 2, nchar(s) - 1)
+  gsub(paste0(q, q), q, inner, fixed = TRUE)
+}
+
+#' Reduce a token stream to its meaning-carrying canonical form.
+canonical_stream <- function(tokens) {
+  keep <- !(tokens$type %in% c("WS", "COMMENT", "VOID"))
+  ty <- tokens$type[keep]
+  tx <- tokens$text[keep]
+  n <- length(ty)
+  if (n == 0) return(character(0))
+
+  lower <- tolower(tx)
+  prev_is_as <- c(FALSE, ty[-n] == "WORD" & lower[-n] == "as")
+  next_is_lparen <- c(ty[-1] == "LPAREN", FALSE)
+
+  out <- character(n)
+  for (i in seq_len(n)) {
+    out[i] <- switch(
+      ty[i],
+      BRACKET = paste0("REF:", substr(tx[i], 2, nchar(tx[i]) - 1)),
+      DQUOTE  = paste0("REF:", .unquote(tx[i], "\"")),
+      SQUOTE  = if (prev_is_as[i]) paste0("REF:", .unquote(tx[i], "'"))
+                else paste0("STR:", .unquote(tx[i], "'")),
+      WORD    = {
+        fold <- lower[i] %in% QLIK_KEYWORDS ||
+                (next_is_lparen[i] && lower[i] %in% QLIK_FUNCTIONS)
+        paste0("W:", if (fold) toupper(tx[i]) else tx[i])
+      },
+      paste0("P:", tx[i])
+    )
+  }
+
+  # collapse a self-alias (X AS X) to X, on BOTH sides. An alias that is not
+  # a self-alias does not collapse, so a pass that rewrote X AS Y into X AS X
+  # still shows up as a difference.
+  if (n >= 3) {
+    drop <- logical(n)
+    i <- 1L
+    while (i <= n - 2L) {
+      if (out[i + 1L] == "W:AS" && out[i] == out[i + 2L] &&
+          !startsWith(out[i], "STR:")) {
+        drop[i + 1L] <- TRUE; drop[i + 2L] <- TRUE
+        i <- i + 3L
+      } else i <- i + 1L
+    }
+    out <- out[!drop]
+  }
+  out
+}
+
+#' Assert two token streams are semantically equivalent.
+#' @return TRUE, or a character description of the first differences.
+check_equivalent <- function(before, after, max_report = 5) {
+  a <- canonical_stream(before)
+  b <- canonical_stream(after)
+  if (identical(a, b)) return(TRUE)
+
+  msg <- c(sprintf("canonical length: before=%d after=%d", length(a), length(b)))
+  m <- min(length(a), length(b))
+  d <- which(a[seq_len(m)] != b[seq_len(m)])
+  if (length(d) == 0) {
+    longer <- if (length(a) > length(b)) "before" else "after"
+    extra <- if (length(a) > length(b)) a[(m + 1):length(a)] else b[(m + 1):length(b)]
+    msg <- c(msg, sprintf("%s has %d extra token(s), first: %s",
+                          longer, abs(length(a) - length(b)),
+                          paste(head(extra, 5), collapse = " ")))
+  } else {
+    for (i in head(d, max_report)) {
+      lo <- max(1L, i - 3L)
+      msg <- c(msg, sprintf("at %d: before=%s | after=%s", i, a[i], b[i]),
+               sprintf("   context before: %s", paste(a[lo:min(i + 3L, length(a))], collapse = " ")),
+               sprintf("   context after : %s", paste(b[lo:min(i + 3L, length(b))], collapse = " ")))
+    }
+  }
+  msg
+}
+
+# ---- the suite ---------------------------------------------------------
+
+PASSES <- list(
+  "ensure_explicit_aliases"     = ensure_explicit_aliases,
+  "enforce_bracket_references"  = enforce_bracket_references,
+  "enforce_leading_commas"      = enforce_leading_commas,
+  "enforce_reserved_word_case"  = enforce_reserved_word_case
+)
+
+verify_file <- function(path) {
+  section(path)
+
+  raw <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  tokens <- read_qlik_script(path)
+
+  # 1. tokenizer is lossless
+  ok("tokenizer round-trip is exact",
+     identical(raw, paste(detokenize(tokens), collapse = "\n")))
+
+  # 2. token stream is well formed
+  ok("no NA in token stream",
+     !any(is.na(tokens$text)) && !any(is.na(tokens$type)) && !any(is.na(tokens$line)))
+  ok("line numbers are non-decreasing", !is.unsorted(tokens$line))
+
+  # 3. each pass in isolation
+  cur <- tokens
+  for (nm in names(PASSES)) {
+    res <- PASSES[[nm]](cur)
+
+    eq <- check_equivalent(cur, res$tokens)
+    ok(sprintf("%s: semantically equivalent", nm), isTRUE(eq),
+       if (!isTRUE(eq)) eq else NULL)
+
+    ok(sprintf("%s: output round-trips", nm),
+       identical(paste(res$tokens$text, collapse = ""),
+                 paste(detokenize(res$tokens), collapse = "\n")))
+
+    again <- PASSES[[nm]](res$tokens)
+    ok(sprintf("%s: idempotent", nm), nrow(again$changes) == 0L,
+       if (nrow(again$changes) > 0)
+         sprintf("second run still reported %d change(s)", nrow(again$changes)) else NULL)
+
+    cur <- res$tokens
+  }
+
+  # 4. the pipeline as a whole
+  eq <- check_equivalent(tokens, cur)
+  ok("full pipeline: semantically equivalent to input", isTRUE(eq),
+     if (!isTRUE(eq)) eq else NULL)
+
+  # 5. pass-specific guarantees
+  r_case <- enforce_reserved_word_case(tokens)
+  nonword <- tokens$type != "WORD"
+  ok("casing: non-WORD tokens untouched",
+     identical(tokens$text[nonword], r_case$tokens$text[nonword]))
+  ok("casing: every change is case-only",
+     all(tolower(r_case$changes$before) == tolower(r_case$changes$after)))
+
+  r_br <- enforce_bracket_references(tokens)
+  ok("brackets: every change yields a bracketed token",
+     all(grepl("^\\[.*\\]$", r_br$changes$after)))
+
+  invisible(NULL)
+}
+
+# ---- deliberate-corruption tests ---------------------------------------
+# A checker that never fails proves nothing. Confirm it actually detects the
+# failure modes it exists for.
+
+verify_detects_corruption <- function() {
+  section("self-test: the equivalence check detects real corruption")
+
+  src <- paste("[T]:", "LOAD", "    [Field One] AS [A],",
+               "    \"Field Two\" AS [B],", "    Year as [C]",
+               "FROM x;", sep = "\n")
+  base <- tokenize_qlik(src)
+
+  # a space smuggled inside a bracketed name - the exact bug a whitespace
+  # pass could introduce while truthfully logging "added a space"
+  bad <- base
+  i <- which(bad$type == "BRACKET" & bad$text == "[Field One]")[1]
+  bad$text[i] <- "[Field  One]"
+  ok("detects a space inserted inside a field name", !isTRUE(check_equivalent(base, bad)))
+
+  # a dropped field
+  bad2 <- base
+  j <- which(bad2$type == "BRACKET" & bad2$text == "[A]")[1]
+  bad2$text[j] <- ""; bad2$type[j] <- "VOID"
+  ok("detects a dropped alias", !isTRUE(check_equivalent(base, bad2)))
+
+  # a bare field named after a function, wrongly upper-cased
+  bad3 <- base
+  k <- which(bad3$type == "WORD" & bad3$text == "Year")[1]
+  bad3$text[k] <- "YEAR"
+  ok("detects a bare field reference being recased", !isTRUE(check_equivalent(base, bad3)))
+
+  # a string literal turned into a field reference
+  src2 <- "[T]:\nLOAD 'Overdue' AS [Bill Status] FROM x;"
+  b1 <- tokenize_qlik(src2)
+  b2 <- b1
+  m <- which(b2$type == "SQUOTE")[1]
+  b2$text[m] <- "[Overdue]"; b2$type[m] <- "BRACKET"
+  ok("detects a literal becoming a field reference", !isTRUE(check_equivalent(b1, b2)))
+
+  # and must NOT flag the transformations the passes legitimately make
+  r <- ensure_explicit_aliases(tokenize_qlik("[T]:\nLOAD [A], \"B\", C\nFROM x;"))
+  ok("does not flag legitimate self-aliasing",
+     isTRUE(check_equivalent(tokenize_qlik("[T]:\nLOAD [A], \"B\", C\nFROM x;"), r$tokens)))
+
+  r2 <- enforce_bracket_references(tokenize_qlik("[T]:\nLOAD \"A\" AS 'B' FROM x;"))
+  ok("does not flag quote-to-bracket conversion",
+     isTRUE(check_equivalent(tokenize_qlik("[T]:\nLOAD \"A\" AS 'B' FROM x;"), r2$tokens)))
+
+  invisible(NULL)
+}
+
+# ---- runner ------------------------------------------------------------
+
+main <- function() {
+  cat("Style pipeline verification\n")
+
+  verify_detects_corruption()
+
+  fixtures <- c("[Grant Managing Region].txt", "app-unbuilt/script.qvs")
+  for (f in fixtures) if (file.exists(f)) verify_file(f) else
+    cat("\n(skipping missing fixture: ", f, ")\n", sep = "")
+
+  cat(sprintf("\n%d checks, %d failed\n", .checks, .fails))
+  if (.fails > 0L) quit(status = 1L) else cat("ALL PASS\n")
+}
+
+if (!interactive()) main()

@@ -19,13 +19,23 @@
 #     leading comma is placed immediately before the next field's actual
 #     content, below the comments.
 #   - The last field in a LOAD has no trailing comma to move - left alone.
-#   - A comma is only moved when it sits on the SAME source line as the
-#     field before it (genuinely trailing). find_load_segments() defines a
-#     field's end as "right before the next depth-0 comma" regardless of
-#     which line that comma is visually on, so without this check a comma
-#     that's already leading (correctly sitting on the next field's line)
-#     would look identical to one still needing to move - this is what
-#     makes the pass idempotent.
+#   - A comma is only moved when a LINE BREAK separates it from the field
+#     that follows it. That is what "trailing" actually means, and it is what
+#     makes the pass idempotent: once the comma has moved down to sit with
+#     its field there is no newline between them any more, so a rescan leaves
+#     it alone.
+#
+#     This test used to compare source LINE NUMBERS - move the comma only if
+#     it sits on the same line as the field BEFORE it. That failed on a
+#     single-line field list:
+#         LOAD distinct [Office] AS tmpField_0, [Location] AS tmpField_1 ...
+#     where the comma shares a line with both neighbours, so it was
+#     "relocated" on every run: output stayed stable, but each pass logged a
+#     phantom change and leaked another VOID token.
+#
+#     Testing for the newline rather than for adjacency also survives the
+#     spacing pass putting a space after the comma (", [Field]") - adjacency
+#     would break there and start moving commas again.
 #   - SELECT ... ; blocks are left untouched entirely, same as the other
 #     passes (find_load_segments() already skips them).
 #
@@ -72,7 +82,6 @@ enforce_leading_commas <- function(tokens) {
   for (seg in found$segments) {
     comma_idx <- seg$end + 1
     if (comma_idx > n || t_type[comma_idx] != "COMMA") next  # last field in its LOAD
-    if (t_line[comma_idx] != t_line[seg$end]) next  # already leading - nothing to do
 
     # first real (non-trivia) token after the comma
     target_idx <- NA_integer_
@@ -86,6 +95,15 @@ enforce_leading_commas <- function(tokens) {
         "Line %d: no field found after this comma to attach a leading comma to - left trailing.",
         t_line[comma_idx]))
       next
+    }
+
+    # Already leading if nothing between the comma and its field breaks the
+    # line - see the note at the top of this file.
+    if (target_idx > comma_idx + 1) {
+      gap <- (comma_idx + 1):(target_idx - 1)
+      if (!any(grepl("\n", t_text[gap], fixed = TRUE))) next
+    } else {
+      next  # comma sits immediately before its field
     }
 
     nvoid <- nvoid + 1L

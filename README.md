@@ -129,17 +129,35 @@ snapshot.
 
 ## Verifying a change
 
-Text diffs are not sufficient. A byte-identical output file once hid a real
-regression (`splice_tokens` silently dropping the `source_path` attribute).
-Check both:
+Run the suite. It exits non-zero on failure, so it can gate a commit:
 
-1. **End to end** — run the pipeline over `app-unbuilt/script.qvs` and diff
-   against output from before your change.
-2. **Object for object** — keep the old implementation alongside the new one
-   and assert `identical()` on `$tokens`, `$warnings` *and* `$changes`.
+```bash
+Rscript verify.R
+```
 
-Also assert **idempotence**: running a pass twice must produce zero changes
-the second time.
+It covers, over both fixtures: tokenizer round-trip, token-stream sanity,
+and for every pass — **semantic equivalence**, output round-trip, and
+idempotence. It also self-tests, by corrupting a stream deliberately and
+confirming the equivalence check notices.
+
+The semantic equivalence check is the important one. It reduces both streams
+to the tokens that carry meaning, normalising away exactly the differences
+the passes are allowed to make, and asserts the rest is identical. Unlike a
+golden-file diff it keeps working when output changes on purpose — which is
+what happens every time a pass is added — and unlike `$changes` it does not
+take a pass's word for what it did.
+
+It earned that on its first run, catching a real idempotence bug in
+`enforce_leading_commas` whose docstring explicitly claimed the property.
+
+Two things it cannot do, so still worth doing by hand for a risky change:
+
+- **Object for object** — keep the old implementation beside the new one and
+  assert `identical()` on `$tokens`, `$warnings` *and* `$changes`. This is
+  what caught `splice_tokens` silently dropping the `source_path` attribute,
+  where both the output text and every change log were identical.
+- Confirm Qlik agrees the two scripts behave the same. Nothing here can
+  establish that.
 
 ## Fixtures
 
