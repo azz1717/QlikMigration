@@ -412,7 +412,30 @@ widens only its own block rather than the whole file.
 - One space either side of every binary operator: arithmetic (`+ - * /`),
   comparison (`= <> > < >= <=`), concatenation (`&`), logical
   (`AND OR NOT`).
-- No double spaces.
+- Runs of spaces collapse to one — **except in the line-leading region**,
+  meaning the indentation and the separator that follows it. Everything from
+  the start of the field's content onward is fair game.
+
+That exception is not a detail. The two-space pad on the first field (§4.4)
+is a deliberate alignment device, and a naive "no double spaces" rule eats
+it — which happened while repairing `formatexample.txt` by hand, in ten lines
+of throwaway code, on the first attempt.
+
+The same two-space sequence therefore needs **opposite treatment depending on
+where it sits**:
+
+| where | example | treatment |
+|---|---|---|
+| line-leading separator | `⇥⇥··[Field]` | **preserve** — aligns with the `, ` rows |
+| anywhere in content or alias | `... AS··[Overall Progress]` | collapse to one |
+
+Both occur in real scripts: `[Grant Managing Region].txt` has three of the
+second kind, at lines 17, 78 and 420.
+
+A rule that cannot express position cannot get both right, so this pass has
+to decompose a field line into indent / separator / content rather than
+operating on the line as a flat string. Whitespace tokens carrying a newline
+belong to the layout pass (§3.4) and are not this pass's to touch either.
 
 ### 4.8 Vertical spacing — not implemented
 
