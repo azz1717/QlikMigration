@@ -584,10 +584,36 @@ therefore cannot break variable expansion.
 
 **Two things the token type still cannot settle**, so the pass needs context:
 
-- **Unary minus.** `AddMonths(Today(), -12)` — 494 instances of `,-N` in the
-  stress fixture. The `-` takes a space on its left only when it is binary.
-- **The `LOAD *` wildcard**, typed `OPERATOR` but not one. Spacing it as an
-  operator would produce `LOAD * ,`.
+- **Unary minus.** `AddMonths(Today(), -12)` — the `-` takes a space on its
+  left only when it is binary. Of 24 `-` operators in live code, 17 are
+  binary and 7 unary.
+- **The `LOAD *` wildcard**, typed `OPERATOR` but not one. Of 42 `*` tokens,
+  31 look like wildcards and 11 are genuine multiplication (`n*chunkSize`,
+  line 1740). Spacing a wildcard as an operator would produce `LOAD * ,`.
+
+#### Sanity check of the real script, 2026-08-14
+
+Run against `app-unbuilt/script.qvs` after the tokenizer change:
+
+| check | result |
+|---|---|
+| adjacent `OPERATOR` pairs | **none** — no multi-char operator is still being split |
+| `NUMBER` tokens | 185; no leading-dot decimals, none glued to an adjacent word |
+| `$(...)` expansions | 27, **all** simple `$(name)` — no `$(=expression)` |
+| bare `.` tokens | 24, **all inside SELECT** — SQL schema qualification, skipped |
+| `{` `}` | 14, **all inside SELECT** — GeoAnalytics connector syntax, skipped |
+| `/` as division | 15, genuine (`x/(y/100)`, line 920) |
+| `&` concatenation | 88 |
+
+Still typed `OTHER`, and correctly so: `:` (136, the table-label terminator —
+`[Table]:` must never become `[Table] :`), `$` (27), `.` (24), `{` `}` (14).
+None are operators and none should be spaced.
+
+**Count tokens, not text matches.** An earlier draft of this section claimed
+494 unary-minus cases, from grepping the raw source. The true figure is 7:
+the rest are inside INLINE data blocks and comments, which are single opaque
+tokens. Raw-text counts over a Qlik script are inflated by exactly the regions
+the tokenizer exists to protect.
 
 #### Other traps, already paid for
 
