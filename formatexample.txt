@@ -1,0 +1,61 @@
+##before formatting
+[Grant Activity Temp]:
+
+LOAD
+    "Grant Activity.Grant Activity Id%" as [Grant Activity Id%],
+    "Grant Activity.Source Organisation Id%" As [Activity Source Organisation Id%],
+    IF("Grant Activity.Activity Id" = '4-ENJBSQ2', 'a6c824bf-afc1-e611-80f1-c4346bc5977c',"Grant Activity.PMC Region Id%") as [PMC Region Id%],
+	[Grant Activity.Programme Component Id%] AS [Programme Component Id%],
+	IF(LEn([Grant Activity.Programme Id%]) = 0, 'ae0b9448-9f69-e611-80e6-c4346bc43f98',[Grant Activity.Programme Id%])  AS [Programme Id%],
+//   [Grant Activity.Programme Id%]  AS [Programme Id%],
+	[Grant Activity.Sub Programme] AS [Sub Program],
+	[Grant Activity.Grant Activity] AS [Activity Title],
+//    "Grant Activity.Grant Activity Status",
+    "Grant Activity.Activity Id" As [Activity Id],
+    "Grant Activity.Activity Description" As [Long Description],
+    DATE("Grant Activity.Activity Start Date", 'DD/MM/YYYY') as [Activity Start Date],
+    DATE("Grant Activity.Activity End Date", 'DD/MM/YYYY') as [Activity End Date],
+    IF("Grant Activity.Activity Start Date" > Today()-30 and "Grant Activity.Activity Start Date"  < today(), 1,0) as [Activity started in last 30 days],
+    IF("Grant Activity.Activity End Date" > Today()-30 and "Grant Activity.Activity End Date" < today(), 1,0) as [Activity ended in last 30 days],
+//    "Grant Activity.Funding Approved Date",
+//    "Grant Activity.Funding Approved By",
+    "Grant Activity.Source System Id%",
+//    "Grant Activity.Source Activity Status",
+    "Grant Activity.Activity Manager" As [Activity Manager],
+    "Grant Activity.Engagement Officer" AS [Engagement Officer],
+    lower(Trim("Grant Activity.Activity Manager")) as  [Activity Manager Key],  
+    "Grant Activity.Approved On Date",
+//    "Grant Activity.Draft Coded By Id%",
+//    "Grant Activity.Draft Coded By",
+//    "Grant Activity.Draft Approver Reject Code",
+//    "Grant Activity.Draft Approver Reject",
+//    "Grant Activity.Current Performance Outcome Id%",
+//    "Grant Activity.Current Performance Outcome",
+//    "Grant Activity.Source Status Group Code",
+	[Grant Activity.Source Status Group] AS [Activity Status],
+//    "Grant Activity.Mandatory Submission",
+    "Grant Activity.Current Ceasing Activity Assessment Id%",
+    "Grant Activity.Current Ceasing Activity Assessment"
+//    "Grant Activity.Has Review"
+FROM [lib://AppDataProd/AzureDataLake/FUSION/Grant Activity.qvd]
+(qvd);
+
+##After formatting
+[Grant Activity Temp]:
+
+LOAD
+[Grant Activity.Grant Activity Id%] as [Grant Activity Id%]
+,[Grant Activity.Source Organisation Id%] As [Activity Source Organisation Id%]
+,IF("Grant Activity.Activity Id" = '4-ENJBSQ2', 'a6c824bf-afc1-e611-80f1-c4346bc5977c',"Grant Activity.PMC Region Id%") as [PMC Region Id%],
+,[Grant Activity.Programme Component Id%] AS [Programme Component Id%],
+,IF(LEn([Grant Activity.Programme Id%]) = 0, 'ae0b9448-9f69-e611-80e6-c4346bc43f98',[Grant Activity.Programme Id%])  AS [Programme Id%],
+,[Grant Activity.Sub Programme] AS [Sub Program],
+,[Grant Activity.Grant Activity] AS [Activity Title],
+,[Grant Activity.Activity Id] As [Activity Id],
+,[Grant Activity.Activity Description] As [Long Description],
+,DATE([Grant Activity.Activity Start Date], 'DD/MM/YYYY') as [Activity Start Date],
+,DATE([Grant Activity.Activity End Date], 'DD/MM/YYYY') as [Activity End Date],
+,IF([Grant Activity.Activity Start Date] > Today()-30 and "Grant Activity.Activity Start Date"  < today(), 1,0) as [Activity started in last 30 days],
+,IF("Grant Activity.Activity End Date" > Today()-30 and "Grant Activity.Activity End Date" < today(), 1,0) as [Activity ended in last 30 days],
+FROM [lib://AppDataProd/AzureDataLake/FUSION/Grant Activity.qvd]
+(qvd);
