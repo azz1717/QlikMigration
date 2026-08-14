@@ -760,3 +760,40 @@ the second list belongs in the handover.
 
 The figure that goes in the report is therefore the one computed on the
 final delivered script, not on the input.
+
+The delta is also the only place the migration's **genuine improvements** get
+recorded. Almost all of it will be phase 2 removing redundant tables — real
+quality gained rather than debt deferred — and nothing else in the tooling
+measures it. A handover that lists only what is still wrong understates the
+work that was done.
+
+**The baseline must be captured once, not recomputed.** Once the pipeline can
+be re-run over a partly hand-fixed script (§7.4), "the input" stops being a
+fixed thing. If the before figure is recomputed on each run it converges
+silently on the after figure and the improvement record erases itself.
+Capture the original on-prem script's findings once, store them alongside the
+run, and compare every later run against that stored baseline.
+
+### 7.4 The pipeline must be re-runnable over a hand-fixed script
+
+Some warts will not be resolvable automatically. The expected workflow is
+therefore: run the pipeline, hand the report to whoever owns the app, let
+them fix what the tooling cannot, and run it again — each pass producing
+fewer warts than the last. The style passes already support this: they are
+idempotent by design (§3.4) and the whole pipeline costs 1.6s.
+
+What it constrains is the **detector**. If a large inline load is manually
+replaced with a curated data source, that new source will not appear in any
+list this tooling maintains, and must not need to.
+
+**Detection must therefore be a deny-list, never an allow-list.** Recognise
+the debt patterns — inline load, direct database call, attached file,
+hardcoded value — and say nothing about anything else. An unrecognised target
+is then correct by default: it is simply not one of the things being looked
+for, and needs no entry anywhere to pass clean. An allow-list inverts this and
+turns every successful manual fix into a false positive, which is exactly the
+behaviour that would stop people re-running the tool.
+
+It follows that the detector must not consume phase 3's retargeting lists,
+however tempting the reuse looks. Those lists are necessarily incomplete about
+the future. The detector must not be.
