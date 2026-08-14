@@ -507,6 +507,9 @@ than it need be.
 
 The non-ASCII question (§6.4) is separate again, and remains deferred.
 
+What the three phases deliberately do *not* fix — the constructs carried
+across as-is to hit the deadline — is recorded for handover in §7.
+
 ### Phase 1 runs first, and not only for tidiness
 
 The obvious reason is that it produces a checkpoint: a cleaned-up script that
@@ -693,3 +696,67 @@ pass with real risk, and probably is not worth building. Test that first.
 If built: reporting pass first, opt-in rewriting second with an explicit
 skip-list. Never couple a data change to a performance fix — it destroys the
 ability to tell intended reformatting from normaliser damage in a diff.
+
+---
+
+## 7. The migration debt report — not started, list not yet fleshed out
+
+The three phases deliver a **working** app, not a production-ready one. That
+is a deliberate trade, not an oversight: the migration is on a deadline, so
+constructs that will run on Cloud but violate the new build standards are
+carried across as-is — warts and all — rather than being redesigned in
+flight. The bar is that the migrated app works as well as the on-prem
+version, and slightly better where pruning removes redundant tables.
+
+The report is the handover document that makes that trade explicit. It
+answers one question: **what did we knowingly carry across that should be
+addressed before this app goes into production?**
+
+**Style is out of scope.** Everything in §4 is cosmetic and self-evident
+from the output. This report is about migration debt, not formatting.
+
+### 7.1 What gets flagged
+
+Not settled. The list below is a seed to be fleshed out before the pass is
+built, not a specification:
+
+- inline loads
+- direct calls to the database from the load script
+- loads from attached files
+- hardcoded values in the load script
+
+Before any entry can be implemented it needs two things: a detection rule
+expressed against the token stream, and a one-line statement of why it is
+debt — the report is read by people deciding what to fix first, so a flag
+that cannot justify itself is noise.
+
+### 7.2 The pipeline's output is the priority, not the report
+
+The report itself is a rendering job and can wait; base R can produce HTML,
+RTF or even a valid `.docx` with no packages at all. What cannot wait is
+that the pipeline **emits the records the report will need**, because those
+records are cheap to capture while a file is being processed and expensive
+to reconstruct afterwards from output that has already been transformed.
+
+Two constraints follow. Detection is a token-stream query, not a regex over
+text (§2.1) — the same reasoning that applies to every other pass applies
+here, and bracketed field names (§1.1) will defeat naive text matching.
+And every finding must carry enough locality — file, statement, line — to
+put a reader on the exact construct. A flag nobody can navigate to is not
+actionable.
+
+The pass is **read-only**: it never modifies the script. That keeps it
+clear of the §3.4 structural helpers and means it cannot affect
+verification.
+
+### 7.3 Run the detection at both ends
+
+Because the pass is read-only and idempotent, running it on both the
+incoming script and the final output costs almost nothing — and the
+difference is worth having. Phase 2 prunes tables, so a wart inside a load
+that gets deleted is not debt in the delivered app. The before/after delta
+separates what the migration *fixed* from what it *carried across*, and only
+the second list belongs in the handover.
+
+The figure that goes in the report is therefore the one computed on the
+final delivered script, not on the input.

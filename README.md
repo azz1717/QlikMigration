@@ -7,11 +7,11 @@ Qlik Cloud.
 The style guide is **cosmetic**. Unconverted scripts run fine in Qlik Cloud;
 this exists to make them consistent and maintainable.
 
-This is phase 1 of three. Phase 2 retargets qvd paths and field names for the
-new environment, and phase 3 (a nice-to-have) drops tables and loads nothing
-in the app actually uses. Phase 1 must be behaviour-preserving; the later two
-change data on purpose. Two consequences worth knowing before you touch
-anything:
+This is phase 1 of three. Phase 2 (a nice-to-have) drops tables and loads
+nothing in the app actually uses, and phase 3 retargets qvd paths and field
+names for the new environment. Phase 1 must be behaviour-preserving; the
+later two change data on purpose. Two consequences worth knowing before you
+touch anything:
 
 - **The style pipeline runs last in every phase**, not only this one — like
   `gofmt` after a refactor. Retargeting changes field name lengths, which
@@ -21,8 +21,8 @@ anything:
 
 See DESIGN §5.
 
-See [DESIGN.md](DESIGN.md) for architecture, decisions, the roadmap, and
-verified Qlik behaviours.
+See [DESIGN.md](DESIGN.md) for architecture, decisions, the roadmap, verified
+Qlik behaviours, and the migration debt report (§7).
 
 ## Requirements
 
