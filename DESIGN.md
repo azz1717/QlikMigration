@@ -529,11 +529,71 @@ separately reviewable output.
 Three passes remain from the original list. Grouping follows §3.4; the target
 they implement is §4.
 
-### 6.1 Intra-line spacing — not started
+### 6.1 Intra-line spacing — not started, next up
 
-Operates only on whitespace tokens containing no newline (3,528 in the stress
-fixture), which makes it cleanly independent of layout. Rules still to decide:
-space after commas, around operators, inside parentheses.
+**The rules are settled — see §4.7.** Do not re-derive them.
+
+Scope: whitespace tokens containing **no newline** (3,528 of 11,711 in the
+stress fixture). Newline-bearing whitespace belongs to the layout pass (§3.4)
+and must not be touched here.
+
+#### Read this before writing any code
+
+The tokenizer does **not** tokenize operators or numeric literals as units.
+Its `WORD` pattern must start with a letter or underscore, so digits and
+symbols fall through to the one-character catch-all:
+
+| source | tokens | what naive spacing would produce |
+|---|---|---|
+| `>=` | `OTHER(>) OTHER(=)` | `> =` — **broken operator** |
+| `<>` | `OTHER(<) OTHER(>)` | `< >` — **broken operator** |
+| `30` | `OTHER(3) OTHER(0)` | `3 0` — **broken literal** |
+| `$(vFoo)` | `OTHER($) LPAREN(` | `$ (` — **breaks variable expansion** |
+| `,-12` | `COMMA OTHER(-) OTHER(1) OTHER(2)` | `, - 1 2` |
+
+A rule of the form "put one space either side of each operator token" is
+therefore wrong at the token level, however right it looks in §4.7. Counts in
+`app-unbuilt/script.qvs`: 494 `,-N` arguments, 198 `&`, 41 `$(`, 35 of
+`>= <= <>`. None of this is hypothetical.
+
+Two ways out, to be decided first:
+
+1. **Extend the tokenizer** with `NUMBER` and multi-character `OPERATOR`
+   types. Cleanest for every later pass, but it changes the shared foundation,
+   so the full suite must be re-run and the round-trip invariant re-checked.
+2. **Group runs of `OTHER` locally** inside the spacing pass. Leaves the
+   foundation alone; the grouping logic is then private to this pass and
+   unavailable to layout, which will likely want the same thing.
+
+#### Other traps, already paid for
+
+- **Decompose the line.** §4.7's collapse rule must not eat the first field's
+  two-space pad (§4.4). Split into indent / separator / content; a flat-string
+  rule cannot get both cases right. This bug has already been hit once, in ten
+  lines of throwaway code.
+- **Skip `SELECT ... ;`** like every other pass (§2.3).
+- **Never touch inside a quoted, bracketed or comment token.** They are opaque
+  single tokens, so this is free — but a space inserted inside `[Grant
+  Activity]` renames a field, and `verify.R` self-tests for exactly that.
+
+#### Known cases to test against
+
+- Collapse: `[Grant Managing Region].txt` lines 17, 78 and 420, all `as  [`.
+- Preserve: the first field's two-space pad in `formatexample.txt`.
+- Idempotence: a second run must report zero changes — the property
+  `enforce_leading_commas` claimed in its docstring and did not have.
+
+#### Ordering
+
+After `enforce_leading_commas` (it supplies the space that §4.4 relies on),
+before layout and alignment (both consume final line widths).
+
+#### Finishing
+
+`Rscript verify.R` must pass, including semantic equivalence — this pass only
+moves whitespace, so the canonical stream must be **identical**, not merely
+equivalent. Follow the performance template in README ("Adding a pass"):
+hoist columns, accumulate atomic vectors, build the data.frame once.
 
 ### 6.2 Vertical layout — not started, needs new infrastructure
 
