@@ -295,15 +295,32 @@ All field and alias references in square brackets.
 
 Every field carries an explicit `AS` alias.
 
-### 4.4 Field separators — partly implemented (`enforce_leading_commas`)
+### 4.4 Field separators — implemented (`enforce_leading_commas`)
 
-- Leading commas, one space after: `, [Field]`.
-- The first field is padded with two spaces so its content starts in the same
-  column as the `, ` lines below it.
-- No trailing comma before `FROM` / `RESIDENT`.
+Field-separator commas lead rather than trail.
 
-The existing pass relocates the comma. Padding and the leading space are not
-implemented.
+The pass relocates the comma and nothing else, on purpose. The rest of the
+`, [Field]` shape is owned elsewhere, and deliberately so — duplicating a rule
+in two passes lets the two copies drift:
+
+| part | owned by |
+|---|---|
+| moving the comma to the front | this pass |
+| the space after it | §4.7 intra-line spacing — "one space after every comma" is universal, so it catches relocated separators and function arguments with one mechanism |
+| the two-space pad on the first field | §4.5/§4.6 — that is column alignment, not a comma rule; there is no comma there to space |
+
+**Trailing commas before a terminator** are reported, not fixed. The pass
+warns when a comma has no following field to attach to — real instance at
+`[Grant Managing Region].txt:257`, where a preceding LOAD ends
+`... AS 'Performance Review Completed in Last 7 Days',` immediately before its
+`;`. That is production script that reloads, so the tooling flags it for a
+human rather than silently rewriting it.
+
+This is also a quiet argument for the leading-comma style itself: with
+trailing commas, deleting the last field in a list orphans a separator on the
+line above. With leading commas, deleting any line — including a
+commented-out one (§4.10) — can never orphan anything, because each line
+carries its own separator. The comment-removal pass gets that for free.
 
 ### 4.5 Indentation — not implemented
 
