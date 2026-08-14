@@ -288,6 +288,44 @@ with portable output.
 is not 4, the alignment is decorative in the place these scripts are actually
 read.
 
+### 3.7 Verification compares token streams, not a parsed model
+
+**Decision:** `verify.R` compares a flat canonical token stream. It does not
+build a structural model of the script — LOAD blocks, their fields, aliases
+and sources — and compare that.
+
+**Why it would be redundant:** `canonical_stream()` is a total ordering of
+every meaning-carrying token, so any insertion, deletion, substitution or
+reordering changes it. A structural model is **lossier**: it abstracts a LOAD
+block into (source, fields, aliases) and discards whatever it judges
+incidental — and everything it discards is something it can no longer detect
+a change in. The flat stream discards only the five differences declared
+permissible in §1, each of them verified.
+
+**Why it would be worse:** a parser is a thing that can be *wrong*. If it
+mis-parses a preceding LOAD, a `RESIDENT` with an inline `WHERE`, or one of
+the `SQL SELECT ... DATASOURCE` blocks, it yields a confident but incorrect
+model — and both sides of the comparison agree, because the same bug ran
+twice. That is worse than no check: it manufactures false confidence.
+`canonical_stream()` has no model to be wrong about. It is derived
+mechanically from a tokenizer already proven lossless by round-trip, which is
+why it can be trusted on 13,870 lines of syntax nobody has enumerated.
+
+**But phases 2 and 3 will need one anyway** (§5). `verify.R` cannot verify
+retargeting — that phase changes field names on purpose, so equivalence is
+violated by design, and the only automated check disappears exactly when
+changes start affecting data. A structural model supports the assurance that
+phase actually needs: *every difference corresponds to an entry in the rename
+map, and nothing else changed.* Phase 3 needs it too — deciding a table is
+unused means knowing which tables exist, what they expose and how they join,
+cross-referenced against `objects/*.json`.
+
+Build it when phase 2 starts, against phase 2's real requirements rather than
+a guess at them. Note that it would be the first component whose correctness
+cannot be established by round-tripping, so it needs its own validation
+strategy — probably "every token in the source is accounted for by exactly
+one part of the model", which is round-tripping in disguise.
+
 ---
 
 ## 4. Target format specification
@@ -409,18 +447,66 @@ rule yet and must not be guessed at:
 
 ---
 
-## 5. Roadmap
+## 5. The migration in three phases
+
+The tooling here is phase 1 of three. Which phase a change belongs to decides
+what may be verified about it, so the split matters more than it looks.
+
+| phase | what it does | changes data? |
+|---|---|---|
+| **1. Style** | the passes in this repo | **no** — output must run like-for-like |
+| **2. Retargeting** | qvd paths and field names that have changed in the new environment | **yes**, deliberately |
+| **3. Performance** *(nice to have)* | dropping tables and loads nothing in the app actually uses; possibly the non-ASCII question (§6.4) | yes |
+
+### Phase 1 runs first, and not only for tidiness
+
+The obvious reason is that it produces a checkpoint: a cleaned-up script that
+should behave identically on the existing on-prem instance.
+
+The stronger reason is that it makes phase 2 **safer**. Before phase 1 a field
+reference can appear four ways — `"Field"`, `'Field'`, `[Field]`, bare
+`Field` — with or without an alias. After it, exactly one: `[Field] AS
+[Alias]`. A retargeting tool that has to match four variants has four chances
+to miss one, in the phase that actually alters data.
+
+### The style pipeline runs LAST in every phase
+
+Not just phase 1. Retargeting changes field name lengths, which disturbs the
+alias alignment (§4.6), so style has to be reapplied afterwards — and the same
+goes for phase 3 dropping loads.
+
+Reapplying **only** alignment would be the tempting shortcut, and is wrong: it
+assumes phase 2 emits output that is perfectly style-conformant except for
+widths. That assumption would have to stay true forever, in a second tool,
+with nothing checking it. Every pass is idempotent and the whole pipeline is
+1.6s on the 13,870-line fixture, so re-running all of it costs nothing and
+removes the assumption.
+
+Think of it as `gofmt` after a refactor — not a step to be sequenced
+carefully, a normaliser applied unconditionally afterwards.
+
+### Phase 1 is the only phase `verify.R` can check
+
+Semantic equivalence is violated by design in phases 2 and 3. So the
+automated safety net disappears exactly when changes start affecting data,
+which is why phase 2 needs a structural model of its own (§3.7) and why it is
+worth keeping the phases as separate tools with separate change logs and
+separately reviewable output.
+
+---
+
+## 6. Roadmap
 
 Three passes remain from the original list. Grouping follows §3.4; the target
 they implement is §4.
 
-### 5.1 Intra-line spacing — not started
+### 6.1 Intra-line spacing — not started
 
 Operates only on whitespace tokens containing no newline (3,528 in the stress
 fixture), which makes it cleanly independent of layout. Rules still to decide:
 space after commas, around operators, inside parentheses.
 
-### 5.2 Vertical layout — not started, needs new infrastructure
+### 6.2 Vertical layout — not started, needs new infrastructure
 
 Line breaks, indentation and blank lines between blocks, as one pass.
 
@@ -438,7 +524,7 @@ Note this pass will produce large diffs by nature, which weakens the
 reviewability the `$changes` logs otherwise give. Worth deciding how to keep
 it auditable before building it.
 
-### 5.3 Commented-out code removal — not started
+### 6.3 Commented-out code removal — not started
 
 Remove comments that are commented-out code, logging every removal in
 `$changes` so each is auditable and revertible.
@@ -447,7 +533,7 @@ The heuristic distinguishing dead code from explanatory prose is the hard
 part, and deletion is not recoverable from the output alone — the change log
 must carry the full original text, not a preview.
 
-### 5.4 Deferred: non-ASCII data quality
+### 6.4 Deferred: non-ASCII data quality
 
 Word-paste artefacts (`’ ‘ “ ” – — •`, non-breaking spaces) are widespread —
 204 lines in the stress fixture. Tempting to normalise, but **not all

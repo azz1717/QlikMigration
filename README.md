@@ -5,9 +5,21 @@ automate the manual reformatting involved in migrating apps from on-prem to
 Qlik Cloud.
 
 The style guide is **cosmetic**. Unconverted scripts run fine in Qlik Cloud;
-this exists to make them consistent and maintainable. Retargeting connection
-names and paths for the new environment is a separate concern and is not done
-here.
+this exists to make them consistent and maintainable.
+
+This is phase 1 of three. Phase 2 retargets qvd paths and field names for the
+new environment, and phase 3 (a nice-to-have) drops tables and loads nothing
+in the app actually uses. Phase 1 must be behaviour-preserving; the later two
+change data on purpose. Two consequences worth knowing before you touch
+anything:
+
+- **The style pipeline runs last in every phase**, not only this one — like
+  `gofmt` after a refactor. Retargeting changes field name lengths, which
+  disturbs alias alignment.
+- **`verify.R` can only check phase 1.** Semantic equivalence is violated by
+  design once field names change.
+
+See DESIGN §5.
 
 See [DESIGN.md](DESIGN.md) for architecture, decisions, the roadmap, and
 verified Qlik behaviours.
@@ -60,7 +72,10 @@ writeLines(detokenize(r4$tokens), "myscript_out.qvs")
 | 4 | `enforce_reserved_word_case` | Qlik keywords and built-in functions become UPPER |
 
 Casing runs last so that tokens spliced in by earlier passes are cased too.
-Otherwise the passes are order-independent.
+Among the four passes that exist today, order is otherwise not critical — but
+that changes as the remaining passes land. Alias alignment must always run
+last, because it is computed from the widest field in a block and from the
+final indentation, so anything after it invalidates it. See DESIGN §4.6.
 
 Current cost, whole pipeline including tokenizing:
 
@@ -158,6 +173,26 @@ Two things it cannot do, so still worth doing by hand for a risky change:
   where both the output text and every change log were identical.
 - Confirm Qlik agrees the two scripts behave the same. Nothing here can
   establish that.
+
+### Test input must carry the property being tested
+
+This has bitten twice, from opposite directions, and both times the tests
+passed while something was badly wrong:
+
+- A scaling benchmark built from **synthetic ASCII-only** input was used to
+  test whether non-ASCII characters were causing quadratic tokenizing. R took
+  its fast path, the benchmark returned a confident "hypothesis falsified",
+  and two rounds went into chasing the wrong cause. The hypothesis was
+  correct; the input could not exercise it.
+- The equivalence check's self-tests use three-line hand-built streams. They
+  passed while its failure reporting was unusable on the real script — a
+  single dropped field printed twenty lines of inline data four times over,
+  because a real `BRACKET` token can hold an entire INLINE table and a toy
+  one never does.
+
+So: run new checks against `app-unbuilt/script.qvs`, not only against
+hand-written snippets. The synthetic fixture proves the logic; only the real
+one proves it survives 13,870 lines of syntax nobody enumerated.
 
 ## Fixtures
 
