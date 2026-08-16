@@ -400,10 +400,13 @@ verify_block_structure <- function() {
   ok("a closer with nothing open warns",
      length(find_block_structure(tokenize_qlik("NEXT\nLET a = 1;"))$warnings) == 1L)
 
-  # the real wart at app-unbuilt/script.qvs line 1: "I///$tab 00-Main"
-  ok("a ///$tab marker sharing its line is flagged",
-     length(find_block_structure(tokenize_qlik("X///$tab Main\nLET a = 1;"))$warnings) == 1L)
-  ok("a ///$tab marker on its own line is a section",
+  # app-unbuilt/script.qvs line 1 is "I///$tab 00-Main" - confirmed correct
+  # data (Adam checked the source, 2026-08-17), so the WHOLE line is
+  # protected as one section line, silently, not flagged as a defect
+  ok("a line sharing a ///$tab marker is protected as one section line",
+     identical(kinds("X///$tab Main\nLET a = 1;"), c("section", "statement")) &&
+       length(find_block_structure(tokenize_qlik("X///$tab Main\nLET a = 1;"))$warnings) == 0L)
+  ok("a ///$tab marker on its own line is also a section",
      identical(kinds("///$tab Main\nLET a = 1;"), c("section", "statement")))
 
   invisible(NULL)

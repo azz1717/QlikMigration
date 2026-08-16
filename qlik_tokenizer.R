@@ -482,7 +482,9 @@ find_load_segments <- function(tokens) {
 #'                     "continuation" 3 tabs (line break before that field's
 #'                                    expression is finished - DESIGN 4.5)
 #'                     "comment"      column 0
-#'                     "section"      ///$tab marker - left ENTIRELY alone
+#'                     "section"      the WHOLE line carrying a ///$tab
+#'                                    marker (not just the marker itself) -
+#'                                    left ENTIRELY alone
 #'       starts_stmt - TRUE if a statement begins here, at any block depth
 #'       stmt_id     - the TOP-LEVEL statement this line belongs to; a whole
 #'                     block shares one id (DESIGN 4.8, "block = one
@@ -518,17 +520,19 @@ find_block_structure <- function(tokens) {
   ls_idx <- content[ls_pos]      # token indices
   nls    <- length(ls_idx)
 
-  # A ///$tab marker that does not start its own line means something shares
-  # the line with it. Real case: app-unbuilt/script.qvs begins with the bytes
-  # "I///$tab 00-Main" - a stray leading character, so 63 markers exist but
-  # only 62 start a line. Qlik's editor keys its section tabs off these, so
-  # flag it (a migration-debt candidate, DESIGN 7) rather than quietly
-  # indenting a marker that may need to stay at column 0.
-  stray <- setdiff(which(ty == "COMMENT" & startsWith(tokens$text, "///$")), ls_idx)
-  if (length(stray) > 0) {
-    warn <- c(warn, sprintf(
-      "Line %d: ///$tab section marker does not start its line - left alone.",
-      tokens$line[stray]))
+  # Any line carrying a ///$tab marker is left ENTIRELY alone, including
+  # whatever shares the line with it. app-unbuilt/script.qvs opens with the
+  # bytes "I///$tab 00-Main": Adam checked the source app (2026-08-17) and
+  # the leading "I" is present after unpacking either by design or benignly,
+  # so it is data to preserve, not a wart to repair. 63 markers exist and
+  # only 62 start their line - without this the odd one out would classify
+  # as an ordinary statement and get indented, moving both the "I" and the
+  # marker Qlik keys its editor section tabs off.
+  sect_tok   <- which(ty == "COMMENT" & startsWith(tokens$text, "///$"))
+  is_section <- logical(nls)
+  if (length(sect_tok) > 0) {
+    owner <- findInterval(sect_tok, ls_idx)
+    is_section[owner[owner >= 1L]] <- TRUE
   }
 
   # --- field vs continuation --------------------------------------------
@@ -564,8 +568,15 @@ find_block_structure <- function(tokens) {
     # a depth-0 ';' since the previous line start ended that statement
     if (j > 1L && cum_semi[i] > cum_semi[ls_idx[j - 1L]]) pending <- TRUE
 
+    if (is_section[j]) {
+      kind[j]      <- "section"
+      stmt_id[j]   <- cur
+      depth_out[j] <- length(stack)
+      next          # protected data, whatever precedes the marker included
+    }
+
     if (ty[i] == "COMMENT") {
-      kind[j]      <- if (startsWith(tokens$text[i], "///$")) "section" else "comment"
+      kind[j]      <- "comment"
       stmt_id[j]   <- cur
       depth_out[j] <- length(stack)
       next          # a comment neither opens a statement nor closes one

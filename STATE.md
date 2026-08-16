@@ -16,9 +16,6 @@ and recorded there — do not re-open them:
 - the large diff is accepted; verify.R's equivalence check is the audit
 
 **Open items:**
-- Migration debt report (DESIGN §7): `app-unbuilt/script.qvs` starts with the
-  bytes `I///$tab 00-Main` — a stray `I` ahead of the section marker. The
-  scanner warns on it; it is a debt-report candidate. Raise with Adam.
 - formatexample.txt is not a verify.R fixture; the alignment pad is covered
   by argument and a synthetic test, never against that file directly.
 
