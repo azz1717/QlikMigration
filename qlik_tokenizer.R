@@ -569,6 +569,12 @@ find_block_structure <- function(tokens) {
   d      <- cumsum((ty == "LPAREN") - (ty == "RPAREN"))
   semi0  <- ty == "SEMI" & d == 0L
   cum_semi <- cumsum(semi0)
+  # Semicolons strictly BEFORE each position, not at-or-before it. A ';' that
+  # sits alone on its own source line (real case, [Grant Managing Region].
+  # txt:11) is itself a line start - using the inclusive cum_semi there would
+  # count its own semicolon as already having happened, making the SEMICOLON's
+  # OWN line look like it starts a new statement instead of the line after it.
+  pre_semi <- c(0L, cum_semi[-length(cum_semi)])
 
   kind        <- character(nls)
   starts_stmt <- logical(nls)
@@ -583,7 +589,7 @@ find_block_structure <- function(tokens) {
     i <- ls_idx[j]
 
     # a depth-0 ';' since the previous line start ended that statement
-    if (j > 1L && cum_semi[i] > cum_semi[ls_idx[j - 1L]]) pending <- TRUE
+    if (j > 1L && pre_semi[i] > pre_semi[ls_idx[j - 1L]]) pending <- TRUE
 
     if (is_section[j]) {
       kind[j]      <- "section"

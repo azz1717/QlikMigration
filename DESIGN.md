@@ -419,7 +419,7 @@ line above. With leading commas, deleting any line — including a
 commented-out one (§4.10) — can never orphan anything, because each line
 carries its own separator. The comment-removal pass gets that for free.
 
-### 4.5 Indentation — not implemented
+### 4.5 Indentation — implemented (`enforce_vertical_layout`)
 
 Tabs, **tab width 4**. Not spaces (see §3.6).
 
@@ -504,10 +504,31 @@ Confirmed against real scripts: `[Grant Managing Region].txt` lines 17, 78
 and 420 (all `as  [`) collapse to `as [`; a second run reports zero changes
 on both fixtures.
 
-### 4.8 Vertical spacing — not implemented
+### 4.8 Vertical spacing — implemented (`enforce_vertical_layout`)
 
 - No blank lines inside a statement.
 - Exactly **two** blank lines between statements.
+- **Comment attachment (convention call, built under time pressure
+  2026-08-17, not separately confirmed with Adam — flag if wrong):** a
+  comment (or contiguous run of comments) immediately before the next real
+  statement, with no `///$tab` section in between, is treated as belonging
+  to THAT statement — the two-blank-line gap goes above the comment, not
+  between the comment and the code it describes. Otherwise the scanner's own
+  bookkeeping would put it in the wrong place: a comment inherits the
+  *previous* statement's `stmt_id` (it doesn't consume the pending-new-
+  statement flag), so a literal "blank lines where `stmt_id` changes" rule
+  would separate the comment from what it describes instead of from what
+  precedes it. Real case this keeps together, `app-unbuilt/script.qvs`:
+  ```
+  //These are the records of the actual cars...
+  [Fleet Cars]:
+  ```
+- `///$tab` section markers (Adam, 2026-08-17 — see §6.2): the whole line
+  carrying one, and the gap on EITHER side of it, is left completely
+  untouched. This means the line immediately AFTER a section marker also
+  stays at whatever indentation it already had — a known, deliberately
+  conservative side effect of "leave it alone" meaning the *gap*, not just
+  the marker's own line.
 
 ### 4.9 FROM clause — not implemented
 
@@ -757,11 +778,24 @@ alignment (§6.2 onward) still come after this pass, per the original plan.
 equivalence, output round-trip and idempotence all hold for the new pass,
 alongside every pass before it.
 
-### 6.2 Vertical layout — scanner built, pass not written
+### 6.2 Vertical layout — implemented (`enforce_vertical_layout`)
 
 Line breaks, indentation and blank lines between blocks, as one pass. The
-block-structure scanner below is implemented as `find_block_structure()`
-(2026-08-17, self-tested in verify.R); the pass that consumes it is next.
+block-structure scanner is `find_block_structure()`; the pass consuming it is
+`enforce_vertical_layout()` (both 2026-08-17, self-tested in verify.R).
+
+**A real bug turned up building the pass, in the already-committed scanner:**
+a `;` sitting alone on its own source line — common style, real case
+`[Grant Managing Region].txt:11` — was miscounted as already having ended
+its statement by the time its OWN line was processed, because the pending-
+new-statement check compared semicolon counts *inclusive* of the current
+line's own first token. That made the semicolon's own line look like the
+START of a new statement rather than the END of the one it closes, which
+surfaced as visibly wrong output: the `;` landing on its own indented line
+with a phantom two-blank-line gap floating above it. Fixed by counting
+semicolons strictly *before* each line's first token instead of at-or-before
+it. Regression-tested (`verify.R`, "a ';' alone on its own line stays part
+of the statement it closes").
 
 This is the first genuinely **global** concern. Every existing pass is local —
 look at one field segment and decide. Statement/field boundaries, blank-line

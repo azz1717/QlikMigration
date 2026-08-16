@@ -55,6 +55,11 @@ entry current in the same commit that changes its function.
   following `(` — `IF (x = 1) THEN` is legal. DESIGN §1.6.
   GOTCHA: never match on raw text. `for` appears 1242 times in app-unbuilt/script.qvs and ~28 are
   the keyword; the rest are inside comments and literals, which typed tokens hide.
+  GOTCHA (bug, fixed 2026-08-17): a `;` alone on its own source line (real case, `[Grant Managing
+  Region].txt:11`) must count as ending the PREVIOUS statement, not starting a new one at itself.
+  The pending-new-statement check counts depth-0 semicolons strictly BEFORE each line's first
+  token, not at-or-before — using an inclusive count made the semicolon's own line look like it
+  came after its own statement had already ended.
 - Private: `.qlik_token_type` (token text -> type name), `.qlik_block_opener`, `.qlik_block_closer`
   (first word(s) of a statement -> block kind, or NA).
 
@@ -136,6 +141,28 @@ entry current in the same commit that changes its function.
   that legitimately lives there (AS, AND, OR, NOT, XOR, LIKE, DISTINCT, IF/THEN/ELSE/END).
 - Call position uses the shared `next_non_trivia_idx()` (qlik_tokenizer.R) — no private helper
   here any more; it was promoted 2026-08-17 when `enforce_bracket_references.R` needed the same test.
+
+## enforce_vertical_layout.R — pass 6
+
+- `enforce_vertical_layout(tokens)` — indentation and blank lines. DESIGN §3.4/§4.5/§4.8/§6.2.
+  Consumes `find_block_structure()`. `$changes`: line, kind (the line's own kind — statement /
+  field / continuation / comment, never section), before, after — one row per rewritten gap.
+- Indent is FLAT (DESIGN §4.5): statement 1 tab, field 2, continuation 3, comment column 0 —
+  independent of FOR/IF/SUB/DO/SWITCH nesting depth.
+- Blank lines (DESIGN §4.8): 2 between top-level statements, 0 inside one — driven by
+  `find_block_structure()`'s `stmt_id`, which already treats a whole block as ONE statement.
+- A leading comment (run) is reattached to the FOLLOWING statement for this purpose — see DESIGN
+  §4.8, and note this convention is not yet separately confirmed with Adam.
+- `///$tab` section lines, and the gap on EITHER side of one, are never rewritten (DESIGN §4.8) —
+  which means the line immediately after a section also keeps its original indentation.
+- GOTCHA: only rewrites the leading-whitespace GAP for each line — it never inserts a new line
+  break where the source didn't already have one, and never touches anything after a line's first
+  token.
+- GOTCHA: line 1 usually has no preceding WS token at all (true of both fixtures). That insertion
+  is deferred until AFTER the main loop finishes — doing it mid-loop shifts every later original
+  token index by one and silently corrupts the rest of the file (caught before commit, 2026-08-17).
+- Needs no new `canonical_stream` rule in verify.R: only WS token TEXT is ever rewritten, and
+  WS/COMMENT/VOID are already stripped before the equivalence check compares anything.
 
 ## run_pipeline.R — the current full pipeline, not a snapshot
 

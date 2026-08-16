@@ -43,6 +43,7 @@ source("enforce_bracket_references.R")
 source("enforce_leading_commas.R")
 source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
+source("enforce_vertical_layout.R")
 
 # ---- reporting ---------------------------------------------------------
 
@@ -262,7 +263,8 @@ PASSES <- list(
   "enforce_bracket_references"  = enforce_bracket_references,
   "enforce_leading_commas"      = enforce_leading_commas,
   "enforce_intraline_spacing"   = enforce_intraline_spacing,
-  "enforce_reserved_word_case"  = enforce_reserved_word_case
+  "enforce_reserved_word_case"  = enforce_reserved_word_case,
+  "enforce_vertical_layout"     = enforce_vertical_layout
 )
 
 verify_file <- function(path) {
@@ -317,6 +319,13 @@ verify_file <- function(path) {
   r_br <- enforce_bracket_references(tokens)
   ok("brackets: every change yields a bracketed token",
      all(grepl("^\\[.*\\]$", r_br$changes$after)))
+
+  r_lay <- enforce_vertical_layout(tokens)
+  keep_before <- tokens$type != "WS"
+  keep_after  <- r_lay$tokens$type != "WS"
+  ok("layout: only WS token text changes, nothing else",
+     identical(tokens$text[keep_before], r_lay$tokens$text[keep_after]) &&
+       identical(tokens$type[keep_before], r_lay$tokens$type[keep_after]))
 
   invisible(NULL)
 }
@@ -448,6 +457,15 @@ verify_block_structure <- function() {
   ok("a closer with nothing open warns",
      length(find_block_structure(tokenize_qlik("NEXT\nLET a = 1;"))$warnings) == 1L)
 
+  # a ';' alone on its own line (real case, [Grant Managing Region].txt:11)
+  # must NOT look like it starts a new statement - it closes the one before
+  # it. Bug found and fixed 2026-08-17 while building the layout pass: the
+  # semicolon's own line was incorrectly getting a fresh stmt_id.
+  semi_own_line <- find_block_structure(tokenize_qlik(
+    "[T]:\nLOAD [A]\n;\n[U]:\nLOAD [B];"))$lines
+  ok("a ';' alone on its own line stays part of the statement it closes",
+     identical(semi_own_line$stmt_id, c(1L, 1L, 1L, 2L, 2L)))
+
   # app-unbuilt/script.qvs line 1 is "I///$tab 00-Main" - confirmed correct
   # data (Adam checked the source, 2026-08-17), so the WHOLE line is
   # protected as one section line, silently, not flagged as a defect
@@ -460,6 +478,75 @@ verify_block_structure <- function() {
   invisible(NULL)
 }
 
+# ---- vertical layout pass -----------------------------------------------
+
+verify_vertical_layout <- function() {
+  section("self-test: enforce_vertical_layout")
+
+  lay <- function(src) paste(detokenize(enforce_vertical_layout(tokenize_qlik(src))$tokens),
+                              collapse = "\n")
+
+  # DESIGN 4.5: statement 1 tab, field 2, continuation 3, comment column 0 -
+  # and FLAT: a LOAD inside a FOR gets the SAME indent as a top-level one.
+  src <- paste("[T]:", "LOAD", "  [A] AS [A],", "  IF(x > 1, 'y',", "  IF(z,'a','b')) AS [C]",
+               "FROM x;", "//a comment", "FOR i = 1 to 3", "LOAD [B] FROM y;", "NEXT", sep = "\n")
+  out <- lay(src)
+  # "IF(x > 1, 'y'," is a NEW field (it follows field 1's comma) - 2 tabs.
+  # Only "IF(z,'a','b')) AS [C]" is a continuation of THAT field - 3 tabs.
+  ok("statement/field/continuation/comment indent, and flat block nesting",
+     identical(out, paste(
+       "\t[T]:", "\tLOAD", "\t\t[A] AS [A],", "\t\tIF(x > 1, 'y',",
+       "\t\t\tIF(z,'a','b')) AS [C]", "\tFROM x;", "\n\n//a comment", "\tFOR i = 1 to 3",
+       "\tLOAD [B] FROM y;", "\tNEXT", sep = "\n")))
+
+  # DESIGN 4.8: exactly 2 blank lines between top-level statements, 0 inside
+  # a block - the closing NEXT included, at the SAME id as what it closes.
+  b <- lay("FOR i=1 to 3\nLET a=1;\nLET b=2;\nNEXT\nLET c=3;")
+  ok("2 blank lines between top-level statements, 0 inside a block",
+     identical(b, paste("\tFOR i=1 to 3", "\tLET a=1;", "\tLET b=2;", "\tNEXT",
+                        "\n\n\tLET c=3;", sep = "\n")))
+
+  # a ';' alone on its own line must not spawn a phantom 2-blank-line gap
+  # right before itself (the bug fixed in find_block_structure, 2026-08-17).
+  # "LOAD [A]" is one physical source line (no break before [A]) - this pass
+  # reindents existing line starts, it never inserts new line breaks.
+  s <- lay("[T]:\nLOAD [A]\nFROM x\n;\n[U]:\nLOAD [B];")
+  ok("a lone ';' stays glued to the statement it closes, no blank line before it",
+     identical(s, paste("\t[T]:", "\tLOAD [A]", "\tFROM x", "\t;",
+                        "\n\n\t[U]:", "\tLOAD [B];", sep = "\n")))
+
+  # a leading comment is glued to the statement it describes: the 2-blank-
+  # line gap goes ABOVE the comment, not between the comment and the code
+  cm <- lay("LET a=1;\n//about b\nLET b=2;")
+  ok("a leading comment stays glued to its statement (convention, not yet confirmed with Adam)",
+     identical(cm, paste("\tLET a=1;", "\n\n//about b", "\tLET b=2;", sep = "\n")))
+
+  # ///$tab section markers: the whole line AND both surrounding gaps are
+  # left completely alone, even when something shares the line with one.
+  # That means the line RIGHT AFTER a section also stays unindented - a
+  # known, deliberately conservative nuance (flagged to Adam when built).
+  sec <- lay("LET a=1;\nX///$tab Main\nLET b=2;")
+  ok("a ///$tab line and its surrounding gaps are untouched",
+     identical(sec, "\tLET a=1;\nX///$tab Main\nLET b=2;"))
+
+  # file start: no leading WS token to rewrite at all (real case - both
+  # fixtures start this way) - must indent line 1 without corrupting
+  # everything after it (the bug found and fixed while building this pass)
+  fs <- lay("[T]:\nLOAD [A] FROM x;")
+  ok("file with no leading whitespace gets line 1 indented without corruption",
+     identical(fs, "\t[T]:\n\tLOAD [A] FROM x;"))
+
+  # idempotency and the only-WS-changes invariant, on a synthetic stream
+  # with everything: blocks, comments, a lone ';', a section, no leading WS
+  big <- paste("[T]:", "LOAD [A] FROM x\n;", "//about U", "FOR i=1 to 3",
+               "LET a=1;", "NEXT", "X///$tab Main", "[U]:", "LOAD [B];", sep = "\n")
+  r1 <- enforce_vertical_layout(tokenize_qlik(big))
+  r2 <- enforce_vertical_layout(r1$tokens)
+  ok("idempotent on a stream exercising every rule at once", nrow(r2$changes) == 0L)
+
+  invisible(NULL)
+}
+
 # ---- runner ------------------------------------------------------------
 
 main <- function() {
@@ -467,6 +554,7 @@ main <- function() {
 
   verify_detects_corruption()
   verify_block_structure()
+  verify_vertical_layout()
 
   fixtures <- c("[Grant Managing Region].txt", "app-unbuilt/script.qvs")
   for (f in fixtures) if (file.exists(f)) verify_file(f) else

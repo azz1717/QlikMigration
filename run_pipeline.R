@@ -2,18 +2,26 @@
 #
 # Runs the full loadscript style-guide pipeline, in order:
 #   1. ensure_explicit_aliases    - every field gets an explicit AS alias
-#   2. enforce_bracket_references - quoted field/alias references -> brackets
+#   2. enforce_bracket_references - quoted AND bare field/alias refs -> brackets
 #   3. enforce_leading_commas     - field-separator commas trailing -> leading
 #   4. enforce_intraline_spacing  - comma/operator/paren whitespace -> DESIGN §4.7
 #   5. enforce_reserved_word_case - Qlik keywords and functions -> UPPER
+#   6. enforce_vertical_layout    - indentation/blank lines -> DESIGN §4.5/§4.8
 #
 # Spacing runs after leading-commas (DESIGN §6.1: it supplies the space a
-# relocated comma needs) and before casing. Casing runs last on purpose:
-# earlier passes splice in new tokens (the "AS" of an added alias, a
-# relocated comma), so finishing with the casing pass guarantees the whole
-# output is consistently cased no matter what they emitted. Casing and
+# relocated comma needs) and before casing. Casing runs last among the first
+# five on purpose: earlier passes splice in new tokens (the "AS" of an added
+# alias, a relocated comma), so finishing with the casing pass guarantees the
+# whole output is consistently cased no matter what they emitted. Casing and
 # spacing don't otherwise interact - one only rewrites WORD text, the other
 # only touches WS tokens - so their relative order is free.
+#
+# Layout runs LAST: it is the only pass that reads whole-script STRUCTURE
+# (find_block_structure()) rather than local field segments, so it should see
+# the tokens in their final shape. In practice this doesn't matter much yet -
+# layout only ever rewrites WS token text, never reorders or edits content -
+# but alias alignment (DESIGN §4.6, not yet built) genuinely MUST run after
+# it, since alignment is computed from the final indentation.
 #
 # Kept up to date as passes are added/reordered - this is always the
 # current full pipeline, not a snapshot from when a particular pass was built.
@@ -27,6 +35,7 @@ source("enforce_bracket_references.R")
 source("enforce_leading_commas.R")
 source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
+source("enforce_vertical_layout.R")
 
 input_path  <- "[Grant Managing Region].txt"
 output_path <- "script_out.txt"
@@ -38,8 +47,9 @@ r2 <- enforce_bracket_references(r1$tokens)
 r3 <- enforce_leading_commas(r2$tokens)
 r4 <- enforce_intraline_spacing(r3$tokens)
 r5 <- enforce_reserved_word_case(r4$tokens)
+r6 <- enforce_vertical_layout(r5$tokens)
 
-warnings_all <- c(r1$warnings, r2$warnings, r3$warnings, r4$warnings, r5$warnings)
+warnings_all <- c(r1$warnings, r2$warnings, r3$warnings, r4$warnings, r5$warnings, r6$warnings)
 if (length(warnings_all) > 0) {
   cat("=== WARNINGS (", length(warnings_all), ") ===\n", sep = "")
   cat(paste(warnings_all, collapse = "\n"), "\n")
@@ -47,12 +57,13 @@ if (length(warnings_all) > 0) {
   cat("No warnings.\n")
 }
 
-writeLines(detokenize(r5$tokens), output_path)
+writeLines(detokenize(r6$tokens), output_path)
 cat("Wrote", output_path, "\n")
 
 # Per-pass change logs, if you want to inspect what each stage actually did:
 #   r1$changes   (aliases added)
-#   r2$changes   (quotes -> brackets)
+#   r2$changes   (quotes/bare words -> brackets)
 #   r3$changes   (commas moved)
 #   r4$changes   (whitespace inserted/removed/collapsed; $kind says which)
 #   r5$changes   (words recased; $kind is "keyword" or "function")
+#   r6$changes   (indentation/blank-line rewrites; $kind is the line's kind)

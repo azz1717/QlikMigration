@@ -49,6 +49,7 @@ source("enforce_bracket_references.R")
 source("enforce_leading_commas.R")
 source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
+source("enforce_vertical_layout.R")
 
 tokens <- read_qlik_script("myscript.qvs")
 
@@ -57,11 +58,12 @@ r2 <- enforce_bracket_references(r1$tokens)
 r3 <- enforce_leading_commas(r2$tokens)
 r4 <- enforce_intraline_spacing(r3$tokens)
 r5 <- enforce_reserved_word_case(r4$tokens)
+r6 <- enforce_vertical_layout(r5$tokens)
 
 r1$changes    # exactly what each stage did
-r5$warnings   # anything it declined to touch, or wants you to look at
+r6$warnings   # anything it declined to touch, or wants you to look at
 
-writeLines(detokenize(r5$tokens), "myscript_out.qvs")
+writeLines(detokenize(r6$tokens), "myscript_out.qvs")
 ```
 
 ## The passes
@@ -73,26 +75,24 @@ writeLines(detokenize(r5$tokens), "myscript_out.qvs")
 | 3 | `enforce_leading_commas` | trailing field separators move to leading position |
 | 4 | `enforce_intraline_spacing` | comma, operator and parenthesis spacing within a line |
 | 5 | `enforce_reserved_word_case` | Qlik keywords and built-in functions become UPPER |
+| 6 | `enforce_vertical_layout` | indentation and blank lines between statements |
 
 Spacing runs after the comma pass, which supplies the separator it spaces
-(DESIGN §6.1). Casing runs last so that tokens spliced in by earlier passes
-are cased too. Order is otherwise not critical among the five passes that
-exist today — but that changes as the remaining passes land. Alias alignment
-must always run last, because it is computed from the widest field in a block
-and from the final indentation, so anything after it invalidates it. See
-DESIGN §4.6.
+(DESIGN §6.1). Casing runs last among the first five so that tokens spliced
+in by earlier passes are cased too. Layout runs last of all, since it is the
+only pass reading whole-script structure rather than local field segments.
+Alias alignment (not yet built) must always run after layout, because it is
+computed from the final indentation. See DESIGN §4.6.
 
 Current cost, whole pipeline including tokenizing:
 
 | script | lines | tokens | total |
 |--------|------:|-------:|------:|
-| `[Grant Managing Region].txt` | 762 | 4,969 | 0.42s |
-| `app-unbuilt/script.qvs` | 13,870 | 31,341 | 1.97s |
+| `[Grant Managing Region].txt` | 762 | 4,969 | 0.57s |
+| `app-unbuilt/script.qvs` | 13,870 | 31,341 | 2.36s |
 
-Re-measured 2026-08-17 with the spacing pass in place (was 0.34s / 1.61s over
-four passes). Token counts are the *input* stream and fell slightly against
-the previous figures — consistent with 117e9b0 merging multi-character
-operators and numbers into single tokens.
+Re-measured 2026-08-17 with all six passes in place (was 0.42s / 1.97s over
+five). Token counts are the *input* stream.
 
 ## The contract every pass honours
 
