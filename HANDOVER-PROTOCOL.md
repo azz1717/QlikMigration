@@ -1,12 +1,29 @@
-# HANDOVER-PROTOCOL.md — build the cold-session handover layer
+# HANDOVER-PROTOCOL.md — one-time bootstrap record, ALREADY EXECUTED
 
-Written 2026-08-17, after a cold start consumed ~100k tokens of context
-(~20% of Adam's usage limit) on orientation alone — reading DESIGN.md,
-verify.R and every pass file end-to-end before the first edit.
+**This is not a recurring session-end step.** It ran once, 2026-08-17
+(commit 909b1e9), to build INTERFACES.md/STATE.md/CLAUDE.md from a repo that
+had none. Ongoing currency is CLAUDE.md's "Maintenance duty" — updates land
+in the same commit as whatever changed. There is no separate handover step at
+session end (Adam's explicit choice, 2026-08-17: per-commit only, not
+end-of-session — a session that ends without committing leaves no updated
+record, and that's accepted as the tradeoff).
 
-**If executing this file is your task: this file is your entire orientation.**
-Do not read README.md, DESIGN.md, memory files, or any fixture first.
-Everything you need is either written here verbatim or gathered by the steps.
+Kept as a record of *why* the three files exist, and as a rebuild procedure
+**only if they are ever lost or badly corrupted**. Do not re-run this
+routinely, and do not treat it as orientation for ordinary work — for that,
+read STATE.md and INTERFACES.md, per CLAUDE.md.
+
+---
+
+Below is the original bootstrap procedure, unchanged except where noted.
+Written after a cold start consumed ~100k tokens of context (~20% of Adam's
+usage limit) on orientation alone — reading DESIGN.md, verify.R and every
+pass file end-to-end before the first edit.
+
+**If you are re-running this to rebuild from scratch: this file is your
+entire orientation.** Do not read README.md, DESIGN.md, memory files, or any
+fixture first. Everything you need is either written here verbatim or
+gathered by the steps below.
 
 ## What a handover is
 
@@ -105,11 +122,14 @@ on how to keep a huge-diff pass auditable (§6.2).
   by argument and a synthetic test, never against that file directly.
 - dlmf-log.md sits untracked at repo root; Adam decides if/when to commit.
 
-(If re-running this protocol later, take the live STATE.md as the source of
-truth for this block rather than the text above, which is a starting point.)
-
 (Cap: 25 lines. Longer means it is rotting — prune to position/next/open.)
 ```
+
+If STATE.md still exists, don't use the block above — just fix STATE.md
+directly, it's a normal file. The block is only a starting point for the
+scenario this whole file exists for: STATE.md is gone and there's nothing
+live to defer to. Rebuild its content from `git log` and the repo's current
+state at rebuild time, not from the stale snapshot above.
 
 ## Step 3 — write CLAUDE.md, exactly this content
 

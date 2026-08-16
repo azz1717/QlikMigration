@@ -24,9 +24,13 @@
 - Check INTERFACES.md shared scanners before writing any helper.
 - Multi-line commit messages: write to a scratch file, `git commit -F <file>`.
 
-## Maintenance duty (same commit as the change)
+## Maintenance duty (same commit as the change, NOT a session-end step)
 - Public function signature/behaviour changed -> update INTERFACES.md entry.
 - Task started or finished -> update STATE.md (keep it <= 25 lines).
 - A pass added/reordered -> update run_pipeline.R, verify.R's PASSES, README's
   pass table AND its worked example, and the relevant DESIGN section. README
   was missed once already (fixed in a2f1a57) — check it explicitly.
+- This is the ONLY mechanism that keeps STATE.md/INTERFACES.md current.
+  There is no separate end-of-session handover step (Adam's explicit choice,
+  2026-08-17) — a session that ends without committing leaves no updated
+  record, and that's accepted as the tradeoff.
