@@ -42,21 +42,6 @@
 .field_ok_keywords <- c("as", "and", "or", "not", "xor", "like", "distinct",
                         "if", "then", "else", "end")
 
-#' Index of the next non-trivia token for every position.
-#'
-#' Vectorised: for position i, the first index j > i whose token is not
-#' whitespace/comment/void, or NA if there is none.
-.next_content_type <- function(type) {
-  n <- length(type)
-  nt <- which(!(type %in% c("WS", "COMMENT", "VOID")))
-  # findInterval(i, nt) counts nt entries <= i, so the next one is at +1
-  pos <- nt[findInterval(seq_len(n), nt) + 1L]
-  out <- rep(NA_character_, n)
-  ok <- !is.na(pos)
-  out[ok] <- type[pos[ok]]
-  out
-}
-
 #' @param tokens a token stream data.frame (see tokenize_qlik / read_qlik_script).
 #' @return a list with:
 #'   $tokens   - the token stream with reserved words uppercased
@@ -79,8 +64,8 @@ enforce_reserved_word_case <- function(tokens) {
 
   is_word   <- t_type == "WORD"
   in_select <- in_select_region(t_type, lower)
-  call_pos  <- .next_content_type(t_type)
-  call_pos  <- !is.na(call_pos) & call_pos == "LPAREN"
+  nxt       <- next_non_trivia_idx(t_type)
+  call_pos  <- !is.na(nxt) & t_type[nxt] == "LPAREN"
 
   # A word in both lists (Left, Right, Replace, Keep, Join, First...) is a
   # prefix AND a function. Both end up uppercased either way, so precedence

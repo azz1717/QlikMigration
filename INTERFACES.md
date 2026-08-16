@@ -36,6 +36,9 @@ entry current in the same commit that changes its function.
 - `void_token(tokens, idx)` — blank rows instead of deleting, so indices stay valid. VOID = trivia.
 - `in_select_region(type, lower) -> logical` — TRUE inside SELECT...; regions (every pass skips these).
 - `prev_non_trivia_idx(type) -> integer/NA per position` — previous non-WS/COMMENT/VOID index.
+- `next_non_trivia_idx(type) -> integer/NA per position` — next non-WS/COMMENT/VOID index. Symmetric
+  with the above. The call-position test (`t_type[next_non_trivia_idx(t_type)] == "LPAREN"`) is
+  shared by casing and bracket references — promoted here 2026-08-17 when a second pass needed it.
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
   segment: start, end, content_idx, has_as, alias_content_idx, line — all integer. Skips SELECT.
   GOTCHA: its index arithmetic uses `1L` literals deliberately; an unsuffixed `1` silently makes
@@ -75,12 +78,24 @@ entry current in the same commit that changes its function.
 
 ## enforce_bracket_references.R — pass 2
 
-- `enforce_bracket_references(tokens)` — quoted references become `[bracketed]`.
-  `$changes`: line, kind ("double-quoted field" / "single-quoted alias"), before, after.
+- `enforce_bracket_references(tokens)` — quoted AND bare references become `[bracketed]`.
+  `$changes`: line, kind ("double-quoted field" / "single-quoted alias" / "bare reference"),
+  before, after.
 - DQUOTE is ALWAYS a field reference in Qlik (no double-quoted string literal exists) -> always
   converted. SQUOTE is a literal EXCEPT immediately right of a field's `AS`, where it is an
   alias reference (confirmed by testing, undocumented — DESIGN §1.2).
-- GOTCHA: content containing `]` cannot be bracketed (no escape in Qlik) — left quoted + warned.
+- GOTCHA: content containing `]` cannot be bracketed (no escape in Qlik) — left quoted + warned;
+  cannot happen for the bare-word branch, since `]` is not in the tokenizer's WORD character class.
+- Bare WORDs are bracketed too (added 2026-08-17, DESIGN §4.2/§1.7), but ONLY inside a LOAD field
+  list (`find_load_segments()` content_idx) and only when NOT a QLIK_KEYWORDS member and NOT in
+  call position (`next_non_trivia_idx` next token is `(`) — the same guard `enforce_reserved_word_
+  case.R` uses, and for the identical reason: a field can share a function's name (`Year`).
+- GOTCHA: scope stops at the field list on purpose. Bracketing a bare word ANYWHERE (a `FOR` loop
+  counter, a `LET`-assigned variable) would silently turn a variable reference into a field
+  reference. Real names this would have broken: `numRows`, `chunkSize`, `i`, `chunkText`, `rowNr`
+  in `app-unbuilt/script.qvs`'s chunking loop.
+- `verify.R`'s `canonical_stream` mirrors this exact scope+rule to fold a bare field and its
+  bracketed form to the same canonical entry — see its comment block before changing either side.
 - Private: `.unescape_bracketable` (strip quotes, collapse doubled quote chars).
 
 ## enforce_leading_commas.R — pass 3
@@ -119,7 +134,8 @@ entry current in the same commit that changes its function.
   `app-unbuilt/script.qvs:837` (`Year as [Data x Reg Year]`). User-defined SUB names keep casing.
 - Warns when a keyword-spelled token is uppercased bare inside a field list, unless it is one
   that legitimately lives there (AS, AND, OR, NOT, XOR, LIKE, DISTINCT, IF/THEN/ELSE/END).
-- Private: `.next_content_type` (type of the next non-trivia token, for the call-position test).
+- Call position uses the shared `next_non_trivia_idx()` (qlik_tokenizer.R) — no private helper
+  here any more; it was promoted 2026-08-17 when `enforce_bracket_references.R` needed the same test.
 
 ## run_pipeline.R — the current full pipeline, not a snapshot
 

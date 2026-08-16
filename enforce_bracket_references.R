@@ -1,7 +1,8 @@
 # enforce_bracket_references.R
 #
 # Style-guide pass: ensures every field name / alias reference is enclosed
-# in square brackets rather than quotation marks.
+# in square brackets rather than quotation marks or nothing at all.
+# DESIGN §4.2: "All field and alias references in square brackets."
 #
 #   - Double-quoted tokens ("...") are ALWAYS field references in Qlik
 #     script (there is no double-quoted string literal in Qlik), so every
@@ -16,11 +17,31 @@
 #         [streetname] AS 'address'
 #     becomes
 #         [streetname] AS [address]
+#   - Bare (unquoted) WORD tokens inside a LOAD field list also get
+#     bracketed, e.g. real cases at app-unbuilt/script.qvs:
+#         Fleet.Rego as [Fleet Car Rego]   ->  [Fleet.Rego] AS [Fleet Car Rego]
+#         Electorate,                      ->  [Electorate] AS [Electorate]
+#     EXCEPT a reserved keyword (AS, AND, DISTINCT... - never a valid field
+#     name) or a word in CALL position (next non-trivia token is "(" - a
+#     function or SUB invocation, not a reference). That second guard is
+#     the one enforce_reserved_word_case.R already needed for the same
+#     reason: app-unbuilt/script.qvs:837 has a bare field named `Year`,
+#     textually identical to the Year() function - DESIGN §1.3/§1.7.
+#     SCOPE, DELIBERATELY NARROW: only inside a LOAD field list
+#     (find_load_segments()'s content_idx), never the whole token stream.
+#     A bare word elsewhere is very often NOT a field - a FOR loop counter
+#     or a LET-assigned variable (numRows, chunkSize, i, chunkText... in
+#     app-unbuilt/script.qvs's chunking loop) - and bracketing one would
+#     silently break the script by turning a variable reference into a
+#     field reference. WHERE-clause and other non-field-list bare words are
+#     therefore left untouched; not yet specified (DESIGN §4.11 territory).
 #   - SELECT ... ; blocks (raw SQL passed to a LIB CONNECT TO source) are
 #     left untouched entirely, same as the other passes.
 #   - A token whose content contains "]" cannot be safely represented in
 #     brackets (Qlik brackets have no escape mechanism) and is left as
-#     quoted, reported back as a warning.
+#     quoted, reported back as a warning. (Bare WORDs can never contain "]"
+#     - not in the tokenizer's word character class - so this only applies
+#     to the quoted branch.)
 #
 # Operates on a token stream (see qlik_tokenizer.R - source that first).
 # Vanilla base R only.
@@ -38,8 +59,8 @@
 #'   $changes  - data.frame(line, kind, before, after), one row per
 #'               conversion actually made - an exact record of what
 #'               changed, for sanity-checking instead of eyeballing a
-#'               generic text diff. "kind" is "double-quoted field" or
-#'               "single-quoted alias".
+#'               generic text diff. "kind" is "double-quoted field",
+#'               "single-quoted alias" or "bare reference".
 enforce_bracket_references <- function(tokens) {
   found <- find_load_segments(tokens)
   warn <- found$warnings
@@ -100,6 +121,36 @@ enforce_bracket_references <- function(tokens) {
 
     t_text[i] <- after
     t_type[i] <- "BRACKET"
+  }
+
+  # Bare (unquoted) field/alias references, LOAD field-list content only -
+  # see the module header for why the scope stops there. content_idx spans
+  # the whole segment (both sides of AS), so this reaches an un-aliased
+  # bare field, a bare alias target, or both, without walking the segment
+  # twice.
+  if (length(found$segments) > 0) {
+    in_field <- logical(n)
+    for (seg in found$segments) in_field[seg$content_idx] <- TRUE
+
+    nxt      <- next_non_trivia_idx(t_type)
+    call_pos <- !is.na(nxt) & t_type[nxt] == "LPAREN"
+
+    bare <- which(in_field & t_type == "WORD" & !call_pos &
+                    !(tolower(t_text) %in% QLIK_KEYWORDS))
+
+    for (i in bare) {
+      before <- t_text[i]
+      after  <- paste0("[", before, "]")
+
+      nch <- nch + 1L
+      ch_line[nch]   <- t_line[i]
+      ch_kind[nch]   <- "bare reference"
+      ch_before[nch] <- before
+      ch_after[nch]  <- after
+
+      t_text[i] <- after
+      t_type[i] <- "BRACKET"
+    }
   }
 
   tokens$text <- t_text

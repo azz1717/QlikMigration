@@ -103,6 +103,38 @@ the *function* and 15 are control flow. Any pass that treats `IF` structurally
 (indentation, block nesting) must distinguish them; the casing pass does not
 need to, because both become `IF`.
 
+### 1.7 A bare (unquoted) word is a valid field reference, identically to a quoted or bracketed one
+
+```qlik
+LOAD
+    Electorate,          // valid - bare field reference, same as [Electorate]
+    Fleet.Rego as [Fleet Car Rego]   // valid - bare, dotted, table-qualified
+FROM x;
+```
+
+Real cases, both previously left un-bracketed by `enforce_bracket_references`
+(fixed 2026-08-17): `app-unbuilt/script.qvs` has an entire un-named table
+loading `Electorate`, `State`, `Longitude`, `Latitude` bare, and `[Fleet
+Cars]:` loads `Fleet.Rego`, `Fleet.Make`, `Fleet.Model` etc. bare. §4.2's
+target — "all field and alias references in square brackets" — did not
+distinguish bare from quoted, but the pass only ever handled the latter.
+
+This shares its disambiguation problem with §1.3: a bare word that is
+**also** a built-in function's name (`Year`) is a field reference when NOT in
+call position, and a call when it is. `enforce_bracket_references` now uses
+the identical call-position guard `enforce_reserved_word_case` already needed
+for the same collision.
+
+**Scope is deliberately narrower than "every bare word":** only inside a
+`LOAD` field list. A bare word elsewhere is very often NOT a field — it is a
+`FOR` loop counter or a `LET`-assigned variable — and Qlik does not
+distinguish those from field references syntactically the way it does for
+quoting. `app-unbuilt/script.qvs`'s chunking loop assigns `numRows`,
+`chunkSize`, `i`, `chunkText`, `rowNr`: bracketing any of those would turn a
+variable reference into a field reference and silently change what the
+script loads. WHERE-clause and other non-field-list bare words are left
+untouched for the same reason — not yet specified, §4.11 territory.
+
 ---
 
 ## 2. Architecture
@@ -352,7 +384,9 @@ Each rule notes the pass that implements it, or that none does yet.
 
 ### 4.2 References — implemented (`enforce_bracket_references`)
 
-All field and alias references in square brackets.
+All field and alias references in square brackets — quoted ones and bare
+(unquoted) ones alike, the latter scoped to LOAD field-list content only.
+See §1.7 for why the scope stops there.
 
 ### 4.3 Aliasing — implemented (`ensure_explicit_aliases`)
 

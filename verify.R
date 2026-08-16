@@ -75,6 +75,14 @@ section <- function(...) { cat("\n== ", ..., " ==\n", sep = ""); flush(stdout())
 #                                        token anywhere else is a LITERAL and
 #                                        stays distinct, so a literal turning
 #                                        into a field reference is caught)
+#   bare X inside a LOAD field list      enforce_bracket_references, applied
+#   folded to REF:X, UNLESS it is a      under the identical rule the pass
+#   keyword or in call position          uses (find_load_segments() content,
+#                                        not a keyword, next token not "(")
+#                                        - so a bare word OUTSIDE a field
+#                                        list (a FOR counter, a LET variable)
+#                                        is never folded, and one wrongly
+#                                        bracketed there would still be caught
 #   reserved words upper-cased           enforce_reserved_word_case, applied
 #                                        under the SAME call-position rule the
 #                                        pass uses, so a bare field named
@@ -103,10 +111,21 @@ section <- function(...) { cat("\n== ", ..., " ==\n", sep = ""); flush(stdout())
 #'
 #' @return list(canon = character, line = integer), the two parallel.
 canonical_stream <- function(tokens) {
+  # Which ORIGINAL token indices sit inside a LOAD field list - computed
+  # before the trivia filter below, because find_load_segments() indexes
+  # into the full, unfiltered stream. Mirrors enforce_bracket_references.R's
+  # scope exactly: a bare word is only foldable to a reference here if the
+  # pass itself would actually bracket it. A bare word elsewhere (a FOR
+  # counter, a LET variable) is NOT folded, so if a future bug ever did
+  # bracket one, this check would still catch it as a real difference.
+  in_field_orig <- logical(nrow(tokens))
+  for (seg in find_load_segments(tokens)$segments) in_field_orig[seg$content_idx] <- TRUE
+
   keep <- !(tokens$type %in% c("WS", "COMMENT", "VOID"))
   ty <- tokens$type[keep]
   tx <- tokens$text[keep]
   ln <- tokens$line[keep]
+  in_field <- in_field_orig[keep]
   n <- length(ty)
   if (n == 0) return(list(canon = character(0), line = integer(0)))
 
@@ -123,9 +142,15 @@ canonical_stream <- function(tokens) {
       SQUOTE  = if (prev_is_as[i]) paste0("REF:", .unquote(tx[i], "'"))
                 else paste0("STR:", .unquote(tx[i], "'")),
       WORD    = {
-        fold <- lower[i] %in% QLIK_KEYWORDS ||
-                (next_is_lparen[i] && lower[i] %in% QLIK_FUNCTIONS)
-        paste0("W:", if (fold) toupper(tx[i]) else tx[i])
+        is_kw   <- lower[i] %in% QLIK_KEYWORDS
+        call    <- next_is_lparen[i] && lower[i] %in% QLIK_FUNCTIONS
+        # a bare word in a field list, not a keyword, not a call - the exact
+        # set enforce_bracket_references.R now brackets (call position alone
+        # excludes it below too, whether or not the word is in QLIK_FUNCTIONS,
+        # matching the pass's own guard - a user-defined SUB call included)
+        bare_ref <- in_field[i] && !is_kw && !next_is_lparen[i]
+        if (bare_ref) paste0("REF:", tx[i])
+        else paste0("W:", if (is_kw || call) toupper(tx[i]) else tx[i])
       },
       paste0("P:", tx[i])
     )
@@ -343,6 +368,29 @@ verify_detects_corruption <- function() {
   r2 <- enforce_bracket_references(tokenize_qlik("[T]:\nLOAD \"A\" AS 'B' FROM x;"))
   ok("does not flag quote-to-bracket conversion",
      isTRUE(check_equivalent(tokenize_qlik("[T]:\nLOAD \"A\" AS 'B' FROM x;"), r2$tokens)))
+
+  # bare-word bracketing (added 2026-08-17, real cases at app-unbuilt/
+  # script.qvs: "Electorate," and "Fleet.Rego as [Fleet Car Rego]")
+  src3 <- "[T]:\nLOAD Fleet.Rego, Year, YEAR(x) AS [Y] FROM tbl;"
+  r3 <- enforce_bracket_references(ensure_explicit_aliases(tokenize_qlik(src3))$tokens)
+  ok("does not flag a bare field or a bare field sharing a function's name",
+     isTRUE(check_equivalent(tokenize_qlik(src3), r3$tokens)))
+  ok("a bare field is actually bracketed, not just unflagged",
+     any(r3$tokens$type == "BRACKET" & r3$tokens$text == "[Fleet.Rego]") &&
+       any(r3$tokens$type == "BRACKET" & r3$tokens$text == "[Year]"))
+  ok("the real function call is left bare, not bracketed into [YEAR](x)",
+     any(r3$tokens$type == "WORD" & r3$tokens$text == "YEAR"))
+
+  # the safety boundary this pass exists to respect: a bare word OUTSIDE a
+  # LOAD field list - a FOR loop counter or a LET-assigned variable, real
+  # names from app-unbuilt/script.qvs's chunking loop - must never be
+  # bracketed. Bracketing chunkText would turn a variable reference into a
+  # field reference and silently change what the script does.
+  src4 <- "LET chunkText = '';\nFOR i = 1 to 3\nLET chunkText = chunkText & i;\nNEXT"
+  r4 <- enforce_bracket_references(tokenize_qlik(src4))
+  ok("a LET/FOR variable is never bracketed",
+     !any(r4$tokens$type == "BRACKET") &&
+       identical(detokenize(r4$tokens), detokenize(tokenize_qlik(src4))))
 
   invisible(NULL)
 }

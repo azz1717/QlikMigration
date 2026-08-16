@@ -287,6 +287,23 @@ prev_non_trivia_idx <- function(type) {
   c(NA_integer_, nt)[k + 1L]
 }
 
+#' Index of the next non-trivia token for every position, or NA.
+#'
+#' Symmetric with prev_non_trivia_idx() above. Promoted from a private
+#' `.next_content_type` in enforce_reserved_word_case.R (2026-08-17) when
+#' enforce_bracket_references.R needed the identical call-position test -
+#' both passes must tell a bare word used AS a function/SUB call (skip it)
+#' from one used as a field/alias reference (act on it), and both use the
+#' same test: is the next non-trivia token an LPAREN.
+#'
+#' @param type token type vector.
+#' @return integer vector, one per token; NA where there is no next one.
+next_non_trivia_idx <- function(type) {
+  n <- length(type)
+  nt <- which(!(type %in% c("WS", "COMMENT", "VOID")))
+  nt[findInterval(seq_len(n), nt) + 1L]
+}
+
 # ---- shared LOAD field-list scanner ------------------------------------
 # Most style-guide passes need to operate per-field within LOAD statements
 # while leaving SELECT ... ; (raw SQL passed to LIB CONNECT TO) alone. This

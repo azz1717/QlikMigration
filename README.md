@@ -69,7 +69,7 @@ writeLines(detokenize(r5$tokens), "myscript_out.qvs")
 | # | Pass | Does |
 |---|------|------|
 | 1 | `ensure_explicit_aliases` | every field gets an explicit `AS` alias |
-| 2 | `enforce_bracket_references` | quoted field/alias references become `[bracketed]` |
+| 2 | `enforce_bracket_references` | quoted AND bare field/alias references become `[bracketed]` |
 | 3 | `enforce_leading_commas` | trailing field separators move to leading position |
 | 4 | `enforce_intraline_spacing` | comma, operator and parenthesis spacing within a line |
 | 5 | `enforce_reserved_word_case` | Qlik keywords and built-in functions become UPPER |
