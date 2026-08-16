@@ -400,6 +400,28 @@ code. That only reads as a signal because commented-out code is removed
 (§4.10) — otherwise dead field references would compete for the same
 attention.
 
+**Block nesting is flat, not cumulative (decision, Adam 2026-08-17).** A
+statement or field line's indent depends only on which row of the table
+above applies to it — never on how many `FOR`/`SUB`/`IF`/`DO`/`SWITCH` blocks
+enclose it. Chosen over scaling indent per nesting level: simpler to
+implement, and avoids compounding the tab-width drift documented in §3.6
+(more tabs per line means more drift between width-4 and width-8 viewers).
+Neither fixture is evidence either way for this call — `app-unbuilt/` is
+unstyled input being tested, not a style reference, and the Grant file has no
+control-flow blocks to show a convention — so this is a green-field decision,
+not one derived from either.
+
+**Continuation lines get one extra tab.** A line break that falls before a
+field's expression is finished — i.e. no depth-0 field-separator comma
+follows it, so the next line is not a new field — indents at the field's base
+(2 tabs) plus one, flat regardless of how many further line breaks the same
+expression contains. This is the one exception to leaving continuation lines
+hand-formatted (§3.5): it sets only the line's leading indent, nothing after
+it. Confirmed against a real case, `[Grant Managing Region].txt` lines 19-20:
+
+    IF(LEN("PMC Region.PMC Region Code") > 1, 'GMU Region',
+    	IF(MATCH("PMC Region.PMC Region Abbr",'FNQLD','GNQLD'),'North Queensland',"PMC Region.PMC Region")) AS [NIAA Region],
+
 ### 4.6 Alias alignment — not implemented
 
 Within a LOAD block, every `AS` is aligned to one column. The column is sized
@@ -706,18 +728,28 @@ alongside every pass before it.
 Line breaks, indentation and blank lines between blocks, as one pass.
 
 This is the first genuinely **global** concern. Every existing pass is local —
-look at one field segment and decide. Indentation needs whole-script nesting
-depth, which means a new **block-structure scanner**, a sibling to
-`find_load_segments()`, tracking:
+look at one field segment and decide. Statement/field boundaries, blank-line
+rules and continuation-line detection need whole-script structure, which
+means a new **block-structure scanner**, a sibling to `find_load_segments()`,
+tracking:
 
 - control flow: `FOR`/`NEXT` (28/21 in the fixture), `SUB`/`END SUB`,
   `IF`/`THEN`/`ENDIF` (15 statement-level), `DO`/`LOOP`, `SWITCH`/`CASE`
 - statement boundaries and `///$tab` sections (63 in the fixture)
 - the distinction in §1.6 between statement `IF` and function `IF(`
+- continuation lines: a line break before a field's expression is complete
+  (no depth-0 comma follows) — needed for the indent rule in §4.5
 
-Note this pass will produce large diffs by nature, which weakens the
-reviewability the `$changes` logs otherwise give. Worth deciding how to keep
-it auditable before building it.
+Indentation itself does **not** scale with this nesting (decision, §4.5) —
+the scanner's depth tracking is for finding these boundaries, not for
+setting indent width.
+
+**Decision (Adam, 2026-08-17): accept the large diff.** This pass rewrites
+nearly every whitespace token by nature, which breaks the per-change
+reviewability the other five passes give via `$changes`. Rather than build a
+coarser change log or a preview/diff mode, `verify.R`'s equivalence check is
+the audit mechanism here — it already detects and describes a single
+insertion/deletion instead of reporting the whole cascade.
 
 ### 6.3 Commented-out code removal — not started
 
