@@ -15,6 +15,5 @@ on how to keep a huge-diff pass auditable (§6.2).
   should consider piggybacking detection records — raise with Adam.
 - formatexample.txt is not a verify.R fixture; the alignment pad is covered
   by argument and a synthetic test, never against that file directly.
-- dlmf-log.md sits untracked at repo root; Adam decides if/when to commit.
 
 (Cap: 25 lines. Longer means it is rotting — prune to position/next/open.)
