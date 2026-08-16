@@ -5,9 +5,16 @@
 2. Read ONLY the DESIGN.md sections STATE.md names for the current task.
 3. Give Adam a short plan with the open decision points BEFORE implementing.
 
+Do NOT read HANDOVER-PROTOCOL.md. It looks like orientation (it's a
+"protocol" file sitting at the repo root) and isn't — it's a one-time
+bootstrap record for rebuilding these three files if they're ever lost.
+Opening it "just to be safe" is exactly the over-reading habit this file
+exists to prevent.
+
 ## Reading budget
 - NEVER read fixtures into context: [Grant Managing Region].txt, app-unbuilt/,
   formatexample.txt, script_out.txt. Grep/sed specific lines when needed.
+- NEVER read HANDOVER-PROTOCOL.md — see Cold start above.
 - Don't read a pass's source unless editing that pass — INTERFACES.md is the
   contract. Don't read DESIGN.md or README.md end-to-end; go by section.
 
