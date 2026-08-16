@@ -662,12 +662,18 @@ the tokenizer exists to protect.
   "space after" and the operator's "space before" rules target the same
   physical position. Guarded so it produces one splice and one log entry,
   not two.
-- **`find_load_segments()`'s `seg$end` is a double, not an integer** — an
-  unsuffixed `k - 1` literal in its own code. Harmless to passes that use it
-  arithmetically (`enforce_leading_commas` does `seg$end + 1` directly), but
-  fails a strict `vapply(fn, integer(1))`. Worked around locally in this
-  pass rather than fixed at the source, since `find_load_segments()` was out
-  of scope here — worth fixing before another pass trips over it.
+- **`find_load_segments()` used to return `seg$start`/`seg$end` as doubles** —
+  fixed at source 2026-08-17; the local workaround in this pass is gone. The
+  cause was unsuffixed integer literals in its index arithmetic, and the
+  reach was wider than first diagnosed: the outer loop's own `i <- i + 1`
+  made the counter a double on the first non-`LOAD` token, so *every*
+  derived index inherited it. Harmless to arithmetic callers
+  (`enforce_leading_commas` does `seg$end + 1`), but fatal to a strict
+  `vapply(fn, integer(1))`. **Lesson: a type bug in shared code surfaces at
+  an arbitrary caller, so fix it at the source rather than at the call
+  site** — the workaround would have been re-invented by the next pass.
+  Verified behaviour-neutral: pipeline output byte-identical on both
+  fixtures, suite green.
 
 #### Known cases to test against
 

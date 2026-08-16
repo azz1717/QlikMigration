@@ -312,7 +312,13 @@ find_load_segments <- function(tokens) {
   warn <- character(0)
   if (n == 0) return(list(segments = segments, warnings = warn))
 
-  i <- 1
+  # Index arithmetic uses INTEGER literals (1L, not 1) throughout. An
+  # unsuffixed literal makes the counter a double, which propagates into
+  # every index derived from it and out through seg$start / seg$end - where
+  # it is invisible until a caller does vapply(..., integer(1)) and gets
+  # "values must be type 'integer', but FUN(X[[1]]) result is type 'double'".
+  # That cost the spacing pass a debugging cycle. Keep the L suffixes.
+  i <- 1L
   in_select <- FALSE
 
   while (i <= n) {
@@ -320,30 +326,30 @@ find_load_segments <- function(tokens) {
 
     if (ty == "WORD" && tolower(tokens$text[i]) == "select") {
       in_select <- TRUE
-      i <- i + 1
+      i <- i + 1L
       next
     }
     if (in_select) {
       if (ty == "SEMI") in_select <- FALSE
-      i <- i + 1
+      i <- i + 1L
       next
     }
 
     if (ty == "WORD" && tolower(tokens$text[i]) == "load") {
       load_line <- tokens$line[i]
-      start <- i + 1
+      start <- i + 1L
 
       # find end of field list: first depth-0 end-keyword, or a depth-0 ';'
-      depth <- 0
+      depth <- 0L
       j <- start
       end <- NA_integer_
       while (j <= n) {
         tj <- tokens$type[j]
-        if (tj == "LPAREN") depth <- depth + 1
-        else if (tj == "RPAREN") depth <- depth - 1
-        else if (depth == 0 && tj == "SEMI") { end <- j; break }
-        else if (depth == 0 && tj == "WORD" && tolower(tokens$text[j]) %in% end_keywords) { end <- j; break }
-        j <- j + 1
+        if (tj == "LPAREN") depth <- depth + 1L
+        else if (tj == "RPAREN") depth <- depth - 1L
+        else if (depth == 0L && tj == "SEMI") { end <- j; break }
+        else if (depth == 0L && tj == "WORD" && tolower(tokens$text[j]) %in% end_keywords) { end <- j; break }
+        j <- j + 1L
       }
       if (is.na(end)) {
         warn <- c(warn, sprintf(
@@ -354,20 +360,20 @@ find_load_segments <- function(tokens) {
 
       # split [start, end) into depth-0 comma-separated field segments
       seg_start <- start
-      depth <- 0
+      depth <- 0L
       k <- start
       bounds <- list()
       while (k < end) {
         tk <- tokens$type[k]
-        if (tk == "LPAREN") depth <- depth + 1
-        else if (tk == "RPAREN") depth <- depth - 1
-        else if (tk == "COMMA" && depth == 0) {
-          bounds[[length(bounds) + 1]] <- c(seg_start, k - 1)
-          seg_start <- k + 1
+        if (tk == "LPAREN") depth <- depth + 1L
+        else if (tk == "RPAREN") depth <- depth - 1L
+        else if (tk == "COMMA" && depth == 0L) {
+          bounds[[length(bounds) + 1L]] <- c(seg_start, k - 1L)
+          seg_start <- k + 1L
         }
-        k <- k + 1
+        k <- k + 1L
       }
-      bounds[[length(bounds) + 1]] <- c(seg_start, end - 1)
+      bounds[[length(bounds) + 1L]] <- c(seg_start, end - 1L)
 
       for (b in bounds) {
         s_from <- b[1]; s_to <- b[2]
@@ -380,18 +386,18 @@ find_load_segments <- function(tokens) {
         # look for a depth-0 "AS" among this segment's own tokens
         has_as <- FALSE
         as_idx <- NA_integer_
-        d <- 0
+        d <- 0L
         for (p in idxs) {
           tp <- tokens$type[p]
-          if (tp == "LPAREN") d <- d + 1
-          else if (tp == "RPAREN") d <- d - 1
-          else if (d == 0 && tp == "WORD" && tolower(tokens$text[p]) == "as") { has_as <- TRUE; as_idx <- p; break }
+          if (tp == "LPAREN") d <- d + 1L
+          else if (tp == "RPAREN") d <- d - 1L
+          else if (d == 0L && tp == "WORD" && tolower(tokens$text[p]) == "as") { has_as <- TRUE; as_idx <- p; break }
         }
         # the alias target's own content tokens (right of AS) - normally a
         # single field/alias reference, but kept general in case of trivia
         alias_content_idx <- if (has_as) content_idx[content_idx > as_idx] else integer(0)
 
-        segments[[length(segments) + 1]] <- list(
+        segments[[length(segments) + 1L]] <- list(
           start = s_from, end = s_to,
           content_idx = content_idx,
           has_as = has_as,
@@ -400,11 +406,11 @@ find_load_segments <- function(tokens) {
         )
       }
 
-      i <- end + 1
+      i <- end + 1L
       next
     }
 
-    i <- i + 1
+    i <- i + 1L
   }
 
   list(segments = segments, warnings = warn)

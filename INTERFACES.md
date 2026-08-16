@@ -37,8 +37,9 @@ entry current in the same commit that changes its function.
 - `in_select_region(type, lower) -> logical` — TRUE inside SELECT...; regions (every pass skips these).
 - `prev_non_trivia_idx(type) -> integer/NA per position` — previous non-WS/COMMENT/VOID index.
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
-  segment: start, end, content_idx, has_as, alias_content_idx, line. Skips SELECT itself.
-  GOTCHA: seg$end is a double, not integer — vapply with double(1), or fix at source first.
+  segment: start, end, content_idx, has_as, alias_content_idx, line — all integer. Skips SELECT.
+  GOTCHA: its index arithmetic uses `1L` literals deliberately; an unsuffixed `1` silently makes
+  start/end doubles and breaks callers doing `vapply(..., integer(1))`. Fixed 2026-08-17.
 - Private: `.qlik_token_type` (token text -> type name).
 
 ## qlik_reserved_words.R — vocabulary, data only, no logic

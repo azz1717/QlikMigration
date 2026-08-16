@@ -69,7 +69,8 @@ This entry is written for you and is the quality bar — include it verbatim:
 - `prev_non_trivia_idx(type) -> integer/NA per position` — previous non-WS/COMMENT/VOID index.
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
   segment: start, end, content_idx, has_as, alias_content_idx, line. Skips SELECT itself.
-  GOTCHA: seg$end is a double, not integer — vapply with double(1), or fix at source first.
+  GOTCHA: its index arithmetic uses `1L` literals deliberately; an unsuffixed `1` silently makes
+  start/end doubles and breaks callers doing `vapply(..., integer(1))`. Fixed 2026-08-17.
 Token types: COMMENT DQUOTE SQUOTE BRACKET WS WORD NUMBER OPERATOR COMMA SEMI LPAREN RPAREN VOID OTHER.
 ```
 
@@ -98,11 +99,14 @@ DO/LOOP, SWITCH/CASE, ///$tab sections) and a decision, before building,
 on how to keep a huge-diff pass auditable (§6.2).
 
 **Open items:**
-- find_load_segments() returns seg$end as double, not integer (DESIGN §6.1
-  traps). Fix at source before the next pass trips on it.
 - Migration debt report (DESIGN §7): any new pass walking the token stream
   should consider piggybacking detection records — raise with Adam.
+- formatexample.txt is not a verify.R fixture; the alignment pad is covered
+  by argument and a synthetic test, never against that file directly.
 - dlmf-log.md sits untracked at repo root; Adam decides if/when to commit.
+
+(If re-running this protocol later, take the live STATE.md as the source of
+truth for this block rather than the text above, which is a starting point.)
 
 (Cap: 25 lines. Longer means it is rotting — prune to position/next/open.)
 ```

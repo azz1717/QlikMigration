@@ -120,11 +120,7 @@ enforce_intraline_spacing <- function(tokens) {
   segs <- found$segments
   sep_comma_idx <- integer(0)
   if (length(segs) > 0) {
-    # seg$end comes out of find_load_segments() as a double (its "k - 1"
-    # arithmetic uses an unsuffixed literal), not an integer - vapply's
-    # integer(1) template is too strict for it, so ask for double(1) and
-    # convert.
-    ends <- as.integer(vapply(segs, function(s) s$end, double(1)))
+    ends <- vapply(segs, function(s) s$end, integer(1))
     cand <- ends + 1L
     ok <- cand <= n & t_type[cand] == "COMMA"
     sep_comma_idx <- cand[ok]

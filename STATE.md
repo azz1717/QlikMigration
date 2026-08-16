@@ -11,8 +11,6 @@ DO/LOOP, SWITCH/CASE, ///$tab sections) and a decision, before building,
 on how to keep a huge-diff pass auditable (§6.2).
 
 **Open items:**
-- find_load_segments() returns seg$end as double, not integer (DESIGN §6.1
-  traps). Fix at source before the next pass trips on it.
 - Migration debt report (DESIGN §7): any new pass walking the token stream
   should consider piggybacking detection records — raise with Adam.
 - formatexample.txt is not a verify.R fixture; the alignment pad is covered
