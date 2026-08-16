@@ -41,6 +41,7 @@ source("qlik_reserved_words.R")
 source("ensure_explicit_aliases.R")
 source("enforce_bracket_references.R")
 source("enforce_leading_commas.R")
+source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
 
 # ---- reporting ---------------------------------------------------------
@@ -235,6 +236,7 @@ PASSES <- list(
   "ensure_explicit_aliases"     = ensure_explicit_aliases,
   "enforce_bracket_references"  = enforce_bracket_references,
   "enforce_leading_commas"      = enforce_leading_commas,
+  "enforce_intraline_spacing"   = enforce_intraline_spacing,
   "enforce_reserved_word_case"  = enforce_reserved_word_case
 )
 

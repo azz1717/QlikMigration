@@ -57,22 +57,6 @@
   out
 }
 
-#' TRUE for every token inside a SELECT ... ; region.
-#'
-#' Matches the convention the other passes use: a WORD "select" opens the
-#' region and the next SEMI closes it, with the SEMI itself still inside.
-.in_select_region <- function(type, lower) {
-  n <- length(type)
-  starts <- which(type == "WORD" & lower == "select")
-  semis  <- which(type == "SEMI")
-  if (length(starts) == 0) return(logical(n))
-  i <- seq_len(n)
-  # most recent select at or before i, vs most recent semi strictly before i
-  last_sel  <- c(0L, starts)[findInterval(i, starts) + 1L]
-  last_semi <- c(0L, semis)[findInterval(i - 1L, semis) + 1L]
-  last_sel > last_semi
-}
-
 #' @param tokens a token stream data.frame (see tokenize_qlik / read_qlik_script).
 #' @return a list with:
 #'   $tokens   - the token stream with reserved words uppercased
@@ -94,7 +78,7 @@ enforce_reserved_word_case <- function(tokens) {
   lower  <- tolower(t_text)
 
   is_word   <- t_type == "WORD"
-  in_select <- .in_select_region(t_type, lower)
+  in_select <- in_select_region(t_type, lower)
   call_pos  <- .next_content_type(t_type)
   call_pos  <- !is.na(call_pos) & call_pos == "LPAREN"
 

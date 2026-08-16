@@ -244,6 +244,49 @@ void_token <- function(tokens, idx) {
   tokens
 }
 
+# ---- shared token-stream scanners ---------------------------------------
+# Position-only helpers needed by more than one pass. Promoted here (rather
+# than left as a private copy in whichever pass wrote them first) per the
+# "shared scanners" principle in DESIGN.md - the SELECT skip used to live
+# only inside enforce_reserved_word_case.R; enforce_intraline_spacing.R
+# needed the identical logic, so it moved here instead of forking a second
+# copy that could drift.
+
+#' TRUE for every token inside a SELECT ... ; region.
+#'
+#' A WORD "select" opens the region and the next SEMI closes it, with the
+#' SEMI itself still inside. This is the same "not ours to touch" boundary
+#' find_load_segments() uses internally for LOAD field lists - this version
+#' is for passes that scan the WHOLE token stream, not just field lists.
+#'
+#' @param type token type vector (tokens$type).
+#' @param lower lower-cased token text vector (tolower(tokens$text)).
+#' @return logical vector, one per token.
+in_select_region <- function(type, lower) {
+  n <- length(type)
+  starts <- which(type == "WORD" & lower == "select")
+  semis  <- which(type == "SEMI")
+  if (length(starts) == 0) return(logical(n))
+  i <- seq_len(n)
+  last_sel  <- c(0L, starts)[findInterval(i, starts) + 1L]
+  last_semi <- c(0L, semis)[findInterval(i - 1L, semis) + 1L]
+  last_sel > last_semi
+}
+
+#' Index of the previous non-trivia token for every position, or NA.
+#'
+#' Trivia = WS, COMMENT, VOID - the same definition find_load_segments() uses
+#' for a field segment's content_idx.
+#'
+#' @param type token type vector.
+#' @return integer vector, one per token; NA where there is no previous one.
+prev_non_trivia_idx <- function(type) {
+  n <- length(type)
+  nt <- which(!(type %in% c("WS", "COMMENT", "VOID")))
+  k <- findInterval(seq_len(n) - 1L, nt)
+  c(NA_integer_, nt)[k + 1L]
+}
+
 # ---- shared LOAD field-list scanner ------------------------------------
 # Most style-guide passes need to operate per-field within LOAD statements
 # while leaving SELECT ... ; (raw SQL passed to LIB CONNECT TO) alone. This
