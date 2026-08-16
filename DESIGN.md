@@ -723,9 +723,11 @@ alignment (§6.2 onward) still come after this pass, per the original plan.
 equivalence, output round-trip and idempotence all hold for the new pass,
 alongside every pass before it.
 
-### 6.2 Vertical layout — not started, needs new infrastructure
+### 6.2 Vertical layout — scanner built, pass not written
 
-Line breaks, indentation and blank lines between blocks, as one pass.
+Line breaks, indentation and blank lines between blocks, as one pass. The
+block-structure scanner below is implemented as `find_block_structure()`
+(2026-08-17, self-tested in verify.R); the pass that consumes it is next.
 
 This is the first genuinely **global** concern. Every existing pass is local —
 look at one field segment and decide. Statement/field boundaries, blank-line
@@ -743,6 +745,15 @@ tracking:
 Indentation itself does **not** scale with this nesting (decision, §4.5) —
 the scanner's depth tracking is for finding these boundaries, not for
 setting indent width.
+
+That makes the five block types far cheaper than they look. Because indent is
+flat, no rule anywhere needs to know *which* kind of block encloses a line;
+block tracking exists purely so §4.8's blank lines don't get injected between
+the statements of a loop body. So all five collapse to **one depth counter
+driven by a word list** — no per-type logic, and nothing gained by scoping
+the pass to only the two types a fixture happens to contain. The single
+genuine subtlety is statement `IF` vs function `IF(` above, which is
+unavoidable either way.
 
 **Decision (Adam, 2026-08-17): accept the large diff.** This pass rewrites
 nearly every whitespace token by nature, which breaks the per-change

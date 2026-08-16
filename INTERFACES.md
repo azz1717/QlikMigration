@@ -40,7 +40,20 @@ entry current in the same commit that changes its function.
   segment: start, end, content_idx, has_as, alias_content_idx, line — all integer. Skips SELECT.
   GOTCHA: its index arithmetic uses `1L` literals deliberately; an unsuffixed `1` silently makes
   start/end doubles and breaks callers doing `vapply(..., integer(1))`. Fixed 2026-08-17.
-- Private: `.qlik_token_type` (token text -> type name).
+- `find_block_structure(tokens) -> list(lines, warnings)` — classifies every LINE, for the vertical
+  layout pass. `lines` = data.frame(idx, line, kind, starts_stmt, stmt_id, depth), one row per line
+  start; kind is `statement`/`field`/`continuation`/`comment`/`section`. Reuses find_load_segments()
+  for field boundaries: a segment's FIRST line start is the field, any later one is a continuation.
+  Indentation is FLAT (DESIGN §4.5) so `kind` alone determines it — `depth` and `stmt_id` exist only
+  for §4.8's blank-line rule, where a whole block is ONE statement, its closer included.
+  GOTCHA: block keywords count only as a statement's FIRST word. That single guard is what stops
+  `EXIT FOR WHEN ...;` opening a phantom block, with no per-keyword special-casing.
+  GOTCHA: statement `IF` is told from function `IF(` by a depth-0 `THEN` on the line, NOT by a
+  following `(` — `IF (x = 1) THEN` is legal. DESIGN §1.6.
+  GOTCHA: never match on raw text. `for` appears 1242 times in app-unbuilt/script.qvs and ~28 are
+  the keyword; the rest are inside comments and literals, which typed tokens hide.
+- Private: `.qlik_token_type` (token text -> type name), `.qlik_block_opener`, `.qlik_block_closer`
+  (first word(s) of a statement -> block kind, or NA).
 
 ## qlik_reserved_words.R — vocabulary, data only, no logic
 

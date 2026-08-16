@@ -415,3 +415,232 @@ find_load_segments <- function(tokens) {
 
   list(segments = segments, warnings = warn)
 }
+
+# ---- shared block-structure scanner -------------------------------------
+# The vertical layout pass (DESIGN 6.2) is the first pass needing whole-script
+# structure rather than one field segment at a time. This scan answers, for
+# every line in the script: what kind of line is it, and which statement does
+# it belong to.
+#
+# It keys off token TYPE, never raw text. That is a correctness requirement,
+# not a stylistic one: grepping app-unbuilt/script.qvs for the bare word "for"
+# finds 1242 hits, of which roughly 28 are the control-flow keyword - the rest
+# sit inside comments and string literals. "sub" scores 75 hits with zero real
+# SUB blocks. Typed tokens make comments and literals structurally invisible,
+# which is the entire reason this pipeline is a token stream (DESIGN 2.1).
+#
+# Note how little this scanner has to know. Indentation is FLAT (DESIGN 4.5) -
+# a line's indent depends only on what kind of line it is, never on how many
+# blocks enclose it - so block tracking exists for exactly one purpose: the
+# blank-line rule in DESIGN 4.8 treats a whole FOR/SUB/IF/DO/SWITCH block as a
+# single statement, so statements inside one must not be blown apart by two
+# blank lines each. That reduces all five block types to one depth counter
+# driven by the word list below, with no per-type logic anywhere.
+
+# Openers are recognised ONLY as the first word of a statement. That single
+# guard is what stops "Exit for when rowNr >= numRows;" (7 in the stress
+# fixture) opening a phantom block, without special-casing exit/exit sub/exit
+# do individually.
+.qlik_block_opener <- function(w1, has_then) {
+  if (w1 %in% c("for", "sub", "do", "switch")) return(w1)
+  # DESIGN 1.6: statement IF vs function IF( - the fixture has ~117 of the
+  # latter and 15 of the former. Testing for a following LPAREN does NOT
+  # separate them, because "IF (x = 1) THEN" is legal; a depth-0 THEN does.
+  if (w1 == "if" && has_then) return("if")
+  NA_character_
+}
+
+.qlik_block_closer <- function(w1, w2) {
+  if (w1 == "next") return("for")
+  if (w1 == "loop") return("do")
+  if (w1 == "end") {
+    if (w2 == "sub")    return("sub")
+    if (w2 == "if")     return("if")
+    if (w2 == "switch") return("switch")
+  }
+  if (w1 == "endif")     return("if")
+  if (w1 == "endsub")    return("sub")
+  if (w1 == "endswitch") return("switch")
+  NA_character_
+}
+
+#' Classify every line of a token stream for the vertical layout pass.
+#'
+#' A "line" here is a token that starts one: any non-whitespace token whose
+#' preceding whitespace carried a newline. Tokens that span lines internally
+#' (a BRACKET holding an INLINE table, a block comment) are opaque and are
+#' NOT decomposed - they are one line start, and the layout pass must never
+#' reach inside them.
+#'
+#' @param tokens a token stream data.frame (see tokenize_qlik).
+#' @return a list with:
+#'   $lines - data.frame, one row per line start:
+#'       idx         - token index of the line's first token
+#'       line        - source line number
+#'       kind        - "statement"    1 tab  (table label, LOAD, FROM, FOR...)
+#'                     "field"        2 tabs (first line of a LOAD field)
+#'                     "continuation" 3 tabs (line break before that field's
+#'                                    expression is finished - DESIGN 4.5)
+#'                     "comment"      column 0
+#'                     "section"      ///$tab marker - left ENTIRELY alone
+#'       starts_stmt - TRUE if a statement begins here, at any block depth
+#'       stmt_id     - the TOP-LEVEL statement this line belongs to; a whole
+#'                     block shares one id (DESIGN 4.8, "block = one
+#'                     statement"), so two blank lines go where this changes
+#'       depth       - block nesting depth; 0 at top level
+#'   $warnings - character vector for unbalanced blocks
+find_block_structure <- function(tokens) {
+  n <- nrow(tokens)
+  empty <- data.frame(
+    idx = integer(0), line = integer(0), kind = character(0),
+    starts_stmt = logical(0), stmt_id = integer(0), depth = integer(0),
+    stringsAsFactors = FALSE)
+  if (n == 0) return(list(lines = empty, warnings = character(0)))
+
+  ty    <- tokens$type
+  lower <- tolower(tokens$text)
+  warn  <- character(0)
+
+  # --- line starts -------------------------------------------------------
+  # A content token starts a line if a newline fell between it and the
+  # previous content token. VOID rows carry no text, so they must be
+  # transparent here or a voided token would break the chain and hide a
+  # genuine line start.
+  has_nl  <- ty == "WS" & grepl("\n", tokens$text, fixed = TRUE)
+  content <- which(!(ty %in% c("WS", "VOID")))
+  if (length(content) == 0) return(list(lines = empty, warnings = warn))
+
+  cum_nl <- cumsum(has_nl)
+  nc     <- length(content)
+  starts <- rep(TRUE, nc)
+  if (nc > 1) starts[-1] <- cum_nl[content[-1]] > cum_nl[content[-nc]]
+  ls_pos <- which(starts)        # positions within `content`
+  ls_idx <- content[ls_pos]      # token indices
+  nls    <- length(ls_idx)
+
+  # A ///$tab marker that does not start its own line means something shares
+  # the line with it. Real case: app-unbuilt/script.qvs begins with the bytes
+  # "I///$tab 00-Main" - a stray leading character, so 63 markers exist but
+  # only 62 start a line. Qlik's editor keys its section tabs off these, so
+  # flag it (a migration-debt candidate, DESIGN 7) rather than quietly
+  # indenting a marker that may need to stay at column 0.
+  stray <- setdiff(which(ty == "COMMENT" & startsWith(tokens$text, "///$")), ls_idx)
+  if (length(stray) > 0) {
+    warn <- c(warn, sprintf(
+      "Line %d: ///$tab section marker does not start its line - left alone.",
+      tokens$line[stray]))
+  }
+
+  # --- field vs continuation --------------------------------------------
+  # Reuse find_load_segments() rather than re-deriving field boundaries. The
+  # FIRST line start in a segment is the field itself; any later one is a
+  # line break before that field's expression finished, i.e. a continuation.
+  seg  <- find_load_segments(tokens)
+  warn <- c(warn, seg$warnings)
+  segs <- seg$segments
+  seg_lo <- integer(0); seg_hi <- integer(0)
+  if (length(segs) > 0) {
+    seg_lo <- vapply(segs, function(s) s$content_idx[1], integer(1))
+    seg_hi <- vapply(segs, function(s) s$end, integer(1))
+  }
+
+  # --- depth-0 statement terminators -------------------------------------
+  d      <- cumsum((ty == "LPAREN") - (ty == "RPAREN"))
+  semi0  <- ty == "SEMI" & d == 0L
+  cum_semi <- cumsum(semi0)
+
+  kind        <- character(nls)
+  starts_stmt <- logical(nls)
+  stmt_id     <- integer(nls)
+  depth_out   <- integer(nls)
+
+  stack   <- character(0)
+  cur     <- 0L
+  pending <- TRUE   # next line start begins a statement
+
+  for (j in seq_len(nls)) {
+    i <- ls_idx[j]
+
+    # a depth-0 ';' since the previous line start ended that statement
+    if (j > 1L && cum_semi[i] > cum_semi[ls_idx[j - 1L]]) pending <- TRUE
+
+    if (ty[i] == "COMMENT") {
+      kind[j]      <- if (startsWith(tokens$text[i], "///$")) "section" else "comment"
+      stmt_id[j]   <- cur
+      depth_out[j] <- length(stack)
+      next          # a comment neither opens a statement nor closes one
+    }
+
+    w1 <- if (ty[i] == "WORD") lower[i] else ""
+    nx <- if (ls_pos[j] < nc) content[ls_pos[j] + 1L] else NA_integer_
+    w2 <- if (!is.na(nx) && ty[nx] == "WORD") lower[nx] else ""
+
+    opener <- NA_character_
+    closer <- NA_character_
+    if (pending && nzchar(w1)) {
+      has_then <- FALSE
+      if (w1 == "if") {
+        stop_at  <- if (j < nls) ls_idx[j + 1L] - 1L else n
+        rng      <- i:stop_at
+        has_then <- any(ty[rng] == "WORD" & lower[rng] == "then" & d[rng] == d[i])
+      }
+      opener <- .qlik_block_opener(w1, has_then)
+      closer <- .qlik_block_closer(w1, w2)
+    }
+
+    # a closer leaves its block before being placed, so "NEXT" lines up with
+    # the "FOR" that opened it rather than with the body between them
+    if (!is.na(closer)) {
+      if (length(stack) == 0L) {
+        warn <- c(warn, sprintf(
+          "Line %d: '%s' closes a %s block that was never opened - layout left flat here.",
+          tokens$line[i], tokens$text[i], closer))
+      } else {
+        if (tail(stack, 1L) != closer) {
+          warn <- c(warn, sprintf(
+            "Line %d: '%s' closes a %s block but the innermost open block is %s.",
+            tokens$line[i], tokens$text[i], closer, tail(stack, 1L)))
+        }
+        stack <- stack[-length(stack)]
+      }
+    }
+
+    # Only a top-level statement gets a new id. Inside a block every
+    # statement inherits the block's id, which is what makes DESIGN 4.8's
+    # "no blank lines inside a statement" cover a whole loop body.
+    #
+    # A closing line is excluded even though the pop above has already put it
+    # back at depth 0: NEXT / END IF belong to the block they close, not to
+    # whatever follows. Without this they would take a fresh id and DESIGN
+    # 4.8 would then insert two blank lines immediately before the NEXT.
+    if (pending && length(stack) == 0L && is.na(closer)) cur <- cur + 1L
+    starts_stmt[j] <- pending
+    stmt_id[j]     <- cur
+    depth_out[j]   <- length(stack)
+
+    k <- findInterval(i, seg_lo)
+    kind[j] <- if (k >= 1L && i <= seg_hi[k]) {
+      if (i == seg_lo[k]) "field" else "continuation"
+    } else {
+      "statement"
+    }
+
+    if (!is.na(opener)) stack <- c(stack, opener)
+
+    # control-flow statements are newline-terminated, not ';'-terminated, so
+    # the next line start begins a new statement
+    pending <- !is.na(opener) || !is.na(closer)
+  }
+
+  for (b in rev(stack)) {
+    warn <- c(warn, sprintf(
+      "Reached end of file with a %s block still open - layout left flat inside it.", b))
+  }
+
+  list(
+    lines = data.frame(
+      idx = ls_idx, line = tokens$line[ls_idx], kind = kind,
+      starts_stmt = starts_stmt, stmt_id = stmt_id, depth = depth_out,
+      stringsAsFactors = FALSE),
+    warnings = warn)
+}

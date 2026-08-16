@@ -347,12 +347,75 @@ verify_detects_corruption <- function() {
   invisible(NULL)
 }
 
+# ---- block-structure scanner -------------------------------------------
+# find_block_structure() has no pass consuming it yet (the vertical layout
+# pass is DESIGN 6.2), so nothing exercises it indirectly the way the other
+# shared scanners are exercised through the passes that call them. These are
+# synthetic streams by design - README's "synthetic proves the logic, the
+# real fixture proves it survives" - and the fixtures cover it once the
+# layout pass lands.
+
+verify_block_structure <- function() {
+  section("self-test: the block-structure scanner")
+
+  kinds <- function(src) find_block_structure(tokenize_qlik(src))$lines$kind
+
+  # a field whose expression runs onto a second line is a continuation, not a
+  # new field - the DESIGN 4.5 rule, and the one thing the layout pass most
+  # needs right
+  src <- paste("[T]:", "LOAD", "    [A] AS [A],", "    IF(x > 1, 'y',",
+               "    IF(z, 'a', 'b')) AS [C]", "FROM x;", sep = "\n")
+  ok("field vs continuation vs statement",
+     identical(kinds(src),
+               c("statement", "statement", "field", "field", "continuation", "statement")))
+
+  # DESIGN 4.8: a whole block is ONE statement, so no blank lines land inside
+  # a loop body - and the closing NEXT belongs to the block, not to what
+  # follows it
+  b <- find_block_structure(tokenize_qlik(paste(
+    "FOR i = 1 to 3", "LET a = 1;", "LET b = 2;", "NEXT", "LET c = 3;", sep = "\n")))
+  ok("a block is one statement, closer included",
+     identical(b$lines$stmt_id, c(1L, 1L, 1L, 1L, 2L)))
+  ok("block body is deeper than its opener and closer",
+     identical(b$lines$depth, c(0L, 1L, 1L, 0L, 0L)))
+
+  # the statement-start guard: "EXIT FOR" must not open a phantom block
+  e <- find_block_structure(tokenize_qlik(paste(
+    "FOR i = 1 to 3", "EXIT FOR WHEN i > 2;", "NEXT", sep = "\n")))
+  ok("EXIT FOR does not open a block",
+     max(e$lines$depth) == 1L && length(e$warnings) == 0L)
+
+  # DESIGN 1.6: the function IF( is not the statement IF ... THEN
+  f <- find_block_structure(tokenize_qlik("[T]:\nLOAD IF(a, 1, 0) AS [X] FROM y;"))
+  ok("function IF( opens no block",
+     all(f$lines$depth == 0L) && length(f$warnings) == 0L)
+  s <- find_block_structure(tokenize_qlik(paste(
+    "IF a = 1 THEN", "LET b = 2;", "END IF", sep = "\n")))
+  ok("statement IF ... THEN does open a block",
+     identical(s$lines$depth, c(0L, 1L, 0L)) && length(s$warnings) == 0L)
+
+  # unbalanced blocks are reported, not silently mis-indented
+  ok("an unclosed block warns",
+     length(find_block_structure(tokenize_qlik("FOR i = 1 to 3\nLET a = 1;"))$warnings) == 1L)
+  ok("a closer with nothing open warns",
+     length(find_block_structure(tokenize_qlik("NEXT\nLET a = 1;"))$warnings) == 1L)
+
+  # the real wart at app-unbuilt/script.qvs line 1: "I///$tab 00-Main"
+  ok("a ///$tab marker sharing its line is flagged",
+     length(find_block_structure(tokenize_qlik("X///$tab Main\nLET a = 1;"))$warnings) == 1L)
+  ok("a ///$tab marker on its own line is a section",
+     identical(kinds("///$tab Main\nLET a = 1;"), c("section", "statement")))
+
+  invisible(NULL)
+}
+
 # ---- runner ------------------------------------------------------------
 
 main <- function() {
   cat("Style pipeline verification\n")
 
   verify_detects_corruption()
+  verify_block_structure()
 
   fixtures <- c("[Grant Managing Region].txt", "app-unbuilt/script.qvs")
   for (f in fixtures) if (file.exists(f)) verify_file(f) else
