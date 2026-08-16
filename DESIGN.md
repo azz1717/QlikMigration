@@ -369,7 +369,7 @@ in two passes lets the two copies drift:
 | part | owned by |
 |---|---|
 | moving the comma to the front | this pass |
-| the space after it | §4.7 intra-line spacing — "one space after every comma" is universal, so it catches relocated separators and function arguments with one mechanism |
+| the space around it | §4.7 intra-line spacing — "no space before, one space after every comma" is universal, so it catches relocated separators and function arguments with one mechanism |
 | the two-space pad on the first field | §4.5/§4.6 — that is column alignment, not a comma rule; there is no comma there to space |
 
 **Trailing commas before a terminator** are reported, not fixed. The pass
@@ -406,42 +406,47 @@ Within a LOAD block, every `AS` is aligned to one column. The column is sized
 from the widest field line **in that block**, so one enormous expression
 widens only its own block rather than the whole file.
 
-### 4.7 Intra-line spacing — not implemented
+### 4.7 Intra-line spacing — implemented (`enforce_intraline_spacing`)
 
-- One space after every comma.
+- **No space before, exactly one space after every comma.** Widened from
+  "one space after" alone — agreed with Adam 2026-08-17. The extra half
+  is not needed for the reason originally assumed (see §6.1, "Other traps"),
+  but is justified directly: 16 real hand-typed instances in
+  `[Grant Managing Region].txt`, e.g. line 25's `'GWA','KIM' ,'SA'`.
 - One space either side of every binary operator: arithmetic (`+ - * /`),
   comparison (`= <> > < >= <=`), concatenation (`&`), logical
-  (`AND OR NOT`).
+  (`AND OR NOT`). The logical words need no special handling — they are
+  `WORD` tokens, and two `WORD`s can't be lexically adjacent without
+  whitespace between them in the first place.
 - **No space immediately inside parentheses** — `IF(x, 1, 0)`, never
   `IF( x, 1, 0 )`.
-- Two cases the token type cannot settle, so the pass must use context:
-  **unary minus** (`AddMonths(Today(), -12)` — the `-` binds to the literal
-  and takes no left space) and the **`LOAD *` wildcard**, which is typed
+- Two cases the token type cannot settle, resolved by context — see §6.1 for
+  the classifiers and the live counts they were checked against: **unary
+  minus** (`AddMonths(Today(), -12)` — the `-` binds to the literal and
+  takes no left space) and the **`LOAD *` wildcard**, which is typed
   `OPERATOR` but is not one.
-- Runs of spaces collapse to one — **except in the line-leading region**,
-  meaning the indentation and the separator that follows it. Everything from
-  the start of the field's content onward is fair game.
+- Any other run of 2+ spaces in content collapses to one.
 
-That exception is not a detail. The two-space pad on the first field (§4.4)
-is a deliberate alignment device, and a naive "no double spaces" rule eats
-it — which happened while repairing `formatexample.txt` by hand, in ten lines
-of throwaway code, on the first attempt.
+That collapse rule needs one exception, narrower than originally expected.
+The concern was that a naive "collapse everything" rule would eat the
+two-space alignment pad in front of a LOAD block's first field — which did
+happen once, in ten lines of throwaway code, while repairing
+`formatexample.txt` by hand. It turned out **not to need special-casing**:
+that pad sits directly after the block's indentation, and the tokenizer
+merges a run of whitespace characters into one token, so the pad and its
+preceding newline are the *same* token — already out of this pass's scope
+per §3.4. Nothing to decompose.
 
-The same two-space sequence therefore needs **opposite treatment depending on
-where it sits**:
+The one place that genuinely needs an exception is the gap after a LOAD
+field-separator comma (the depth-0 comma `enforce_leading_commas` relocates)
+— that is where a future alignment pass's column padding will live. An
+*existing* whitespace token there is never shrunk by the collapse rule, even
+though a *missing* one still gets a single space inserted by the comma rule
+above.
 
-| where | example | treatment |
-|---|---|---|
-| line-leading separator | `⇥⇥··[Field]` | **preserve** — aligns with the `, ` rows |
-| anywhere in content or alias | `... AS··[Overall Progress]` | collapse to one |
-
-Both occur in real scripts: `[Grant Managing Region].txt` has three of the
-second kind, at lines 17, 78 and 420.
-
-A rule that cannot express position cannot get both right, so this pass has
-to decompose a field line into indent / separator / content rather than
-operating on the line as a flat string. Whitespace tokens carrying a newline
-belong to the layout pass (§3.4) and are not this pass's to touch either.
+Confirmed against real scripts: `[Grant Managing Region].txt` lines 17, 78
+and 420 (all `as  [`) collapse to `as [`; a second run reports zero changes
+on both fixtures.
 
 ### 4.8 Vertical spacing — not implemented
 
@@ -549,16 +554,17 @@ separately reviewable output.
 
 ## 6. Roadmap
 
-Three passes remain from the original list. Grouping follows §3.4; the target
+Two passes remain from the original list. Grouping follows §3.4; the target
 they implement is §4.
 
-### 6.1 Intra-line spacing — not started, next up
+### 6.1 Intra-line spacing — implemented (`enforce_intraline_spacing`), 2026-08-17
 
-**The rules are settled — see §4.7.** Do not re-derive them.
+**The rules are settled — see §4.7.**
 
 Scope: whitespace tokens containing **no newline** (3,528 of 11,711 in the
 stress fixture). Newline-bearing whitespace belongs to the layout pass (§3.4)
-and must not be touched here.
+and is not touched here — this is also what protects the not-yet-built
+alignment pass's territory, for free (§4.7).
 
 #### The tokenizer groundwork is already done
 
@@ -585,14 +591,27 @@ So the pass can rely on:
 Note `$` stays `OTHER` deliberately: a rule that spaces `OPERATOR` tokens
 therefore cannot break variable expansion.
 
-**Two things the token type still cannot settle**, so the pass needs context:
+**Two things the token type cannot settle, resolved by context:**
 
 - **Unary minus.** `AddMonths(Today(), -12)` — the `-` takes a space on its
-  left only when it is binary. Of 24 `-` operators in live code, 17 are
-  binary and 7 unary.
-- **The `LOAD *` wildcard**, typed `OPERATOR` but not one. Of 42 `*` tokens,
-  31 look like wildcards and 11 are genuine multiplication (`n*chunkSize`,
-  line 1740). Spacing a wildcard as an operator would produce `LOAD * ,`.
+  left only when it is binary. Classified by the *previous non-trivia
+  token*: binary if that token could end a value — `NUMBER`, `BRACKET`,
+  `DQUOTE`, `SQUOTE`, `RPAREN`, or a `WORD` that is not a Qlik keyword
+  (reusing `QLIK_KEYWORDS`, since `AND`/`OR`/`THEN`/... cannot end a value
+  either) — unary otherwise (previous is `LPAREN`, `COMMA`, `SEMI`, another
+  `OPERATOR`, a keyword-`WORD`, or there is no previous token at all).
+  `Today()-30`'s `-` has `RPAREN` before it → binary; the comma before
+  `AddMonths`'s `-12` → unary. Confirmed against `app-unbuilt/script.qvs`:
+  of 24 `-` operators, 17 binary and 7 unary — matches the count above
+  exactly.
+- **The `LOAD *` wildcard**, typed `OPERATOR` but not one. Classified by
+  *position*, not content: a `*` is the wildcard iff its previous
+  non-trivia token is the `WORD` `load`, or is `distinct` whose own
+  previous non-trivia token is `load` — the only place Qlik syntax allows
+  a bare `*` there, so it can never collide with a genuine multiplication
+  like `n*chunkSize`. A wildcard gets no operator-spacing rule at all, in
+  either direction. Confirmed: of 42 `*` tokens, 31 wildcard and 11
+  genuine (`n*chunkSize`, line 1740) — matches exactly.
 
 #### Sanity check of the real script, 2026-08-14
 
@@ -620,33 +639,61 @@ the tokenizer exists to protect.
 
 #### Other traps, already paid for
 
-- **Decompose the line.** §4.7's collapse rule must not eat the first field's
-  two-space pad (§4.4). Split into indent / separator / content; a flat-string
-  rule cannot get both cases right. This bug has already been hit once, in ten
-  lines of throwaway code.
-- **Skip `SELECT ... ;`** like every other pass (§2.3).
-- **Never touch inside a quoted, bracketed or comment token.** They are opaque
-  single tokens, so this is free — but a space inserted inside `[Grant
-  Activity]` renames a field, and `verify.R` self-tests for exactly that.
+- **The two-space pad needs no line decomposition.** Expected to require
+  splitting each field line into indent / separator / content (this
+  section's original draft, written before the pass existed). It didn't:
+  the pad is part of the same whitespace token as its preceding newline, so
+  §3.4's scope boundary already excludes it. The one exception that
+  survived contact with real code is narrower than a whole "line-leading
+  region" — just the gap after a field-separator comma. See §4.7.
+- **Skip `SELECT ... ;`** like every other pass (§2.3) — via
+  `in_select_region()`, promoted from a private helper in
+  `enforce_reserved_word_case` to a shared function in `qlik_tokenizer.R`
+  (§2.2), since this pass needed the identical logic and a second private
+  copy would drift.
+- **Never touch inside a quoted, bracketed or comment token.** Free, as
+  expected — the pass only ever rewrites `WS` tokens, never the opaque ones.
+- **Voided tokens count as no gap.** A token blanked by an earlier pass
+  (`void_token()`) renders as nothing, so "is there already a space here"
+  must treat a `VOID` neighbour the same as no token at all, not as
+  something occupying the gap.
+- **Two rules can want a splice at the same anchor.** A comma directly
+  followed by a binary operator with no gap (`,+b`) makes the comma's
+  "space after" and the operator's "space before" rules target the same
+  physical position. Guarded so it produces one splice and one log entry,
+  not two.
+- **`find_load_segments()`'s `seg$end` is a double, not an integer** — an
+  unsuffixed `k - 1` literal in its own code. Harmless to passes that use it
+  arithmetically (`enforce_leading_commas` does `seg$end + 1` directly), but
+  fails a strict `vapply(fn, integer(1))`. Worked around locally in this
+  pass rather than fixed at the source, since `find_load_segments()` was out
+  of scope here — worth fixing before another pass trips over it.
 
 #### Known cases to test against
 
-- Collapse: `[Grant Managing Region].txt` lines 17, 78 and 420, all `as  [`.
-- Preserve: the first field's two-space pad in `formatexample.txt`.
-- Idempotence: a second run must report zero changes — the property
-  `enforce_leading_commas` claimed in its docstring and did not have.
+- Collapse: `[Grant Managing Region].txt` lines 17, 78 and 420, all `as  [`
+  — confirmed collapsing to `as [`.
+- Preserve: the first field's two-space pad — confirmed automatic (see
+  §4.7), by the scope argument plus a synthetic multi-line `LOAD` test, not
+  by testing `formatexample.txt` directly (it is not one of `verify.R`'s
+  automated fixtures).
+- Idempotence: a second run reports zero changes on both fixtures — the
+  property `enforce_leading_commas` claimed in its docstring and, at the
+  time, did not have.
 
 #### Ordering
 
-After `enforce_leading_commas` (it supplies the space that §4.4 relies on),
-before layout and alignment (both consume final line widths).
+Implemented after `enforce_leading_commas` (it supplies the comma that
+§4.4/§4.7 rely on) and before `enforce_reserved_word_case`. Casing and
+spacing don't otherwise interact — one only rewrites `WORD` text, the other
+only touches `WS` tokens — so their relative order was free; layout and
+alignment (§6.2 onward) still come after this pass, per the original plan.
 
 #### Finishing
 
-`Rscript verify.R` must pass, including semantic equivalence — this pass only
-moves whitespace, so the canonical stream must be **identical**, not merely
-equivalent. Follow the performance template in README ("Adding a pass"):
-hoist columns, accumulate atomic vectors, build the data.frame once.
+`Rscript verify.R`: 50 checks, 0 failed, across both fixtures — semantic
+equivalence, output round-trip and idempotence all hold for the new pass,
+alongside every pass before it.
 
 ### 6.2 Vertical layout — not started, needs new infrastructure
 
