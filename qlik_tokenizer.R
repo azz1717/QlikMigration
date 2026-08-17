@@ -511,7 +511,7 @@ find_load_segments <- function(tokens) {
 #'                     "comment"      column 0
 #'                     "directive"    0 tabs (a SET/LET statement, and any of
 #'                                    its own continuation lines - DESIGN
-#'                                    4.11; blank lines around it are left
+#'                                    4.5/4.8; blank lines around it are left
 #'                                    untouched, same protection as "section")
 #'                     "section"      the WHOLE line carrying a ///$tab
 #'                                    marker (not just the marker itself) -
@@ -636,7 +636,7 @@ find_block_structure <- function(tokens) {
     nx <- if (ls_pos[j] < nc) content[ls_pos[j] + 1L] else NA_integer_
     w2 <- if (!is.na(nx) && ty[nx] == "WORD") lower[nx] else ""
 
-    # SET/LET statements (DESIGN §4.11, Adam 2026-08-17): 0 indent, blank
+    # SET/LET statements (DESIGN §4.5/§4.8, Adam 2026-08-17): 0 indent, blank
     # lines around them left untouched - a "directive" kind distinct from
     # "statement". Only re-evaluated when a new top-level statement is
     # actually starting here, so a directive's own continuation lines (a

@@ -490,7 +490,7 @@ verify_block_structure <- function() {
   ok("a ///$tab marker on its own line is also a section",
      identical(kinds("///$tab Main\nTRACE a = 1;"), c("section", "statement")))
 
-  # DESIGN 4.11 (Adam 2026-08-17): SET/LET is a distinct "directive" kind,
+  # DESIGN 4.5/4.8 (Adam 2026-08-17): SET/LET is a distinct "directive" kind,
   # not an ordinary "statement" - including a continuation line of a
   # multi-line SET/LET expression.
   ok("SET/LET is the directive kind, including its own continuation lines",
@@ -560,7 +560,7 @@ verify_vertical_layout <- function() {
   ok("a ///$tab marker's own line is untouched; the line after gets indent fixed, blanks preserved",
      identical(sec, "\tTRACE a=1;\nX///$tab Main\n\tTRACE b=2;"))
 
-  # DESIGN 4.11 (Adam 2026-08-17): SET/LET gets 0 indent, and the blank-line
+  # DESIGN 4.5/4.8 (Adam 2026-08-17): SET/LET gets 0 indent, and the blank-line
   # count on EITHER side of one is left exactly as authored - never forced
   # to the standard two, never collapsed to zero.
   dv <- lay("TRACE a=1;\n\n\nSET b=2;\nLET c=3;\n\nTRACE d=4;")

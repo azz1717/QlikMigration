@@ -71,7 +71,7 @@ entry current in the same commit that changes its function.
   field but the first misclassified as `statement` (1 tab) instead of `field` (2 tabs). Fixed by
   classifying on what the comma actually separates (`next_non_trivia_idx()`) rather than its own
   position — depth>0 commas (mid-expression, never moved by pass 3) are unaffected.
-  DESIGN §4.11 (Adam 2026-08-17): a SET/LET statement, and any of its own continuation lines, is
+  DESIGN §4.5/§4.8 (Adam 2026-08-17): a SET/LET statement, and any of its own continuation lines, is
   kind `directive` — 0 indent, blank lines on EITHER side left exactly as authored, never forced to
   the standard two or collapsed to zero. Detected once per top-level statement (`pending`), not
   per-token, so it survives a multi-line SET/LET expression.
@@ -169,7 +169,7 @@ entry current in the same commit that changes its function.
 
 ## enforce_vertical_layout.R — pass 6
 
-- `enforce_vertical_layout(tokens)` — indentation and blank lines. DESIGN §3.4/§4.5/§4.8/§4.11/§6.2.
+- `enforce_vertical_layout(tokens)` — indentation and blank lines. DESIGN §3.4/§4.5/§4.8/§4.9/§6.2.
   Consumes `find_block_structure()`. `$changes`: line, kind (the line's own kind — statement /
   field / continuation / comment / directive, never section), before, after — one row per rewritten
   gap.
@@ -186,7 +186,7 @@ entry current in the same commit that changes its function.
   only the blank-line COUNT of that gap is left untouched, reproduced verbatim from the original
   whitespace token rather than recomputed.
 - A `directive` (SET/LET) line gets the same blank-line protection on BOTH its incoming and
-  outgoing gap — DESIGN §4.11, Adam 2026-08-17: 0 indent, but never force/collapse the spacing
+  outgoing gap — DESIGN §4.5/§4.8, Adam 2026-08-17: 0 indent, but never force/collapse the spacing
   around one.
 - FROM clause (DESIGN §4.9, Adam 2026-08-17): the format spec's opening paren — `(qvd)` and
   similar — joins the FROM path on one line, one space between, even when the source has it

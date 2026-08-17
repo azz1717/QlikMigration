@@ -425,10 +425,17 @@ Tabs, **tab width 4**. Not spaces (see §3.6).
 
 | element | indent |
 |---|---|
-| table label, `LOAD`, `FROM`, statement prefixes | 1 tab |
+| table label, `LOAD`, `FROM`, `RESIDENT`, statement prefixes | 1 tab |
 | field lines | 2 tabs |
 | true developer comments | **column 0** |
 | `SET` / `LET` statements | **column 0** |
+
+`RESIDENT` is a source clause and is treated exactly like `FROM` — its own
+line at 1 tab, one rule covering both (ratified Adam 2026-08-17 against the
+pipeline's existing output; there was never a separate `RESIDENT` rule, only
+an unwritten one). Statement prefixes — `LEFT JOIN`, `CONCATENATE`,
+`LEFT KEEP ([Table])` — likewise keep their own line at 1 tab, per the row
+above.
 
 Comments sit at column 0 deliberately, so they stand out against the indented
 code. That only reads as a signal because commented-out code is removed
@@ -570,8 +577,8 @@ on both fixtures.
 
 - No blank lines inside a statement.
 - Exactly **two** blank lines between statements.
-- **Comment attachment (convention call, built under time pressure
-  2026-08-17, not separately confirmed with Adam — flag if wrong):** a
+- **Comment attachment (convention call 2026-08-17, confirmed by Adam
+  2026-08-17 — reviewed in output, working, no further work):** a
   comment (or contiguous run of comments) immediately before the next real
   statement, with no `///$tab` section in between, is treated as belonging
   to THAT statement — the two-blank-line gap goes above the comment, not
@@ -592,12 +599,17 @@ on both fixtures.
   at column 0 right after a section marker was wrong); only the blank-line
   *count* of that gap is left exactly as authored, never normalised to the
   standard two.
-- `SET`/`LET` directives (Adam 2026-08-17 — see §4.11): 0 indent, and the
+- `SET`/`LET` directives (Adam 2026-08-17 — indent per §4.5): 0 indent, and the
   blank-line count on EITHER side of one is left exactly as authored —
   never forced to the standard two between statements, never collapsed to
   zero inside a run of consecutive directives. Applies to a directive's own
   continuation lines too (a multi-line SET/LET expression), not just its
   first line.
+- `SELECT ... ;` blocks (ratified Adam 2026-08-17): no special rule. A
+  `SELECT` is spaced exactly like any other statement — 1 tab, the standard
+  two blank lines either side — while its *interior* stays untouched per
+  §2.3. The skip is about not rewriting foreign SQL, not about exempting the
+  block from the file's vertical rhythm.
 
 ### 4.9 FROM clause — implemented (`enforce_vertical_layout`)
 
@@ -620,6 +632,14 @@ than only rewriting whitespace text. Confirmed against
 `[Grant Managing Region].txt`'s two real shapes: the simple `(qvd)\n;` case
 and the `WHERE ... \n// comment\n;` case (around line 240).
 
+**A preceding LOAD's terminator is the same case, not a special one (ratified
+Adam 2026-08-17).** In the `LOAD *, ... ; LOAD ...` chain the first LOAD has
+no `FROM`, so its lone `;` is all that marks the boundary between the two
+statements — but the general rule above already covers it, and it joins onto
+the last field line (`, [A] + 1 AS [C];`). Deliberately no carve-out: the
+boundary stays visible through §4.8's blank lines, not through a stranded
+terminator.
+
 ### 4.10 Comments — not implemented
 
 - Commented-out code is removed, each removal logged in `$changes` with the
@@ -632,19 +652,34 @@ and the `WHERE ... \n// comment\n;` case (around line 240).
 
 ### 4.11 Not yet specified
 
-The worked example covers a single `LOAD ... FROM` statement. These have no
-rule yet and must not be guessed at:
+**Maintenance rule (2026-08-17): the moment an item here is answered, delete
+it from this list and write the rule into the section that owns it.** This
+list rotted badly once — it carried six items that were all resolved
+elsewhere (three of them decided the same day the list still called them
+open), while a genuinely open seventh was never added. A stale entry here is
+worse than no entry: it re-opens settled decisions and wastes a session
+re-deciding them. See CLAUDE.md's maintenance duty.
 
-- `RESIDENT` loads.
-- Prefix lines — `LEFT JOIN`, `CONCATENATE`, `LEFT KEEP ([Table])`: own line?
-  what indent?
-- Preceding LOAD (the `LOAD *, ... ; LOAD ...` pattern, which appears in the
-  real script).
-- Control-flow blocks — `FOR`/`NEXT`, `SUB`/`END SUB`, `IF`/`THEN`/`ENDIF`:
-  indent by nesting depth, or flat?
-- `///$tab` section markers.
-- Blank-line rules around `SELECT` blocks, whose interiors are otherwise
-  skipped entirely (§2.3).
+Genuinely unspecified, must not be guessed at:
+
+- **Bracketing bare words outside a LOAD field list** — `WHERE` clauses and
+  other non-field-list positions. Deliberately out of scope for
+  `enforce_bracket_references` today (§1, and the pass's own header): a bare
+  word there is very often a variable, not a field — a `FOR` counter or a
+  `LET`-assigned name — and bracketing one silently changes what the script
+  loads. Needs a rule that can tell the two apart before anything is touched.
+
+Resolved, kept here only as pointers to where each rule actually lives:
+
+| former item | now specified in |
+|---|---|
+| `RESIDENT` loads | §4.5 — source clause, treated as `FROM` |
+| Prefix lines (`LEFT JOIN`, `CONCATENATE`, `LEFT KEEP`) | §4.5 — own line, 1 tab |
+| Preceding LOAD (`LOAD *, ... ; LOAD ...`) | §4.9 — general lone-`;` rule, no carve-out |
+| Control-flow indent (`FOR`/`SUB`/`IF`) | §4.5 — **flat, not cumulative** |
+| `///$tab` section markers | §4.8 / §6.2 — whole line untouched |
+| Blank lines around `SELECT` | §4.8 — spaced as any statement, interior skipped (§2.3) |
+| `SET`/`LET` directives | §4.5 (indent) / §4.8 (blank lines) |
 
 ---
 

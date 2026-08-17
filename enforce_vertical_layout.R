@@ -7,7 +7,7 @@
 #   - Indentation is FLAT (DESIGN §4.5, decided 2026-08-17): 1 tab for a
 #     statement line, 2 for a field line, 3 for a continuation line (a line
 #     break before a field's expression finishes), 0 for a true developer
-#     comment, 0 for a SET/LET directive (DESIGN §4.11). It does NOT scale
+#     comment, 0 for a SET/LET directive (DESIGN §4.5). It does NOT scale
 #     with FOR/IF/SUB/DO/SWITCH nesting - see DESIGN §4.5 for why (simpler,
 #     avoids compounding §3.6's tab drift).
 #   - A LOAD list's true first field (no leading separator comma) gets a
@@ -24,15 +24,15 @@
 #     describes - e.g. app-unbuilt/script.qvs's
 #         //These are the records of the actual cars...
 #         [Fleet Cars]:
-#     stays glued together. CONVENTION CALL, not yet confirmed with Adam
-#     (built under time pressure, 2026-08-17) - flag if wrong.
+#     stays glued together. Convention call 2026-08-17, CONFIRMED by Adam
+#     the same day - reviewed in output, working, no further work.
 #   - `///$tab` section markers (DESIGN §4.8/§6.2, Adam 2026-08-17): the
 #     WHOLE line carrying one is left completely untouched. The gap
 #     immediately AFTER one now has its indentation fixed like any other
 #     line (Adam 2026-08-17 - a table label directly after a section was
 #     wrongly left at column 0); only the blank-line COUNT of that gap
 #     stays untouched, same protection a SET/LET directive's own gaps get.
-#   - SET/LET directives (DESIGN §4.11, Adam 2026-08-17): 0 indent, and the
+#   - SET/LET directives (DESIGN §4.5/§4.8, Adam 2026-08-17): 0 indent, and the
 #     blank-line count on EITHER side of one is left exactly as authored -
 #     never normalised to the two-blank-line rule, never collapsed to zero.
 #   - FROM clause (DESIGN §4.9, Adam 2026-08-17): the format spec's opening
@@ -105,7 +105,7 @@
 
 #' Count of newline characters in a whitespace token's text - used to
 #' reproduce a gap's original blank-line count exactly, when that count is
-#' being left untouched rather than normalised (DESIGN §4.8/§4.11).
+#' being left untouched rather than normalised (DESIGN §4.8).
 .qvl_count_newlines <- function(s) nchar(gsub("[^\n]", "", s))
 
 #' Index of the WS token whose newline+indent immediately precedes a line
@@ -236,7 +236,7 @@ enforce_vertical_layout <- function(tokens) {
 
     # Blank-line COUNT is left exactly as authored - indentation is still
     # fixed - on either side of a directive (SET/LET) and immediately after
-    # a ///$tab section marker (DESIGN §4.8/§4.11, Adam 2026-08-17). A
+    # a ///$tab section marker (DESIGN §4.8, Adam 2026-08-17). A
     # directive's own incoming gap is protected by kind_i; its outgoing gap,
     # and a section's outgoing gap, are protected by the PREVIOUS line's
     # kind - the section's own line above is already skipped entirely, so

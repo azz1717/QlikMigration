@@ -1,24 +1,25 @@
 # STATE — read this first; update before any commit that starts/finishes a task
 
-**Position (2026-08-17):** SEVEN cosmetic passes, all green: aliases ->
-brackets -> leading commas -> intra-line spacing -> casing -> vertical
-layout -> alias alignment. Layout had 4 bugs found+fixed same day. Alignment
-(§4.6): tabs before AS's existing space, per-block column, 122-char outlier
-cap excluded; a wrapped field is now measured from AS's own line and CAN
-widen the column (no longer blanket-excluded). FROM clause (§4.9): path +
-format spec + terminating `;` all join onto one line, including across a
-comment (the `;` physically relocates in that case). Pass 4's AS-spacing gap
-is fixed. Three-stage testing methodology (CLAUDE.md) fully exercised for
-the first time this session, all three stages signed off by Adam. verify.R:
-97 checks, 0 failed.
+**Position (2026-08-17): styling is functionally COMPLETE.** Seven cosmetic
+passes, all green: aliases -> brackets -> leading commas -> intra-line
+spacing -> casing -> vertical layout -> alias alignment. Rules live in
+DESIGN §4.1-§4.9; don't re-derive them here. Three-stage testing fully
+exercised, signed off by Adam. verify.R: 97 checks, 0 failed.
 
-**Next task:** none queued.
+**§4.11 was documentation rot, not missing work (audited 2026-08-17).** All
+six "unspecified" items were resolved: three already had written rules
+(§4.5 prefix lines, §4.5 flat control-flow indent, §4.8 ///$tab), three had
+working behaviour Adam ratified this session (RESIDENT = FROM per §4.5;
+preceding LOAD's `;` uses §4.9's general lone-`;` rule; SELECT spaced as any
+statement per §4.8). Comment attachment (§4.8) confirmed working. The stale
+list caused a settled decision to be re-opened; CLAUDE.md now carries a duty
+to prune §4.11 the moment a call is made.
+
+**Next task:** none queued. Next real work is phase 2 (pruning), DESIGN §5.
 
 **Open items:**
-- Layout's comment-attachment convention (DESIGN §4.8) still not separately
-  confirmed with Adam.
-- Pre-existing, NOT fixed: pass 3 can attach a trailing comma with no
-  following field onto a `FROM` line instead of warning. RESIDENT loads,
-  prefix lines, control-flow indent depth still open (§4.11).
+- Bracketing bare words outside LOAD field lists (WHERE clauses etc.) —
+  §4.11, the one genuine gap. Out of scope deliberately: a bare word there
+  is often a variable, and bracketing one changes what the script loads.
 
 (Cap: 25 lines. Longer means it is rotting — prune to position/next/open.)

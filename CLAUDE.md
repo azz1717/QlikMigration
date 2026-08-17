@@ -69,6 +69,16 @@ conflict — don't default to the general rule.
 - A pass added/reordered -> update run_pipeline.R, verify.R's PASSES, README's
   pass table AND its worked example, and the relevant DESIGN section. README
   was missed once already (fixed in a2f1a57) — check it explicitly.
+- A style question ANSWERED -> delete it from DESIGN §4.11 and write the rule
+  into the section that owns it, same commit. §4.11 is a to-do list, not an
+  archive. It rotted badly once (fixed 2026-08-17): it still listed six items
+  that were all resolved elsewhere — three decided the SAME DAY the list
+  called them open — so a later session read §4.11, believed control-flow
+  indent was undecided, and put a settled decision back to Adam as an open
+  question. Meanwhile a genuinely open seventh item was never added to it.
+  A stale entry costs a whole re-decision; check §4.11 whenever a call is made.
+- Before presenting any style question as open, grep DESIGN for the rule
+  FIRST (§4.5 etc.), don't trust §4.11's list alone.
 - This is the ONLY mechanism that keeps STATE.md/INTERFACES.md current.
   There is no separate end-of-session handover step (Adam's explicit choice,
   2026-08-17) — a session that ends without committing leaves no updated
