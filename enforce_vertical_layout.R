@@ -55,6 +55,54 @@
 .qvl_indent <- c(statement = "\t", field = "\t\t", continuation = "\t\t\t",
                   comment = "", directive = "")
 
+#' Physically relocate a lone ';' that has one or more comment lines sitting
+#' between it and its real target back to directly follow the last real
+#' (non-trivia) token - DESIGN §4.9 extension, Adam 2026-08-17. Needed
+#' because the normal join technique (collapse the WS between two tokens to
+#' "") would, across a comment, land the ';' at the END of the comment's own
+#' line - i.e. inside the comment, silently commenting the terminator out
+#' forever. This is the one place in this pass that moves a content token
+#' rather than only rewriting whitespace text; it runs BEFORE
+#' find_block_structure() so every index everything downstream sees is
+#' already consistent with the moved token.
+#' After this runs, every remaining lone ';' is exactly "one WS token after
+#' its target" - the same shape the FROM/(qvd) case already collapses in the
+#' main loop below, so that loop needs no separate branch for the moved ones.
+.qvl_join_orphan_semicolons <- function(tokens) {
+  n <- nrow(tokens)
+  if (n == 0) return(tokens)
+  t_type <- tokens$type
+  t_text <- tokens$text
+  lower  <- tolower(t_text)
+  in_select <- in_select_region(t_type, lower)
+  PREV <- prev_non_trivia_idx(t_type)
+
+  # "Lone" = starts its own physical line: immediately preceded by a
+  # newline-bearing WS token.
+  is_lone_semi <- t_type == "SEMI" & !in_select &
+    c(FALSE, t_type[-n] == "WS") &
+    c(FALSE, grepl("\n", t_text[-n], fixed = TRUE))
+  candidates <- which(is_lone_semi)
+  if (length(candidates) == 0L) return(tokens)
+
+  # Needs moving only when something besides that one WS token sits between
+  # the ';' and its target - prev_non_trivia_idx() already skips WS/COMMENT/
+  # VOID, so "target isn't two rows back" can only mean a comment (or
+  # comment/blank-line chain) is in the way.
+  needs_move <- candidates[!is.na(PREV[candidates]) & PREV[candidates] != candidates - 2L]
+  if (length(needs_move) == 0L) return(tokens)
+
+  insertions <- list()
+  for (k in needs_move) {
+    target <- PREV[k]
+    insertions[[as.character(target)]] <- data.frame(
+      text = ";", type = "SEMI", line = tokens$line[target],
+      stringsAsFactors = FALSE)
+  }
+  tokens <- void_token(tokens, needs_move)
+  splice_tokens(tokens, insertions)
+}
+
 #' Count of newline characters in a whitespace token's text - used to
 #' reproduce a gap's original blank-line count exactly, when that count is
 #' being left untouched rather than normalised (DESIGN §4.8/§4.11).
@@ -81,6 +129,7 @@
 #'               "section", since
 #'               those are never rewritten.
 enforce_vertical_layout <- function(tokens) {
+  tokens <- .qvl_join_orphan_semicolons(tokens)
   bs <- find_block_structure(tokens)
   L <- bs$lines
   warn <- bs$warnings
@@ -150,6 +199,26 @@ enforce_vertical_layout <- function(tokens) {
         }
         next
       }
+    }
+
+    # Trailing ';' (DESIGN §4.9 extension, Adam 2026-08-17): a lone ';' line
+    # joins onto whatever precedes it - tight, no space - the same technique
+    # as the FROM/(qvd) case above. Any ';' that had a comment in the way was
+    # already relocated by .qvl_join_orphan_semicolons() before this loop
+    # runs, so every case reaching here is exactly "SEMI immediately after
+    # one WS token."
+    if (i > 1L && t_type[L$idx[i]] == "SEMI") {
+      ws_idx <- .preceding_ws_idx(t_type, L$idx[i])
+      if (!is.na(ws_idx)) {
+        before <- t_text[ws_idx]
+        if (!identical(before, "")) {
+          nch <- nch + 1L
+          ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
+          ch_before[nch] <- before; ch_after[nch] <- ""
+          t_text[ws_idx] <- ""
+        }
+      }
+      next
     }
 
     indent <- .qvl_indent[[kind_i]]

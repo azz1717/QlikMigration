@@ -482,14 +482,21 @@ lands one column past every tab stop, never on it. The known consequence of
 tabs-for-alignment (§3.6: tab-run alignment only holds exactly at one tab
 width) is an accepted tradeoff, not a defect.
 
-**Two kinds of field are excluded from a block's column entirely** — left
-with their AS exactly as authored, no forced padding:
-- A field whose expression wraps onto a further line before its `AS`
-  (Adam 2026-08-17): already visually broken from the block's rhythm by
-  wrapping, so forcing every other field to match its width would be
-  absurd.
-- A field whose own column reaches **122 characters** or more (Adam
-  2026-08-17 — the exact length of a real outlier in formatexample.txt,
+**A wrapped field is measured from the line its `AS` actually sits on, not
+excluded (revised 2026-08-17, overriding the original design below — Adam
+found a real case, formatexample.txt's `[Programme Id%]` field, where the
+wrap's own terminal line ends well under the block's column and should
+align like anything else).** Only that final line's own indent + content up
+to `AS` counts — the earlier lines of the wrap are irrelevant to the
+measurement. Per Adam, this is "full symmetry": a wrapped field's width CAN
+widen the block's shared column exactly like a single-line field's can, not
+just get squeezed into a column already fixed by others.
+
+**One kind of field is still excluded from a block's column entirely** —
+left with its AS exactly as authored, no forced padding:
+- A field whose own column (by the measurement above — the wrap's terminal
+  line, if it wrapped) reaches **122 characters** or more (Adam 2026-08-17
+  — the exact length of a real outlier in formatexample.txt,
   `IF("Grant Activity.Activity Id" = '4-ENJBSQ2', ...)`, not a round
   number). One abnormally long field forcing every short field in the same
   block to pad out to match it looked worse than no alignment at all. The
@@ -522,17 +529,21 @@ over by inventing spacing on its own.
   `OPERATOR` but is not one.
 - Any other run of 2+ spaces in content collapses to one.
 
-**KNOWN GAP, TOP PRIORITY (found 2026-08-17, not yet fixed):** nothing here
-forces a space around `AS` itself. The "two `WORD`s can't be adjacent"
-argument above only protects `AS` from OTHER words — it says nothing about
-`AS` sitting directly against a non-`WORD` token (`BRACKET`, `DQUOTE`,
-`SQUOTE`, `RPAREN`...), which tokenizes just fine with zero whitespace.
-Real case, unstyled input: `"field"as[alias]` survives every earlier pass
-unchanged apart from bracketing (§4.2) and casing (§4.1), ending as
-`[field]AS[alias]` — no spaces at all. Discovered because it crashed
-`enforce_alias_alignment` (§4.6), which assumed a space there always
-exists; that pass was hardened not to crash on it, but the actual fix
-belongs here.
+**Fixed 2026-08-17 (found same day):** nothing forced a space around `AS`
+itself. The "two `WORD`s can't be adjacent" argument above only protects
+`AS` from OTHER words — it says nothing about `AS` sitting directly against
+a non-`WORD` token (`BRACKET`, `DQUOTE`, `SQUOTE`, `RPAREN`...), which
+tokenizes just fine with zero whitespace. Real case, unstyled input:
+`"field"as[alias]` used to survive every earlier pass unchanged apart from
+bracketing (§4.2) and casing (§4.1), ending as `[field]AS[alias]` — no
+spaces at all. Discovered because it crashed `enforce_alias_alignment`
+(§4.6), which assumed a space there always exists; that pass was hardened
+not to crash on it, and the actual fix now lives here too: a WORD token
+spelled `as` (case-insensitive, this pass runs before casing) outside
+`SELECT` gets the same zero-gap insertion treatment as commas and
+operators, on both sides. Verified against `formatexample.txt`'s
+hand-added test line (`"Grant Activity.Sub Programme"as[Sub Program]`),
+stage 1 of the testing methodology now in CLAUDE.md.
 
 That collapse rule needs one exception, narrower than originally expected.
 The concern was that a naive "collapse everything" rule would eat the
@@ -594,9 +605,20 @@ Path, format spec and terminating semicolon on one line, one space before
 the format spec: `FROM [lib://...] (qvd);` — even though Qlik's own default
 export wraps the format spec onto its own line, which this pass now joins
 back (Adam 2026-08-17). Detected structurally (the immediately preceding
-line starts with the WORD `from`), not by line kind, and is the one rule in
-`enforce_vertical_layout` that removes a line break rather than just
-renormalising indent/blanks.
+line starts with the WORD `from`), not by line kind.
+
+**A lone `;` on its own line also joins onto whatever precedes it, tight, no
+space (extension, Adam 2026-08-17)** — not only the `(qvd)` case, but the
+general one: a `WHERE` clause (or any other statement tail) followed by a
+`;` on its own line joins too, even across one or more `//` comment lines
+sitting in between. A comment must never end up with the terminator
+appended after it (that would silently comment the terminator out forever),
+so when a comment is in the way the `;` is physically relocated to sit right
+after the last real token instead of just having its surrounding whitespace
+collapsed — the one place in this pass that moves a content token rather
+than only rewriting whitespace text. Confirmed against
+`[Grant Managing Region].txt`'s two real shapes: the simple `(qvd)\n;` case
+and the `WHERE ... \n// comment\n;` case (around line 240).
 
 ### 4.10 Comments — not implemented
 

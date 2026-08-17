@@ -13,7 +13,10 @@ exists to prevent.
 
 ## Reading budget
 - NEVER read fixtures into context: [Grant Managing Region].txt, app-unbuilt/,
-  formatexample.txt, script_out.txt. Grep/sed specific lines when needed.
+  script_out.txt, script_qvs_out.txt. Grep/sed specific lines when needed.
+- EXCEPTION: formatexample.txt and its pipeline output (formatexample_after.txt
+  or equivalent) MAY be read directly — it's the stage-1 fixture in the Testing
+  methodology below and small enough to eyeball (Adam, 2026-08-17).
 - NEVER read HANDOVER-PROTOCOL.md — see Cold start above.
 - Don't read a pass's source unless editing that pass — INTERFACES.md is the
   contract. Don't read DESIGN.md or README.md end-to-end; go by section.
@@ -30,6 +33,35 @@ exists to prevent.
 - Base R only. Token stream, not text. Every pass skips SELECT...;.
 - Check INTERFACES.md shared scanners before writing any helper.
 - Multi-line commit messages: write to a scratch file, `git commit -F <file>`.
+
+## Testing methodology (Adam, 2026-08-17) — gated, three stages, cheapest first
+A change is NOT "pass testing" until all three stages below have Adam's
+sign-off, in order. Do not skip ahead or batch stages together.
+1. **formatexample.txt** — run the pipeline, eyeball the output myself
+   (permitted, see Reading budget). If it looks right, hand it to Adam for
+   his own sign-off. No verify.R requirement at this stage.
+2. **[Grant Managing Region].txt** — run the pipeline only. I do NOT read the
+   output (too large, stays in the never-read list). Hand the file to Adam;
+   he reviews it himself. If something's off he'll name a region (e.g. a
+   table name) for me to grep, not a general re-read. No verify.R requirement
+   at this stage.
+3. **script.qvs** — run the pipeline AND verify.R; verify.R passing (exit 0)
+   is mandatory here. Once green, hand the output to Adam — he either signs
+   off or names a specific region to check.
+Point of the staging: cheap/small first so a regression surfaces before
+spending tokens on the big files, and I never bulk-read the two large
+fixtures — Adam reviews those, I only grep where he directs.
+
+**verify.R's own fixtures list is `[Grant Managing Region].txt` +
+`script.qvs` (see its `main()`).** Running verify.R therefore ALWAYS
+touches both, regardless of which stage is active. Do NOT run verify.R as a
+reflexive "verify before/after any change" habit while stage 1 or stage 2
+is still open — that runs the pipeline against a later stage's fixture
+before its turn, which is the exact thing staging exists to prevent
+(violated 2026-08-17, Adam had to say so directly). verify.R is invoked
+ONLY at stage 3, on Adam's go-ahead. A specific, explicit sequencing
+instruction from Adam overrides a general standing invariant when the two
+conflict — don't default to the general rule.
 
 ## Maintenance duty (same commit as the change, NOT a session-end step)
 - Public function signature/behaviour changed -> update INTERFACES.md entry.

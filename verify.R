@@ -323,11 +323,20 @@ verify_file <- function(path) {
      all(grepl("^\\[.*\\]$", r_br$changes$after)))
 
   r_lay <- enforce_vertical_layout(tokens)
-  keep_before <- tokens$type != "WS"
-  keep_after  <- r_lay$tokens$type != "WS"
-  ok("layout: only WS token text changes, nothing else",
+  # SEMI (and VOID) excluded too, not just WS (2026-08-17): a lone ';'
+  # separated from its real target by a comment is now physically relocated
+  # (DESIGN §4.9 extension) - the one content token this pass is allowed to
+  # move. The relocation leaves the original SEMI's row behind as VOID,
+  # which must be excluded from "after" too or the filtered sequences drift
+  # out of alignment by one. The SEMI-count equality clause still catches a
+  # dropped/duplicated one.
+  keep_before <- tokens$type != "WS" & tokens$type != "SEMI"
+  keep_after  <- r_lay$tokens$type != "WS" & r_lay$tokens$type != "SEMI" &
+    r_lay$tokens$type != "VOID"
+  ok("layout: only WS token text changes (plus relocating a SEMI past a comment), nothing else",
      identical(tokens$text[keep_before], r_lay$tokens$text[keep_after]) &&
-       identical(tokens$type[keep_before], r_lay$tokens$type[keep_after]))
+       identical(tokens$type[keep_before], r_lay$tokens$type[keep_after]) &&
+       sum(tokens$type == "SEMI") == sum(r_lay$tokens$type == "SEMI"))
 
   r_align <- enforce_alias_alignment(r_lay$tokens)
   ok("alignment: every change is tabs plus the preserved space before AS",
@@ -525,13 +534,14 @@ verify_vertical_layout <- function() {
      identical(b, paste("\tFOR i=1 to 3", "\tTRACE a=1;", "\tTRACE b=2;", "\tNEXT",
                         "\n\n\tTRACE c=3;", sep = "\n")))
 
-  # a ';' alone on its own line must not spawn a phantom 2-blank-line gap
-  # right before itself (the bug fixed in find_block_structure, 2026-08-17).
-  # "LOAD [A]" is one physical source line (no break before [A]) - this pass
-  # reindents existing line starts, it never inserts new line breaks.
+  # a ';' alone on its own line now joins onto whatever precedes it - tight,
+  # no space - instead of staying on its own indented line (DESIGN §4.9
+  # extension, Adam 2026-08-17, overriding the original design tested here).
+  # It must still not spawn a phantom 2-blank-line gap before the statement
+  # that follows it.
   s <- lay("[T]:\nLOAD [A]\nFROM x\n;\n[U]:\nLOAD [B];")
-  ok("a lone ';' stays glued to the statement it closes, no blank line before it",
-     identical(s, paste("\t[T]:", "\tLOAD [A]", "\tFROM x", "\t;",
+  ok("a lone ';' joins onto the line that precedes it, no blank line before it",
+     identical(s, paste("\t[T]:", "\tLOAD [A]", "\tFROM x;",
                         "\n\n\t[U]:", "\tLOAD [B];", sep = "\n")))
 
   # a leading comment is glued to the statement it describes: the 2-blank-
@@ -601,14 +611,18 @@ verify_alias_alignment <- function() {
   ok("two fields of different width land their AS on the same tab stop",
      identical(a1, "[T]:\n\tLOAD\n\t\t  [A]\t AS [A]\n\t\t, [BB]\t AS [BB]\n\tFROM x;"))
 
-  # a field whose expression wraps onto another line before AS is excluded
-  # from BOTH the column calculation and the rewrite (Adam 2026-08-17) - the
-  # short field still aligns to its own width, unaffected by the wrapped one
+  # a field whose expression wraps onto another line before AS is now
+  # measured from the line AS itself sits on and CAN widen the block's
+  # shared column (Adam 2026-08-17, overriding the original design tested
+  # here). [A]'s own column is 13 (2 tabs + 2-space pad + "[A]"); the
+  # wrapped field's continuation line is 3 tabs (12) + "'y', 'n')" (9) = 21.
+  # max(13, 21) = 21 -> next multiple of 4 strictly greater = 24. [A] needs
+  # 3 tabs to reach 24 from 13; the wrapped field needs 1 tab from 21.
   a2 <- align(paste0(
     "[T]:\n\tLOAD\n\t\t  [A] AS [A]\n\t\t, IF(x > 1,\n\t\t\t'y', 'n') AS [LongOne]\n\tFROM x;"))
-  ok("a wrapped field is excluded from the column and left untouched",
+  ok("a wrapped field is measured from AS's own line and can widen the column",
      identical(a2, paste0(
-       "[T]:\n\tLOAD\n\t\t  [A]\t AS [A]\n\t\t, IF(x > 1,\n\t\t\t'y', 'n') AS [LongOne]\n\tFROM x;")))
+       "[T]:\n\tLOAD\n\t\t  [A]\t\t\t AS [A]\n\t\t, IF(x > 1,\n\t\t\t'y', 'n')\t AS [LongOne]\n\tFROM x;")))
 
   # every rewritten gap is tabs followed by the one preserved space, never a
   # bare space and never tabs that swallow the space

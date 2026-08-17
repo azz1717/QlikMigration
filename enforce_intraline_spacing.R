@@ -19,6 +19,11 @@
 #     lists.)
 #   - Exactly one space either side of every binary operator: arithmetic
 #     (+ - * /), comparison (= <> > < >= <=), concatenation (&).
+#   - Exactly one space either side of AS (fixed 2026-08-17 - see the KNOWN
+#     GAP note that used to live here: two WORDs can't be lexically adjacent,
+#     but AS against a non-WORD token like BRACKET/DQUOTE/SQUOTE/RPAREN can,
+#     e.g. unstyled input "field"as[alias]). Case-insensitive match since
+#     this pass runs before casing (pass 5).
 #   - No space immediately inside parentheses - IF(x, 1, 0), never
 #     IF( x, 1, 0 ).
 #   - Any other run of 2+ spaces in content collapses to one.
@@ -149,10 +154,20 @@ enforce_intraline_spacing <- function(tokens) {
   collapse <- touchable_ws & !force_zero & !protect_after & nchar(t_text) > 1L
 
   # candidate insertion sites: after every comma, both sides of every binary
-  # operator. Not every candidate actually needs a splice (most already have
-  # their one space) - this is just the upper bound for preallocation.
+  # operator, both sides of every AS. Not every candidate actually needs a
+  # splice (most already have their one space) - this is just the upper
+  # bound for preallocation.
   comma_idx <- which(is_comma)
   op_idx    <- which(is_binary_op)
+
+  # AS: the "two WORDs can't be lexically adjacent" argument that implicitly
+  # spaces every other keyword says nothing about AS sitting directly against
+  # a non-WORD token (BRACKET, DQUOTE, SQUOTE, RPAREN...), which tokenizes
+  # fine with zero whitespace - DESIGN §4.7's KNOWN GAP, fixed 2026-08-17.
+  # Runs before casing (pass 5), so match case-insensitively; AS is a
+  # QLIK_KEYWORDS member so any bare WORD spelled "as" outside SELECT is
+  # unambiguously this keyword, never a field (keywords win - INTERFACES.md).
+  as_idx <- which(t_type == "WORD" & lower == "as" & !in_select)
 
   # four disjoint categories of change - force_zero/collapse never overlap
   # (mutually exclusive by construction above), and insertions only ever
@@ -160,7 +175,7 @@ enforce_intraline_spacing <- function(tokens) {
   # touch (those only ever act on a WS token that already exists). Size the
   # log to the true upper bound rather than nrow(tokens): each category can
   # independently approach that size, so summing them can exceed it.
-  cap <- sum(force_zero) + sum(collapse) + length(comma_idx) + 2L * length(op_idx)
+  cap <- sum(force_zero) + sum(collapse) + length(comma_idx) + 2L * length(op_idx) + 2L * length(as_idx)
   ch_line <- integer(cap); ch_kind <- character(cap); ch_detail <- character(cap)
   nch <- 0L
 
@@ -223,6 +238,25 @@ enforce_intraline_spacing <- function(tokens) {
       insertions[[key]] <- row
       nch <- nch + 1L
       ch_line[nch] <- t_line[i]; ch_kind[nch] <- "insert"; ch_detail[nch] <- "space after operator"
+    }
+  }
+
+  for (i in as_idx) {
+    if (i > 1L && t_type[i - 1L] != "WS") {
+      key <- as.character(i - 1L)
+      if (is.null(insertions[[key]])) {
+        row <- space_row; row$line <- t_line[i]
+        insertions[[key]] <- row
+        nch <- nch + 1L
+        ch_line[nch] <- t_line[i]; ch_kind[nch] <- "insert"; ch_detail[nch] <- "space before AS"
+      }
+    }
+    if (i < n && t_type[i + 1L] != "WS" && is.null(insertions[[as.character(i)]])) {
+      key <- as.character(i)
+      row <- space_row; row$line <- t_line[i]
+      insertions[[key]] <- row
+      nch <- nch + 1L
+      ch_line[nch] <- t_line[i]; ch_kind[nch] <- "insert"; ch_detail[nch] <- "space after AS"
     }
   }
 

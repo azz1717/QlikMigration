@@ -3,15 +3,16 @@
 **Position (2026-08-17):** SEVEN cosmetic passes, all green: aliases ->
 brackets -> leading commas -> intra-line spacing -> casing -> vertical
 layout -> alias alignment. Layout had 4 bugs found+fixed same day. Alignment
-(new, §4.6): tabs before AS's existing space, per-block column, 122-char
-outlier cap excluded. FROM clause (§4.9) also done: one line, one space.
-verify.R: 97 checks, 0 failed.
+(§4.6): tabs before AS's existing space, per-block column, 122-char outlier
+cap excluded; a wrapped field is now measured from AS's own line and CAN
+widen the column (no longer blanket-excluded). FROM clause (§4.9): path +
+format spec + terminating `;` all join onto one line, including across a
+comment (the `;` physically relocates in that case). Pass 4's AS-spacing gap
+is fixed. Three-stage testing methodology (CLAUDE.md) fully exercised for
+the first time this session, all three stages signed off by Adam. verify.R:
+97 checks, 0 failed.
 
-**Next task — TOP PRIORITY:** `enforce_intraline_spacing` (pass 4) never
-forces a space around `AS` next to a non-WORD token (`"field"as[alias]` ->
-`[field]AS[alias]`, zero spaces, real unstyled-input case). Found building
-alignment, which was hardened not to crash on it rather than fix it — the
-actual fix belongs in pass 4. See INTERFACES.md's entry for that pass.
+**Next task:** none queued.
 
 **Open items:**
 - Layout's comment-attachment convention (DESIGN §4.8) still not separately

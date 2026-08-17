@@ -41,8 +41,9 @@ source("enforce_reserved_word_case.R")
 source("enforce_vertical_layout.R")
 source("enforce_alias_alignment.R")
 
-input_path  <- "[Grant Managing Region].txt"
-output_path <- "script_out.txt"
+args <- commandArgs(trailingOnly = TRUE)
+input_path  <- if (length(args) >= 1) args[1] else "[Grant Managing Region].txt"
+output_path <- if (length(args) >= 2) args[2] else "script_out.txt"
 
 tokens <- read_qlik_script(input_path)
 

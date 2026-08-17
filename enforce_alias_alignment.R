@@ -28,13 +28,15 @@
 #          A field sharing a physical line with LOAD or another field
 #          (unusual, hand-typed input) is left completely alone rather
 #          than guessed at - no established convention for that shape yet.
-#       2. its own content through AS sits on that SAME source line - a
-#          field whose expression wraps onto further lines is excluded:
-#          it's already visually broken from the block's rhythm by
-#          wrapping, so forcing every other field to match its width would
-#          be absurd, and its own AS (which may itself open a fresh
-#          continuation line, already governed by vertical layout) is out
-#          of scope here.
+#       2. AS itself starts a genuine line find_block_structure() has a row
+#          for (true of every line - "field" or "continuation" alike). A
+#          wrapped field is no longer excluded outright (Adam 2026-08-17,
+#          overriding the original design here): its width is measured from
+#          the line AS actually sits on, not the field's first line - the
+#          earlier lines of the wrap don't count, only where it terminates.
+#          A field whose wrap genuinely runs too wide still gets the
+#          outlier treatment below via that same measurement; it just isn't
+#          excluded purely for HAVING wrapped.
 #   - The column is the smallest multiple of 4 (tab width, DESIGN §3.6)
 #     strictly greater than every eligible field's own column right after
 #     its content - guaranteeing at least one tab of gap even for the
@@ -110,6 +112,9 @@ enforce_alias_alignment <- function(tokens) {
   # TRUE line-start token, not from first_i.
   field_rows <- bs$lines[bs$lines$kind == "field", c("idx", "line")]
   field_line_idx <- setNames(field_rows$idx, as.character(field_rows$line))
+  # Every line, any kind - used to find where AS's OWN line starts, since
+  # for a wrapped field that's a "continuation" row, not a "field" one.
+  all_line_idx <- setNames(bs$lines$idx, as.character(bs$lines$line))
 
   t_type <- tokens$type
   t_text <- tokens$text
@@ -135,16 +140,20 @@ enforce_alias_alignment <- function(tokens) {
       !is.na(.eaa_preceding_ws_idx(t_type, as_idx[m])), logical(1))
 
     eligible <- (as.character(t_line[first_i[members]]) %in% names(field_line_idx)) &
-      (t_line[as_idx[members]] == t_line[first_i[members]]) &
+      (as.character(t_line[as_idx[members]]) %in% names(all_line_idx)) &
       has_ws_before_as
     if (!any(eligible)) next
     elig <- members[eligible]
 
     cols <- vapply(elig, function(m) {
-      line_start <- field_line_idx[[as.character(t_line[first_i[m]])]]
+      # Anchored to AS's OWN line, not the field's first line - identical
+      # for a normal single-line field, but for a wrapped one this is what
+      # measures only the terminal line's width (DESIGN §4.6 extension,
+      # Adam 2026-08-17).
+      line_start <- all_line_idx[[as.character(t_line[as_idx[m]])]]
 
-      # column at the true start of this field's LINE (the leading indent,
-      # or the leading comma+space/first-field pad's own preceding indent)
+      # column at the true start of AS's LINE (the leading indent, or the
+      # leading comma+space/first-field pad's own preceding indent)
       ws_idx <- .eaa_preceding_ws_idx(t_type, line_start)
       base_col <- 0L
       if (!is.na(ws_idx)) {

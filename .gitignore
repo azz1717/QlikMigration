@@ -16,6 +16,8 @@ prof_*.out
 script_out.txt
 script_out2.txt
 scratch_full_out.qvs
+formatexample_after.txt
+script_qvs_out.txt
 
 # benchmark / profiling scratch
 chunk_timings.rds

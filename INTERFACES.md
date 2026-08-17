@@ -143,13 +143,16 @@ entry current in the same commit that changes its function.
   cannot end a value; `LOAD *` wildcard = previous non-trivia token is `load`, or `distinct`
   preceded by `load`. A wildcard gets no spacing rule in either direction.
 - Private: `.na_false` (NA -> FALSE in a logical mask).
-- **KNOWN GAP, TOP PRIORITY (found 2026-08-17, not yet fixed):** no rule forces a space around the
-  `AS` keyword. Two WORD tokens can't be lexically adjacent without whitespace already between
-  them, which is why every OTHER keyword-adjacency case is implicitly covered — but `AS` sitting
-  directly against a non-WORD token (`BRACKET`, `DQUOTE`, `SQUOTE`, `RPAREN`...) has no such
-  guarantee. Real case: `"field"as[alias]` survives passes 2-6 unchanged apart from bracketing and
-  casing, ending as `[field]AS[alias]` — no spaces at all. `enforce_alias_alignment.R` (pass 7)
-  had to be hardened to not crash on this rather than assume it can't happen. See STATE.md.
+- **Fixed 2026-08-17:** a rule now forces a space around the `AS` keyword the same way commas and
+  operators get one — insertion, not just collapse. Two WORD tokens can't be lexically adjacent
+  without whitespace already between them, which is why every OTHER keyword-adjacency case was
+  implicitly covered — but `AS` sitting directly against a non-WORD token (`BRACKET`, `DQUOTE`,
+  `SQUOTE`, `RPAREN`...) had no such guarantee. Real case: `"field"as[alias]` used to survive
+  passes 2-6 unchanged apart from bracketing and casing, ending as `[field]AS[alias]` — no spaces
+  at all. `as_idx <- which(t_type == "WORD" & lower == "as" & !in_select)`, spliced the same way
+  the comma/operator insertion loops already were. `enforce_alias_alignment.R` (pass 7)'s
+  no-WS-before-AS exclusion (below) is now unreachable via this specific case but stays as a
+  defensive guard for any other future producer of that shape.
 
 ## enforce_reserved_word_case.R — pass 5
 
@@ -188,16 +191,29 @@ entry current in the same commit that changes its function.
 - FROM clause (DESIGN §4.9, Adam 2026-08-17): the format spec's opening paren — `(qvd)` and
   similar — joins the FROM path on one line, one space between, even when the source has it
   wrapped onto its own line (Qlik's own default export shape). Detected structurally (immediately
-  preceding line starts with the WORD `from`), not by kind — the only rule in this pass that
-  removes a line break rather than renormalising indent/blanks.
-- GOTCHA: only rewrites the leading-whitespace GAP for each line — it never inserts a new line
-  break where the source didn't already have one, and never touches anything after a line's first
-  token.
+  preceding line starts with the WORD `from`), not by kind.
+- Trailing `;` (DESIGN §4.9 extension, Adam 2026-08-17): a lone `;` line joins onto whatever
+  precedes it — tight, no space — same rationale as the FROM/(qvd) case. Handled in two parts:
+  `.qvl_join_orphan_semicolons()` runs FIRST, before `find_block_structure()` is even called, and
+  physically relocates the `;` to sit right after the last real (non-trivia) token when one or more
+  `//` comment lines separate it from that target — otherwise a plain whitespace collapse would land
+  the `;` at the END of the comment's line, silently commenting the terminator out forever. This is
+  the one place in this pass that moves a content token rather than only rewriting whitespace text;
+  the relocated token gets a fresh SEMI row via `splice_tokens()`, the original is `void_token()`-ed,
+  never deleted. After that pre-pass, every remaining lone `;` is "one WS token after its target" —
+  the main per-line loop's own `SEMI`-line branch just collapses that WS to `""`, same technique as
+  the FROM/(qvd) case.
+- GOTCHA: other than the `;`-relocation above, this pass only rewrites the leading-whitespace GAP
+  for each line — it never inserts a new line break where the source didn't already have one, and
+  never touches anything after a line's first token.
 - GOTCHA: line 1 usually has no preceding WS token at all (true of both fixtures). That insertion
   is deferred until AFTER the main loop finishes — doing it mid-loop shifts every later original
   token index by one and silently corrupts the rest of the file (caught before commit, 2026-08-17).
-- Needs no new `canonical_stream` rule in verify.R: only WS token TEXT is ever rewritten, and
-  WS/COMMENT/VOID are already stripped before the equivalence check compares anything.
+- `canonical_stream` in verify.R needs no new rule for the indent/blank-line rewriting (WS-only,
+  already stripped before comparison), but the `;`-relocation is real content movement — verify.R's
+  own pass-isolation check (`layout: only WS token text changes...`) now also excludes `SEMI` and
+  `VOID` token rows from its before/after comparison, with a separate SEMI-count equality clause to
+  still catch a dropped or duplicated one.
 
 ## enforce_alias_alignment.R — pass 7
 
@@ -211,8 +227,15 @@ entry current in the same commit that changes its function.
   Inserted BEFORE the existing single space in front of `AS` (guaranteed by intraline spacing), not
   instead of it — `AS` lands one column past every tab stop, never on it.
 - Scope is per LOAD block, not per file (DESIGN §4.6): one enormous field only widens its own
-  block. A field whose content wraps onto another line before `AS` is excluded from BOTH the
-  column calculation and the rewrite entirely — left exactly as authored.
+  block.
+- A field whose content wraps onto another line before `AS` is no longer excluded outright (Adam
+  2026-08-17, overriding the original design): its width is measured from the line `AS` itself
+  sits on — `all_line_idx` (a lookup over EVERY line, not just `field`-kind ones, built from
+  `find_block_structure()`) resolves that line's start token, identically for a normal single-line
+  field (where it's the same line) and a wrapped one (where it's the terminal continuation line).
+  Only that terminal line's own indent + content counts, and — per Adam, "full symmetry" — it CAN
+  widen the block's shared column same as any other field, not just get squeezed into one already
+  set by others. It still gets the outlier treatment below if that measurement alone is too wide.
 - A field whose own column reaches `.eaa_max_field_width` (122, Adam 2026-08-17 — the exact length
   of a real outlier field in formatexample.txt) or more gets the same exclusion treatment as a
   wrapped field: "move onto the next widest column" means the block max is taken over the
@@ -225,8 +248,8 @@ entry current in the same commit that changes its function.
   unstyled data in `app-unbuilt/script.qvs`: `"field"as[alias]`) crashed the column math, which
   assumed intraline spacing always leaves a WS token there — true almost everywhere but not
   universal on ugly input. Now excluded from alignment (same as any other malformed/outlier
-  field) instead of crashing. **This gap in pass 4 is real and not yet fixed — see STATE.md,
-  top priority.**
+  field) instead of crashing. Pass 4's gap that made this reachable is now fixed too (same day —
+  see its entry above), so this exclusion path is defensive rather than live, but stays in place.
 - Private: `.eaa_tab_width`, `.eaa_max_field_width`, `.eaa_tab_col` (tab-aware column expansion),
   `.eaa_preceding_ws_idx` (local duplicate of enforce_vertical_layout.R's helper — both a few
   lines, not worth a shared-scanner entry).
@@ -234,7 +257,11 @@ entry current in the same commit that changes its function.
 ## run_pipeline.R — the current full pipeline, not a snapshot
 
 - Script, not a function. `setwd("C:/Rtools")`, sources everything, runs all seven passes in
-  order, prints warnings, writes `script_out.txt`. Add new passes here.
+  order, prints warnings, writes output. Add new passes here.
+- Takes optional positional args: `Rscript run_pipeline.R <input_path> <output_path>`. Defaults
+  (no args) are `"[Grant Managing Region].txt"` -> `script_out.txt`, unchanged from before this
+  became parameterized (2026-08-17, for the staged testing methodology in CLAUDE.md — one script
+  now serves all three test-stage files instead of ad hoc copies).
 
 ## verify.R — standing verification suite; gates on exit status
 
