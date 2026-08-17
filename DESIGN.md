@@ -1035,9 +1035,53 @@ expression may be a field or one of the 94 variables — the same discriminator
 flagged for review. Pruning targets whole loads only, so a load is droppable
 only when nothing it produces is referenced anywhere.
 
+**Double quotes mean something different here** (Adam, 2026-08-18). §1.2's
+rule — Qlik has no double-quoted string literal, so a `"..."` is always a
+field reference — was established on script text and does not hold in app
+JSON. Every `DQUOTE` in `app-unbuilt/objects` is a selection value
+(`"2022-23"`, `"Yes"`), not a field. They are still collected, because a
+wrong exclusion is the failure that deletes a live field, but they are
+recorded as their own kind so the report never asserts that `Yes` is a
+field. A rule verified in one of this project's two languages is not
+thereby verified in the other.
+
+**A LOAD is not a table** (verified against both apps, 2026-08-18). Step 3's
+first model — one LOAD produces one table — is wrong five ways, and each had
+to be handled before the produced-field list meant anything:
+
+- a **preceding chain**: stacked LOADs, one table, named by the TOP one. The
+  bottom statement supplies the data, the top one exposes the fields.
+- **JOIN / CONCATENATE**: feeds a table someone else created, so it can never
+  be judged droppable on its own.
+- **MAPPING**: consumed by `ApplyMap` and dropped; never in the data model.
+- **`LOAD ...; SELECT ...;`**: the ODBC form, where the statement below feeds
+  the load. All 24 of app-unbuilt's sourceless loads are this, none are
+  preceding chains — the two look identical until the next statement is read.
+- **a wildcard qvd path** (`FROM .../*.qvd`): Qlik loads every matching file
+  and names each resulting table after its own qvd, taking all of that qvd's
+  fields (Adam, 2026-08-18). One statement, N tables, none of them named in
+  the script.
+
+**A preceding `LOAD *` draws from the statement below, not from the source**
+(Adam, 2026-08-18). Given `LOAD *` over `LOAD [year], [quarter] FROM big.qvd`,
+the `*` yields exactly those two fields — not everything in the qvd. The
+chain's field universe is set by its bottom LOAD's own list. This is why a
+wildcard is far less often unknowable than it first appears: of app-unbuilt's
+19 apparent unknowns, 14 were `INLINE` (the header row states the fields), 2
+were `RESIDENT` (resolvable once every table is known), and only the 3
+wildcard paths are genuinely outside the script.
+
 **Variables are expression text too.** A variable expanded with `$()` can
 itself name fields, so `variables.json` is scanned as expressions, not merely
 as a list of names.
+
+**The deliverable is a document, not console output** (Adam, 2026-08-18).
+Phase 2's output is a field/table usage report submittable as part of the
+migration project. It stays in phase 2 rather than becoming a phase of its
+own: phase 3 already means retargeting (§5), the report *is* step 4 below
+rather than a new deliverable, and the review gate and the submission must be
+the same artefact — reviewing a console dump and building the document later
+from a separate path signs off something other than what is submitted.
 
 **Build order.** Each step produces separately reviewable output, and nothing
 in phase 2 deletes anything:
@@ -1048,8 +1092,24 @@ in phase 2 deletes anything:
 2. App usage: every string through `qlik_tokenizer.R`, giving bracketed and
    bare references, the bare ones flagged.
 3. Script side: `find_load_segments()` for what each LOAD produces.
-4. Cross-reference into a report of loads nothing references. Adam reviews
-   that before any pruning tool is written.
+4. Cross-reference, in two layers:
+   - **4a, the usage table.** A structured intermediate — one row per load
+     and produced field, carrying app, script line range, table, field,
+     verdict (`referenced-bracketed` / `referenced-bare-ambiguous` /
+     `unreferenced`) and evidence. Greppable and diffable on its own, which
+     is what is wanted when a verdict looks wrong.
+   - **4b, the renderer.** Turns 4a into the document. Base R, in a format
+     already verified here (HTML / RTF / CSV, or the base-R `.docx` writer).
+     Built once and reused for §7's debt report, which has the same shape:
+     findings, evidence, and why each matters.
+
+   Adam reviews the report before any pruning tool is written.
+
+**References carry provenance, not just names.** A set of names is enough to
+decide pruning but not enough to publish: the document must answer *why do
+you say this is unused?*, so every reference records the JSON file and the
+string it was found in, from step 2 onward. Retrofitting provenance after the
+fact means rewriting step 2.
 
 Step 3 also settles the caveat on those 90 bracketed names: a few may be
 variables or master-dimension labels rather than fields, and only the
@@ -1075,18 +1135,29 @@ from the output. This report is about migration debt, not formatting.
 
 ### 7.1 What gets flagged
 
-Not settled. The list below is a seed to be fleshed out before the pass is
-built, not a specification:
-
-- inline loads
-- direct calls to the database from the load script
-- loads from attached files
-- hardcoded values in the load script
-
 Before any entry can be implemented it needs two things: a detection rule
 expressed against the token stream, and a one-line statement of why it is
 debt — the report is read by people deciding what to fix first, so a flag
 that cannot justify itself is noise.
+
+Two entries now have both, from Adam 2026-08-18, and phase 2's step 3 already
+detects them — `script_loads.R` emits the signal, §7 decides what to say
+about it. Note these are a **separate concern from pruning**: an inline load
+or a database call is debt whether or not anything references it.
+
+| flag | detection | why it is debt |
+|---|---|---|
+| direct database call | `source_kind == "select"` — the `LOAD ...; SELECT ...;` form | **Not permitted** by the team's Cloud build standards, and will not work there by design. Blocking, not cosmetic. 24 in app-unbuilt, 0 in app2. |
+| oversized inline load | `source_kind == "inline"` with a large `inline_rows` | Inline loads are legitimate for mapping and crosstabs, but not for importing raw data. A large block is a CSV that was pasted into the script. app-unbuilt's largest is **1113 rows** (`SiteVisitSurvey`); app2's is 33 (`RegionMap`, a genuine mapping table). |
+
+Row count is what separates the two inline cases, which is why step 3 carries
+`inline_rows` rather than a bare inline flag; the report states the count and
+the threshold is a styling-free judgement recorded in STATE.md.
+
+Remaining seed entries, each still owing both halves above:
+
+- loads from attached files
+- hardcoded values in the load script
 
 ### 7.2 The pipeline's output is the priority, not the report
 

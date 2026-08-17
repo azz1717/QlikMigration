@@ -284,6 +284,96 @@ entry current in the same commit that changes its function.
 - Private: `.json_string_pattern`, `.json_escape_char()`, `.json_unescape_one()`, `.json_unescape()`.
 - Verified against `jsonlite` as an oracle on all 9 real `app-unbuilt` JSON files — exact set
   equality for keys and for values, separately. 738 KB parses in 0.04s.
+- That cross-check is now a script: `oracle_json_strings.R`, below.
+
+## app_usage.R — phase 2 step 2, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+- `expression_references(text) -> data.frame(ref, kind)` — one string's field references, one row
+  per occurrence, in order. `kind` is `"bracketed"`, `"quoted"` or `"bare"`.
+- `file_references(path, label) -> data.frame(source_file, ref, kind, n)` — one JSON file,
+  aggregated per reference. `read_json_strings()` supplies the strings.
+- `app_references(dir) -> data.frame(app, source_file, ref, kind, n)` — one app export,
+  `source_file` relative to `dir`. Apps are NEVER merged (DESIGN §6.5: separate data models).
+- `Rscript app_usage.R [dir ...] [--csv <path>]` — per-app summary; `--csv` writes the full table.
+  Current: app-unbuilt 9 files / 5503 refs / 1150 unique (100 bracketed, 8 quoted, 1050 bare);
+  app2-unbuilt 22 files / 3635 / 804 (56 / 0 / 750). 5.5s for both, tokenizing string by string.
+- Values only — JSON KEY strings are skipped (Adam 2026-08-18). A member name is structure, never
+  expression text. This is NOT the mistake DESIGN §6.5 warns about: that one is privileging certain
+  keys' VALUES, and every value is still scanned here whatever names it.
+- Bare words reuse the two guards from `enforce_bracket_references.R` — not a `QLIK_KEYWORDS`
+  member, not in call position (`next_non_trivia_idx` is `LPAREN`) — for the same reason: a field
+  can share a function's name.
+- Case is NEVER folded. Whether Qlik matches field names case-insensitively is step 4's problem,
+  and folding here would destroy the evidence it needs.
+- GOTCHA: `expression_references()` must tolerate a length-0 input — `file_references()` seeds its
+  `rbind` with one to keep the columns when a file yields nothing.
+- DQUOTE is its own kind, `"quoted"` (Adam 2026-08-18). DESIGN §1.2 — no double-quoted string
+  literal — holds for SCRIPT text but NOT for app JSON: all 8 in `app-unbuilt/objects` are
+  selection values (`"2022-23"`, `"Yes"`). Still collected, since a wrong exclusion deletes a live
+  field; kept separate, so the report never claims `Yes` is a field. Do not re-fold into
+  `"bracketed"`; step 4 decides what to do with them.
+- Private: `.au_undelimit()`.
+
+## script_loads.R — phase 2 step 3, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+- `script_loads(tokens) -> list(loads, fields, warnings)`; `read_script_loads(path)` from a file.
+  `Rscript script_loads.R <script> [--csv <stem>]` prints a summary and optionally writes
+  `<stem>-loads.csv` / `<stem>-fields.csv`.
+- `loads`: load_id, table, producer_kind, prefix, source_kind, source, line_start, line_end,
+  chain_of, n_declared, inline_rows, complete_fields.
+  `fields`: load_id, table, field, line, aliased, via (`declared` / `wildcard`).
+  `load_id` is positional 1..n, the join key, stable only within one parse of one file.
+- **A LOAD is not a table** — `producer_kind` is the whole point of this script:
+  `table` / `preceding` (stacked LOADs, one table, named by the TOP one) / `joins-into`
+  (JOIN or CONCATENATE, feeds a table someone else made) / `mapping` (ApplyMap fodder, never in
+  the data model) / `multi-table` (a wildcard qvd PATH, see below).
+- `source_kind`: from / resident / inline / autogenerate / select / none. `select` is the ODBC
+  `LOAD ...; SELECT ...;` form — 24 of them in app-unbuilt, 0 in app2.
+- Wildcard resolution: a `LOAD *` takes the fields of whatever feeds it. Preceding -> the
+  statement BELOW (NOT the underlying qvd — DESIGN §6.5); RESIDENT -> that table, in a second
+  pass once every table is known; INLINE -> the block's header row. `complete_fields` goes FALSE
+  only when none of those apply.
+- Expects STYLED input; raw parses but every un-aliased field is warned about, since there the
+  produced name was inferred rather than read.
+- GOTCHA: never bound a lookahead in TOKEN counts. The `LOAD;SELECT` probe was a 40-token window
+  and styling inserts whitespace tokens freely — the same statement resolved on raw input and
+  silently did not on styled. `.sl_next_solid()` is unbounded for exactly this reason.
+- GOTCHA: the head scan (label + prefix) must NOT stop at the previous `;`. Control flow does not
+  end in one, so `END IF` / `NEXT chunkText` above a LOAD displaced the label and the table went
+  unnamed (6 in app-unbuilt). It also takes a parenthesised group WHOLE — stopping at the comma
+  in `CrossTable(Category, Result, 3)` left the head as a lone `)` and lost both prefix and label
+  (CrossTab, PMCrossTab). Prefix ARGUMENTS are arbitrary names and are exempt from the
+  known-prefix warning.
+- GOTCHA: `QLIK_KEYWORDS` is stored **lowercase**. Every pass compares `tolower(text) %in%
+  QLIK_KEYWORDS`; a `toupper()` comparison matches nothing at all and the filter becomes a silent
+  no-op. That is exactly what happened here — `LOAD DISTINCT *` went undetected as a wildcard and
+  the apparent cause (`DISTINCT` missing from the vocabulary) was wrong; it is present, and the
+  casing pass does uppercase a lowercase `distinct`. `.SL_QUALIFIERS` survives only for the
+  un-aliased-name strip, where removing the whole keyword vocabulary would mangle an expression.
+- Current: app2 42 loads -> 26 tables, 0 warnings. app-unbuilt 167 -> 118 tables, 7 warnings, all
+  informational (3 wildcard paths, 4 un-aliased `DISTINCT [Field]`).
+- Private: `.sl_undelimit()`, `.sl_next_solid()`, `.sl_solid()`, `.sl_head()`, `.sl_label()`,
+  `.sl_stmt_end()`, `.sl_source()`, `.sl_is_wildcard()`, `.sl_inline()`, `.sl_autoname()`,
+  `.sl_paren_target()`, `.sl_wild_rows()`, `.sl_empty_loads()`, `.sl_empty_fields()`,
+  `.SL_PREFIXES`, `.SL_QUALIFIERS`.
+
+## oracle_json_strings.R — development-machine cross-check, not shipped tooling
+
+- `Rscript oracle_json_strings.R [dir-or-file ...]` — compares `read_json_strings()` against
+  `jsonlite::fromJSON()` on every `.json` under `app*-unbuilt/` by default. Exits 1 on any
+  mismatch. Current status: 32 files checked, 0 failed.
+- Nothing sources it — not `run_pipeline.R`, not `verify.R`, not phase 2 tooling — so its
+  `jsonlite` dependency cannot reach an environment that lacks it. Keep it that way; phase 2's
+  own scripts must stay base-R with no reference to this file.
+- Compares strings in DOCUMENT ORDER, not as sets, and checks the key/value flag on each. Order
+  is the stricter test and the one that catches a dropped or duplicated match.
+- `fromJSON(simplifyVector = FALSE)` is required: with simplification on, a string array collapses
+  to a character vector and an object to a data.frame, both of which lose position.
+- Mismatch output truncates the offending string to 60 characters — a difference inside a
+  2,600-line chart definition should print a hint, not the chart.
+- Private: `.oracle_strings()`, `.oracle_read()`, `.brief()`, `check_file()`, `main()`.
 
 ## run_pipeline.R — the current full pipeline, not a snapshot
 
