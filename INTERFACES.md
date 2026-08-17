@@ -266,6 +266,9 @@ entry current in the same commit that changes its function.
 ## verify.R — standing verification suite; gates on exit status
 
 - Script; run it, don't source it. `main()` runs self-tests then both fixtures.
+- STAGE 3 ONLY (2026-08-17): refuses to start without `--stage3` on the command
+  line — the flag makes the invocation acknowledge the testing-stage rule at
+  the point of action. Interactive sourcing is unaffected.
 - `canonical_stream(tokens) -> list(canon, line)` — reduces a stream to meaning-carrying
   entries, normalising away exactly what the passes are ALLOWED to change.
 - `check_equivalent(before, after, max_report=3) -> TRUE | character` — the important check.
@@ -274,3 +277,14 @@ entry current in the same commit that changes its function.
 - Each normalisation in `canonical_stream` is an assumption about Qlik recorded in DESIGN §1 —
   adding a pass that makes a NEW kind of legitimate change means adding one there too.
 - Private: `.unquote`, `.short`, `.window`, `.tail` (display/comparison helpers).
+
+## verify_docs.R — documentation consistency; gates on exit status, no fixtures
+
+- Script; run it, don't source it. Safe at ANY testing stage — reads only
+  *.R and the five root .md files, never a fixture. Pre-commit invariant
+  (CLAUDE.md): must exit 0 before any commit.
+- Checks: every DESIGN §-citation resolves to a real heading; pass list
+  agrees across run_pipeline.R / verify.R PASSES / README table; public
+  functions all appear in INTERFACES.md and every project-named function
+  INTERFACES mentions exists; STATE.md <= 25 lines; open-question ("not-
+  yet-specified") markers appear nowhere outside STATE.md.

@@ -34,7 +34,7 @@
 #     app-unbuilt/script.qvs's chunking loop) - and bracketing one would
 #     silently break the script by turning a variable reference into a
 #     field reference. WHERE-clause and other non-field-list bare words are
-#     therefore left untouched; not yet specified (DESIGN §4.11 territory).
+#     therefore left untouched; deliberately out of scope (DESIGN §4.11).
 #   - SELECT ... ; blocks (raw SQL passed to a LIB CONNECT TO source) are
 #     left untouched entirely, same as the other passes.
 #   - A token whose content contains "]" cannot be safely represented in

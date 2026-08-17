@@ -1,11 +1,15 @@
 # verify.R
 #
-# Standing verification suite for the style pipeline. Run it after changing
-# any pass:
+# Standing verification suite for the style pipeline. STAGE 3 ONLY - its
+# main() always reads both large fixtures, so it runs only at stage 3 of the
+# testing methodology (CLAUDE.md), on Adam's go-ahead, and refuses to start
+# without the flag that acknowledges that:
 #
-#     Rscript verify.R
+#     Rscript verify.R --stage3
 #
 # Exits non-zero if anything fails, so it can gate a commit.
+# (For documentation consistency at any stage, use verify_docs.R - it reads
+# no fixtures.)
 #
 # WHY THIS EXISTS
 #
@@ -664,4 +668,15 @@ main <- function() {
   if (.fails > 0L) quit(status = 1L) else cat("ALL PASS\n")
 }
 
-if (!interactive()) main()
+# Stage gate (Adam, 2026-08-17): main() reads both stage-3 fixtures, so the
+# rule "verify.R is stage 3 only" is enforced HERE, at the point of action,
+# not by prose. The flag makes the invocation itself state the claim.
+if (!interactive()) {
+  if (!"--stage3" %in% commandArgs(trailingOnly = TRUE)) {
+    cat("verify.R runs at TESTING STAGE 3 ONLY (it reads both large fixtures).\n",
+        "If Adam has signed off stages 1 and 2, rerun with:  Rscript verify.R --stage3\n",
+        "For doc consistency at any stage, use verify_docs.R instead.\n", sep = "")
+    quit(status = 1L)
+  }
+  main()
+}

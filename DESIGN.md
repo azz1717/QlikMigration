@@ -133,7 +133,7 @@ quoting. `app-unbuilt/script.qvs`'s chunking loop assigns `numRows`,
 `chunkSize`, `i`, `chunkText`, `rowNr`: bracketing any of those would turn a
 variable reference into a field reference and silently change what the
 script loads. WHERE-clause and other non-field-list bare words are left
-untouched for the same reason — not yet specified, §4.11 territory.
+untouched for the same reason — deliberately out of scope (§4.11).
 
 ---
 
@@ -650,36 +650,19 @@ terminator.
   conditions are required so that prose notes written between fields survive.
 - Surviving comments move to column 0 (§4.5).
 
-### 4.11 Not yet specified
+### 4.11 Out of scope
 
-**Maintenance rule (2026-08-17): the moment an item here is answered, delete
-it from this list and write the rule into the section that owns it.** This
-list rotted badly once — it carried six items that were all resolved
-elsewhere (three of them decided the same day the list still called them
-open), while a genuinely open seventh was never added. A stale entry here is
-worse than no entry: it re-opens settled decisions and wastes a session
-re-deciding them. See CLAUDE.md's maintenance duty.
+**Bracketing bare words outside a LOAD field list** — `WHERE` clauses and
+other non-field-list positions — is deliberately out of scope (§1, and
+`enforce_bracket_references`'s own header): a bare word there is very often
+a variable, not a field — a `FOR` counter or a `LET`-assigned name — and
+bracketing one silently changes what the script loads. Reopening this needs
+a rule that can tell the two apart before anything is touched.
 
-Genuinely unspecified, must not be guessed at:
-
-- **Bracketing bare words outside a LOAD field list** — `WHERE` clauses and
-  other non-field-list positions. Deliberately out of scope for
-  `enforce_bracket_references` today (§1, and the pass's own header): a bare
-  word there is very often a variable, not a field — a `FOR` counter or a
-  `LET`-assigned name — and bracketing one silently changes what the script
-  loads. Needs a rule that can tell the two apart before anything is touched.
-
-Resolved, kept here only as pointers to where each rule actually lives:
-
-| former item | now specified in |
-|---|---|
-| `RESIDENT` loads | §4.5 — source clause, treated as `FROM` |
-| Prefix lines (`LEFT JOIN`, `CONCATENATE`, `LEFT KEEP`) | §4.5 — own line, 1 tab |
-| Preceding LOAD (`LOAD *, ... ; LOAD ...`) | §4.9 — general lone-`;` rule, no carve-out |
-| Control-flow indent (`FOR`/`SUB`/`IF`) | §4.5 — **flat, not cumulative** |
-| `///$tab` section markers | §4.8 / §6.2 — whole line untouched |
-| Blank lines around `SELECT` | §4.8 — spaced as any statement, interior skipped (§2.3) |
-| `SET`/`LET` directives | §4.5 (indent) / §4.8 (blank lines) |
+This section holds settled scope exclusions only. Open questions live in
+STATE.md's "Open items" — nowhere else — and `verify_docs.R` enforces that.
+(This section was previously an embedded to-do list; it rotted and re-opened
+settled decisions. See fc72e32.)
 
 ---
 
