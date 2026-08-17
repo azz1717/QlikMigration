@@ -7,9 +7,15 @@
 3. Short plan + open decision points to Adam BEFORE implementing.
 
 ## Reading budget
-- NEVER read fixtures into context: [Grant Managing Region].txt, app-unbuilt/,
-  script_out.txt, script_qvs_out.txt. Grep specific lines when needed.
-  Exception: formatexample.txt and its pipeline output — read freely.
+- NEVER read a BIG SCRIPT into context — that is what this rule is for:
+  app*-unbuilt/script.qvs, [Grant Managing Region].txt, script_out.txt,
+  script_qvs_out.txt. Grep specific lines. formatexample.txt: read freely.
+- The app*-unbuilt/ JSON and YAML are small — read them as needed. Just be
+  targeted: inventory, grep or a script first; never dump a 900-line file
+  merely to find out whether it is relevant.
+- STYLING ONLY: never infer a style rule from how a fixture looks — §4 is
+  signed off and closed. Phase 2 is the OPPOSITE case: inferring structure
+  and meaning from app metadata is the whole job (DESIGN §6.5).
 - DESIGN.md / README.md by named section only, never end-to-end.
 - Don't read a pass's source unless editing it — INTERFACES.md is the contract.
 

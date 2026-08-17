@@ -715,8 +715,9 @@ Reapplying **only** alignment would be the tempting shortcut, and is wrong: it
 assumes the later phases emit output that is perfectly style-conformant except
 for widths. That assumption would have to stay true forever, in a second tool,
 with nothing checking it. Every pass is idempotent and the whole pipeline is
-1.6s on the 13,870-line fixture, so re-running all of it costs nothing and
-removes the assumption.
+3.8s end to end on the 13,870-line fixture (measured 2026-08-17: wall clock
+for the whole `Rscript run_pipeline.R` invocation, R startup and sourcing
+included), so re-running all of it costs nothing and removes the assumption.
 
 Think of it as `gofmt` after a refactor — not a step to be sequenced
 carefully, a normaliser applied unconditionally afterwards.
@@ -962,6 +963,97 @@ pass with real risk, and probably is not worth building. Test that first.
 If built: reporting pass first, opt-in rewriting second with an explicit
 skip-list. Never couple a data change to a performance fix — it destroys the
 ability to tell intended reformatting from normaliser damage in a diff.
+
+---
+
+### 6.5 Phase 2 usage extraction — not started
+
+Phase 2 (§5) drops loads nothing in the app uses. That verdict needs a usage
+graph — field to dimension, measure or chart. Discovery over `app-unbuilt/`
+on 2026-08-17 established that the graph is recoverable, and how.
+
+**Two app exports, two roles** (Adam, 2026-08-17). `app-unbuilt/` was picked
+as a hard case for styling: one enormous script (13,870 lines), few sheets,
+and many unused tables. `app2-unbuilt/` is an app already migrated BY HAND
+and known to work — a 25 KB script but many more sheets and charts, with
+redundant tables carried across as-is. It is far more representative of the
+apps still to migrate, and the better phase-2 fixture: 22 JSON files against
+9. The two apps load **separate data models and share nothing**, so pruning a
+table from one cannot affect the other; usage analysis is strictly per app.
+Phase 2 tooling runs against both.
+
+**app2's existing formatting is an input, never a reference.** The styling
+pipeline can and will be run over `app2-unbuilt/script.qvs` — it is a
+perfectly good styling input, and a useful one. What it is not is *evidence*:
+its layout was applied by hand and loosely, so it must never be used to
+argue for a change or an addition to the passes. §4 is signed off and
+closed. Seeing something in a fixture that our rules would format
+differently is not a finding and not a task — the same rule that already
+applies to the other fixtures, which are inputs and not specs.
+
+**That restriction is about STYLE, and only style.** Phase 2 is the opposite
+case: the app metadata is precisely what its design should be derived from,
+and working out what that metadata can tell us is the task itself. Infer
+structure, meaning and relationships from `app*-unbuilt/` freely here. The
+styling-era caution — that a fixture's appearance never justifies a rule —
+does not transfer to phase 2 and must not be applied to it.
+
+**What the app metadata holds (app-unbuilt).** Two sheets carry every visual;
+the story, `appprops`, `loadmodel` and `pinneditems` carry none.
+`measures.json` is empty, so there are no master measures and every measure
+is inline in a chart. `dimensions.json` holds 3 master dimensions (7 field
+defs), and only one `qLibraryId` is referenced anywhere. Master-item
+indirection is therefore negligible **in this app only** — app 2 does ship
+master measures, so the extractor cannot assume the indirection away.
+`variables.json` holds 94 variables.
+
+**Qlik's internal stashes can be read or skipped freely.** Of 166 `qMeasures`
+containers, 142 are empty; the 54 real ones all carry a non-empty
+`qDef$qDef`, 50 of them distinct. 52 sit in live chart definitions and 2
+inside `qUndoExclude`/`qLayoutExclude` — and both of those also appear live,
+so the stashes contribute zero unique usage. Reading them costs nothing and
+skipping them loses nothing, so the extractor need not tell them apart.
+
+**Do not enumerate keys — scan every string.** Expressions live in at least
+`qMeasures`, `qDimensions`, `qFieldDefs`, `qExpression`,
+`qAttributeExpressions`, `qCalcCondition`, `qListObjectDef`,
+`qLabelExpression` and `qSortCriterias`. Enumerating them is exactly how the
+first attempt went wrong: `qFieldDefs` alone yields 48 unique field names,
+while scanning all 408 strings in the objects yields **90** unique bracketed
+references. Half the usage was missed, in the direction that deletes a field
+a chart is using. Collecting every string leaf can only over-report, and
+over-reporting under-prunes — the safe failure.
+
+**Consequence: no JSON parser is needed.** Because the structure is never
+consulted, base R needs only a string-literal extractor over the raw text
+(quoted runs, honouring `\"`) rather than a parser and state machine. That
+keeps the base-R-only deployment constraint cheap to satisfy.
+
+**Ambiguity resolves conservatively** (Adam, 2026-08-17). A bare word in an
+expression may be a field or one of the 94 variables — the same discriminator
+§4.11 lacks. Phase 2 does not solve it: a bare word counts as USED and is
+flagged for review. Pruning targets whole loads only, so a load is droppable
+only when nothing it produces is referenced anywhere.
+
+**Variables are expression text too.** A variable expanded with `$()` can
+itself name fields, so `variables.json` is scanned as expressions, not merely
+as a list of names.
+
+**Build order.** Each step produces separately reviewable output, and nothing
+in phase 2 deletes anything:
+
+1. JSON string-literal extractor, base R. `jsonlite` is installed on the
+   development machine and serves as a test oracle — the base-R reader must
+   return the same strings on the real files.
+2. App usage: every string through `qlik_tokenizer.R`, giving bracketed and
+   bare references, the bare ones flagged.
+3. Script side: `find_load_segments()` for what each LOAD produces.
+4. Cross-reference into a report of loads nothing references. Adam reviews
+   that before any pruning tool is written.
+
+Step 3 also settles the caveat on those 90 bracketed names: a few may be
+variables or master-dimension labels rather than fields, and only the
+script's own field list distinguishes them.
 
 ---
 

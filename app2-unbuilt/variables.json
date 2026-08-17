@@ -1,0 +1,215 @@
+[
+  {
+    "qInfo": {
+      "qId": "33806563-3f4a-4b21-b8e9-f5e05f393cfe",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "CurrentFinYear",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "Yearname(Today(),0,7)"
+  },
+  {
+    "qInfo": {
+      "qId": "d9b2eaa2-88ca-4eec-9fb3-0b18302697ff",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "eFormat",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "'$' \u0026 if(sum($1) \u003e0,\r\n\t\t\t\tpick(ceil(log10(sum($1))/3),\r\n                  num(sum($1),'#,##0.0'),\r\n                  num(sum($1)/1E3,'#,##0.0k'),\r\n                  num(sum($1)/1E6,'#,##0.00m'),\r\n                  num(sum($1)/1E9,'#,##0.00b')\r\n                  ),0)"
+  },
+  {
+    "qInfo": {
+      "qId": "73346c8f-d42e-4cd5-a3a0-a91c212d81f6",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vMinDate",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "42579"
+  },
+  {
+    "qInfo": {
+      "qId": "b680f5c7-504d-43a0-b6c0-4a8bd696ba5f",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vMaxDate",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "46226"
+  },
+  {
+    "qInfo": {
+      "qId": "49158e2c-0e30-4143-8f14-1fefcf9dc5c5",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vDaysoverdue",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "IF([Milestone Expected Due Date] \u003c= TODAY(), TODAY() - [Milestone Expected Due Date])"
+  },
+  {
+    "qInfo": {
+      "qId": "9258c969-ca1f-437e-a20b-2f2c62d8b2fc",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vEndDate",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "2014-06-30"
+  },
+  {
+    "qInfo": {
+      "qId": "13edca05-e489-42d1-8f2b-1c8d01331531",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vLastYear",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "2025"
+  },
+  {
+    "qInfo": {
+      "qId": "ff67d6ef-202e-4636-8862-484f779f8635",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vMin",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "36534"
+  },
+  {
+    "qInfo": {
+      "qId": "d7f547c3-4ddd-4ff9-a82e-ac698a536e58",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vOverduedate",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "RevOverdueDate",
+    "tags": []
+  },
+  {
+    "qInfo": {
+      "qId": "968319b6-fa00-4a4f-bb4c-b598fa09a835",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vRed",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "rgb(247, 132, 124)",
+    "tags": []
+  },
+  {
+    "qInfo": {
+      "qId": "bd248888-1080-4b2d-b883-aef3c4eff93e",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vListOfTables",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "'Items.Value of Underspend to be carried forward (ENTER AS $n,nnn.nn e.g. $9,999.00)','Items.Acquittal Finding','Items.Issues/Comments (optional)','Items.Risk','Items.Date Further Acquittal Information Received in Central Acquittal Team (ENTER AS dd/mm/ccyy)','Items.Value of Debt (ENTER AS $n,nnn.nn e.g. $9,999.00)','Items.Issues for Central Acquittal Team to Consider','Items.Date Further Acquittal Information Requested (ENTER AS dd/mm/ccyy)','Items.Original Due Date of Acquittal (ENTER AS dd/mm/ccyy)','Items.Reason for Additional Information Request','Items.Type of acquittal documentation supplied matches agreement requirement','Items.Value of Overspend (if carried forward) (ENTER AS $n,nnn.nn e.g. $9,999.00)','Items.Value of Underspend to be carried forward and offset (ENTER AS $n,nnn.nn e.g. $9,999.00)','Items.Date First Overdue Letter was sent (ENTER AS dd/mm/ccyy)','Items.Date Acquittal Received by Department (ENTER AS dd/mm/ccyy)','Items.Type of Acquittal Undertaken','Items.Funding Amount to be Acquitted (ENTER AS $n,nnn.nn e.g. $9,999.00)','Items.Date Acquittal Received in FaCSIA (ENTER AS dd/mm/ccyy)','Items.Date Acquittal Received in Central Acquittal Team (ENTER AS dd/mm/ccyy)'"
+  },
+  {
+    "qInfo": {
+      "qId": "ef0e1d49-7c2a-42c8-8f5a-f64407732834",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vMax",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "43317"
+  },
+  {
+    "qInfo": {
+      "qId": "ec8e3132-48f2-4687-beab-3cc889ec66d0",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vGreen",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "rgb(194, 242, 165)",
+    "tags": []
+  },
+  {
+    "qInfo": {
+      "qId": "80706218-bd00-487a-a0e0-76818836fed8",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vTargetDt",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "43903"
+  },
+  {
+    "qInfo": {
+      "qId": "d25eb47c-1b50-4c66-88c6-4920236a686d",
+      "qType": "variable"
+    },
+    "qMetaDef": {},
+    "qName": "vTableNo",
+    "qNumberPresentation": {
+      "qType": "U",
+      "qnDec": 10,
+      "qUseThou": 0
+    },
+    "qDefinition": "36"
+  }
+]

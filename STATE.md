@@ -4,22 +4,22 @@
 Seven cosmetic passes, all green — aliases -> brackets -> leading commas ->
 intra-line spacing -> casing -> vertical layout -> alias alignment. Rules
 live in DESIGN §4.1-§4.9. Three-stage testing fully exercised, signed off.
-verify.R: 97 checks, 0 failed (now requires --stage3 to run at all).
+verify.R: 97 checks, 0 failed (requires --stage3). verify_docs.R: 7 checks,
+gates every commit.
 
-**Framework (this commit):** doc rot, stage-gate violations and rumination
-were structural — prose enforcement loses to trained defaults, and dupli-
-cated facts drift. Enforcement moved into mechanisms: `verify_docs.R`
-(7 checks: citations resolve, pass lists agree, INTERFACES ↔ code, STATE
-cap, open-question markers confined here) gates every commit; verify.R
-refuses fixtures without --stage3; CLAUDE.md rewritten to 40 imperative
-lines, histories deleted; HANDOVER-PROTOCOL.md removed from tree (git has
-it); DESIGN §4.11 is now settled scope exclusions only.
+**Branch: phase2-pruning** (off main). verify.R is styling-only — it does NOT
+apply to phase 2 work; verify_docs.R still gates every commit (Adam).
 
-**Next task:** none queued. Next real work is phase 2 (pruning), DESIGN §5.
+**Next task:** phase 2 usage extraction, DESIGN §6.5. Step 1 DONE —
+json_strings.R, oracle-tested vs jsonlite. Steps 2-4 next.
 
 **Open items:**
-- Bracketing bare words outside LOAD field lists (WHERE clauses etc.) —
-  out of scope for styling (§4.11); reopening needs a variable-vs-field
-  discriminator first. Phase-2+ question.
+- What can the work machine actually run? §6.5's extractor is base-R-only
+  precisely to dodge this, but the answer decides whether jsonlite can be
+  the test oracle there as it is here. Adam to check; access, not capability.
+- Bare word = field or variable? Unresolved, and now blocking two things:
+  §4.11 bracketing outside LOAD field lists, and precise field-level usage
+  in phase 2. Phase 2 works around it (ambiguous counts as used, whole
+  loads only); §4.11 still needs the real discriminator.
 
 (Cap: 25 lines. Longer means it is rotting — prune to position/next/open.)

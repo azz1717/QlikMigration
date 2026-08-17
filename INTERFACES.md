@@ -254,14 +254,62 @@ entry current in the same commit that changes its function.
   `.eaa_preceding_ws_idx` (local duplicate of enforce_vertical_layout.R's helper — both a few
   lines, not worth a shared-scanner entry).
 
+## json_strings.R — phase 2 step 1, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5).
+- `json_string_literals(text) -> data.frame(text, is_key)` — every string literal in one JSON
+  document, in document order, unescaped and with surrounding quotes removed. `is_key` marks a
+  string that names a member rather than carrying a value.
+- `read_json_strings(path) -> ` same, from a file. Line numbers are deliberately not tracked —
+  phase 2 reports usage per file, not per line.
+- **Deliberately NOT a JSON parser.** Phase 2 never consults document structure (DESIGN §6.5), so
+  only the strings are needed — which is what makes the base-R-only constraint cheap. One regex,
+  no state machine.
+- Byte mode (`useBytes = TRUE`, then re-mark UTF-8), for the same reason `tokenize_qlik()` uses it
+  — DESIGN §3.1. The whole file is one string, so one non-ASCII character anywhere would otherwise
+  make offset conversion quadratic over every match.
+- Key vs value uses the one structural fact that needs no nesting state: in JSON a string followed
+  by `:` is a key, and a value never is (a value is followed by `,`, `}` or `]`). The optional
+  trailing `[ \t\r\n]*:` is part of the match pattern itself.
+- GOTCHA (bug, fixed 2026-08-17): that pattern consumes trailing whitespace for VALUES too, not
+  only keys, so the strip must be `ws*:?` — stripping only `ws*:` left every value in a
+  pretty-printed file carrying its own closing quote (`appprops"` for `appprops`). All 14 compact
+  hand-built cases passed while all 9 real files were wrong, because compact JSON ends the match at
+  the quote. Pretty-printed cases are now in the test set. README's "test input must carry the
+  property being tested", third instance.
+- `\uXXXX` is decoded, including surrogate PAIRS (a character outside the BMP is two escapes;
+  decoding each half alone yields an invalid character). Escapes are resolved in ONE left-to-right
+  scan, so a literal `\\` is consumed whole and cannot be misread as starting the next escape —
+  the classic failure of chaining `gsub()` calls.
+- Private: `.json_string_pattern`, `.json_escape_char()`, `.json_unescape_one()`, `.json_unescape()`.
+- Verified against `jsonlite` as an oracle on all 9 real `app-unbuilt` JSON files — exact set
+  equality for keys and for values, separately. 738 KB parses in 0.04s.
+
 ## run_pipeline.R — the current full pipeline, not a snapshot
 
-- Script, not a function. `setwd("C:/Rtools")`, sources everything, runs all seven passes in
-  order, prints warnings, writes output. Add new passes here.
-- Takes optional positional args: `Rscript run_pipeline.R <input_path> <output_path>`. Defaults
-  (no args) are `"[Grant Managing Region].txt"` -> `script_out.txt`, unchanged from before this
-  became parameterized (2026-08-17, for the staged testing methodology in CLAUDE.md — one script
-  now serves all three test-stage files instead of ad hoc copies).
+- Script, not a function. `setwd(PROJECT_DIR)` (= `C:/Rtools`, existence-checked), sources
+  everything, runs all seven passes in order, prints warnings, writes output. Add new passes here.
+- Takes optional positional args: `Rscript run_pipeline.R [options] <input_path> <output_path>`.
+  Defaults (no args) are `"[Grant Managing Region].txt"` -> `script_out.txt`, unchanged from before
+  this became parameterized (2026-08-17, for the staged testing methodology in CLAUDE.md — one
+  script now serves all three test-stage files instead of ad hoc copies). Falling back to those
+  defaults now prints which files it chose (Adam 2026-08-17) — silence made a novice think they
+  had reformatted their own file.
+- Flags: `--help`/`-h` prints usage and exits 0; `--changes` writes one CSV per pass
+  (`<output_dir>/changes/<n>-<label>.csv`) so the `$changes` tables survive an Rscript run. An
+  unrecognised flag, a third positional (an unquoted path with spaces), a missing input, a missing
+  output folder, or input == output each stop with one sentence before any work is done.
+- Runs stay QUIET per pass (Adam 2026-08-17 — no progress lines); output is warnings, the written
+  path, and the `--changes` table if asked.
+- Script-local only, deliberately undocumented by name: `PASS_LABELS` (the seven pass names, so the
+  error message and the `--changes` file names share one spelling) and a thin wrapper that names
+  the failing pass instead of letting a bare stack trace through. `verify_docs.R` excludes
+  `run_pipeline.R` from the INTERFACES cross-check in BOTH directions, so naming a helper here in
+  call form would be reported as stale — this file documents no function surface for the script.
+- **GOTCHA: the seven `source("ensure_|enforce_...")` lines are machine-read.**
+  `verify_docs.R`'s `check_pass_lists` matches them anchored at column 0 in the literal
+  `source("name.R")` form. Indenting them, or folding them into a vector plus a loop, silently
+  breaks the pass-list agreement check. A comment in the file says so at the point of temptation.
 
 ## verify.R — standing verification suite; gates on exit status
 
