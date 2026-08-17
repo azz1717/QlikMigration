@@ -428,11 +428,21 @@ Tabs, **tab width 4**. Not spaces (see §3.6).
 | table label, `LOAD`, `FROM`, statement prefixes | 1 tab |
 | field lines | 2 tabs |
 | true developer comments | **column 0** |
+| `SET` / `LET` statements | **column 0** |
 
 Comments sit at column 0 deliberately, so they stand out against the indented
 code. That only reads as a signal because commented-out code is removed
 (§4.10) — otherwise dead field references would compete for the same
 attention.
+
+**A LOAD list's true first field gets a two-space pad** after its 2-tab
+indent (Adam 2026-08-17, resolving the "owned by §4.5/§4.6" note in §4.4's
+table): with leading commas (§4.4), every field but the first starts `, `,
+two characters that the first field has nothing to match. The pad keeps the
+actual field content aligned in one column regardless of which field starts
+the list. Identified structurally — the field sitting right after the `LOAD`
+keyword itself — not by "has no leading comma", so it stays correct even
+before pass 3 (leading commas) has run.
 
 **Block nesting is flat, not cumulative (decision, Adam 2026-08-17).** A
 statement or field line's indent depends only on which row of the table
@@ -524,11 +534,18 @@ on both fixtures.
   [Fleet Cars]:
   ```
 - `///$tab` section markers (Adam, 2026-08-17 — see §6.2): the whole line
-  carrying one, and the gap on EITHER side of it, is left completely
-  untouched. This means the line immediately AFTER a section marker also
-  stays at whatever indentation it already had — a known, deliberately
-  conservative side effect of "leave it alone" meaning the *gap*, not just
-  the marker's own line.
+  carrying one is left completely untouched. The line immediately AFTER one
+  now gets its indentation fixed normally (Adam 2026-08-17, revising the
+  original "leave the gap on either side alone" call — a table label left
+  at column 0 right after a section marker was wrong); only the blank-line
+  *count* of that gap is left exactly as authored, never normalised to the
+  standard two.
+- `SET`/`LET` directives (Adam 2026-08-17 — see §4.11): 0 indent, and the
+  blank-line count on EITHER side of one is left exactly as authored —
+  never forced to the standard two between statements, never collapsed to
+  zero inside a run of consecutive directives. Applies to a directive's own
+  continuation lines too (a multi-line SET/LET expression), not just its
+  first line.
 
 ### 4.9 FROM clause — not implemented
 
@@ -557,7 +574,6 @@ rule yet and must not be guessed at:
   real script).
 - Control-flow blocks — `FOR`/`NEXT`, `SUB`/`END SUB`, `IF`/`THEN`/`ENDIF`:
   indent by nesting depth, or flat?
-- `SET` / `LET` statements.
 - `///$tab` section markers.
 - Blank-line rules around `SELECT` blocks, whose interiors are otherwise
   skipped entirely (§2.3).

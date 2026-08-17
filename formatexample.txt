@@ -1,4 +1,17 @@
 ##before formatting
+I///$tab 00-Main
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET NumericalAbbreviation='3:k;6:M;9:B;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+Set HideSuffix = '%';
+
+Let vFinYearF3 = Replace(YearName(AddMonths(Today(),36),0,7), '-20','-');
+Let vFinYearF2 = Replace(YearName(AddMonths(Today(),24),0,7), '-20','-');
+Let vFinYearF1 = Replace(YearName(AddMonths(Today(),12),0,7), '-20','-');
+
+///$tab 01-Var
 [Grant Activity Temp]:
 
 LOAD
@@ -16,30 +29,6 @@ LOAD
     DATE("Grant Activity.Activity Start Date", 'DD/MM/YYYY') as [Activity Start Date],
     DATE("Grant Activity.Activity End Date", 'DD/MM/YYYY') as [Activity End Date],
     IF("Grant Activity.Activity Start Date" > Today()-30 and "Grant Activity.Activity Start Date"  < today(), 1,0) as [Activity started in last 30 days],
-    IF("Grant Activity.Activity End Date" > Today()-30 and "Grant Activity.Activity End Date" < today(), 1,0) as [Activity ended in last 30 days],
+    IF("Grant Activity.Activity End Date" > Today()-30 and "Grant Activity.Activity End Date" < today(), 1,0) as [Activity ended in last 30 days]
 FROM [lib://AppDataProd/AzureDataLake/FUSION/Grant Activity.qvd]
 (qvd);
-
-##After formatting
-
-	[Grant Activity Temp]:
-	LOAD
-		  [Grant Activity.Grant Activity Id%] 																							AS [Grant Activity Id%]
-		, [Grant Activity.Source Organisation Id%] 																						AS [Activity Source Organisation Id%]
-		, IF([Grant Activity.Activity Id] = '4-ENJBSQ2', 'a6c824bf-afc1-e611-80f1-c4346bc5977c', [Grant Activity.PMC Region Id%]) 		AS [PMC Region Id%]
-		, [Grant Activity.Programme Component Id%] 																						AS [Programme Component Id%]
-		, IF(LEN([Grant Activity.Programme Id%]) = 0, 'ae0b9448-9f69-e611-80e6-c4346bc43f98', [Grant Activity.Programme Id%]) 			AS [Programme Id%]
-		, [Grant Activity.Sub Programme] 																								AS [Sub Program]
-		, [Grant Activity.Grant Activity] 																								AS [Activity Title]
-		, [Grant Activity.Activity Id] 																									AS [Activity Id]
-		, [Grant Activity.Activity Description] 																						AS [Long Description]
-		, DATE([Grant Activity.Activity Start Date], 'DD/MM/YYYY') 																		AS [Activity Start Date]
-		, DATE([Grant Activity.Activity End Date], 'DD/MM/YYYY') 																		AS [Activity End Date]
-		, IF([Grant Activity.Activity Start Date] > TODAY() - 30 AND [Grant Activity.Activity Start Date] < TODAY(), 1, 0) 				AS [Activity started in last 30 days]
-		, IF([Grant Activity.Activity End Date] > TODAY() - 30 AND [Grant Activity.Activity End Date] < TODAY(), 1, 0) 					AS [Activity ended in last 30 days]
-	FROM [lib://AppDataProd/AzureDataLake/FUSION/Grant Activity.qvd](qvd);
-
-
-##
-keywords and functions capitalized, commented out unused code removed, square bracket usage throughout, explicit aliasing, spaces after commas, indentation to ensure alignment of fields and alignment of aliases, leading commas on fields.
-list not exhaustive.

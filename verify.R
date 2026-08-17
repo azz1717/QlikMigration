@@ -470,10 +470,19 @@ verify_block_structure <- function() {
   # data (Adam checked the source, 2026-08-17), so the WHOLE line is
   # protected as one section line, silently, not flagged as a defect
   ok("a line sharing a ///$tab marker is protected as one section line",
-     identical(kinds("X///$tab Main\nLET a = 1;"), c("section", "statement")) &&
-       length(find_block_structure(tokenize_qlik("X///$tab Main\nLET a = 1;"))$warnings) == 0L)
+     identical(kinds("X///$tab Main\nTRACE a = 1;"), c("section", "statement")) &&
+       length(find_block_structure(tokenize_qlik("X///$tab Main\nTRACE a = 1;"))$warnings) == 0L)
   ok("a ///$tab marker on its own line is also a section",
-     identical(kinds("///$tab Main\nLET a = 1;"), c("section", "statement")))
+     identical(kinds("///$tab Main\nTRACE a = 1;"), c("section", "statement")))
+
+  # DESIGN 4.11 (Adam 2026-08-17): SET/LET is a distinct "directive" kind,
+  # not an ordinary "statement" - including a continuation line of a
+  # multi-line SET/LET expression.
+  ok("SET/LET is the directive kind, including its own continuation lines",
+     identical(kinds("SET a = 1;\nLET b =\n  2;"),
+               c("directive", "directive", "directive")))
+  ok("a bare word that merely starts with set/let is not mistaken for one",
+     identical(kinds("Settings a = 1;"), "statement"))
 
   invisible(NULL)
 }
@@ -486,25 +495,29 @@ verify_vertical_layout <- function() {
   lay <- function(src) paste(detokenize(enforce_vertical_layout(tokenize_qlik(src))$tokens),
                               collapse = "\n")
 
-  # DESIGN 4.5: statement 1 tab, field 2, continuation 3, comment column 0 -
-  # and FLAT: a LOAD inside a FOR gets the SAME indent as a top-level one.
+  # DESIGN 4.5: statement 1 tab, field 2 (+ a 2-space pad on the true first
+  # field), continuation 3, comment column 0 - and FLAT: a LOAD inside a FOR
+  # gets the SAME indent as a top-level one.
   src <- paste("[T]:", "LOAD", "  [A] AS [A],", "  IF(x > 1, 'y',", "  IF(z,'a','b')) AS [C]",
                "FROM x;", "//a comment", "FOR i = 1 to 3", "LOAD [B] FROM y;", "NEXT", sep = "\n")
   out <- lay(src)
-  # "IF(x > 1, 'y'," is a NEW field (it follows field 1's comma) - 2 tabs.
-  # Only "IF(z,'a','b')) AS [C]" is a continuation of THAT field - 3 tabs.
-  ok("statement/field/continuation/comment indent, and flat block nesting",
+  # "IF(x > 1, 'y'," is a NEW field (it follows field 1's comma) - 2 tabs, no
+  # pad (only the true first field, [A], gets the pad). Only
+  # "IF(z,'a','b')) AS [C]" is a continuation of THAT field - 3 tabs.
+  ok("statement/field/continuation/comment indent, first-field pad, and flat block nesting",
      identical(out, paste(
-       "\t[T]:", "\tLOAD", "\t\t[A] AS [A],", "\t\tIF(x > 1, 'y',",
+       "\t[T]:", "\tLOAD", "\t\t  [A] AS [A],", "\t\tIF(x > 1, 'y',",
        "\t\t\tIF(z,'a','b')) AS [C]", "\tFROM x;", "\n\n//a comment", "\tFOR i = 1 to 3",
        "\tLOAD [B] FROM y;", "\tNEXT", sep = "\n")))
 
   # DESIGN 4.8: exactly 2 blank lines between top-level statements, 0 inside
   # a block - the closing NEXT included, at the SAME id as what it closes.
-  b <- lay("FOR i=1 to 3\nLET a=1;\nLET b=2;\nNEXT\nLET c=3;")
+  # TRACE (not SET/LET) so this exercises the general rule, not the
+  # directive exemption tested separately below.
+  b <- lay("FOR i=1 to 3\nTRACE a=1;\nTRACE b=2;\nNEXT\nTRACE c=3;")
   ok("2 blank lines between top-level statements, 0 inside a block",
-     identical(b, paste("\tFOR i=1 to 3", "\tLET a=1;", "\tLET b=2;", "\tNEXT",
-                        "\n\n\tLET c=3;", sep = "\n")))
+     identical(b, paste("\tFOR i=1 to 3", "\tTRACE a=1;", "\tTRACE b=2;", "\tNEXT",
+                        "\n\n\tTRACE c=3;", sep = "\n")))
 
   # a ';' alone on its own line must not spawn a phantom 2-blank-line gap
   # right before itself (the bug fixed in find_block_structure, 2026-08-17).
@@ -517,17 +530,26 @@ verify_vertical_layout <- function() {
 
   # a leading comment is glued to the statement it describes: the 2-blank-
   # line gap goes ABOVE the comment, not between the comment and the code
-  cm <- lay("LET a=1;\n//about b\nLET b=2;")
+  cm <- lay("TRACE a=1;\n//about b\nTRACE b=2;")
   ok("a leading comment stays glued to its statement (convention, not yet confirmed with Adam)",
-     identical(cm, paste("\tLET a=1;", "\n\n//about b", "\tLET b=2;", sep = "\n")))
+     identical(cm, paste("\tTRACE a=1;", "\n\n//about b", "\tTRACE b=2;", sep = "\n")))
 
-  # ///$tab section markers: the whole line AND both surrounding gaps are
-  # left completely alone, even when something shares the line with one.
-  # That means the line RIGHT AFTER a section also stays unindented - a
-  # known, deliberately conservative nuance (flagged to Adam when built).
-  sec <- lay("LET a=1;\nX///$tab Main\nLET b=2;")
-  ok("a ///$tab line and its surrounding gaps are untouched",
-     identical(sec, "\tLET a=1;\nX///$tab Main\nLET b=2;"))
+  # ///$tab section markers: the WHOLE line carrying one is left completely
+  # alone, even when something shares the line with it. The line RIGHT
+  # AFTER a section now gets its indentation fixed like any other line
+  # (Adam 2026-08-17 - a table label directly after a section was wrongly
+  # left at column 0); only the blank-line COUNT of that gap - here, zero -
+  # is left exactly as authored rather than normalised to two.
+  sec <- lay("TRACE a=1;\nX///$tab Main\nTRACE b=2;")
+  ok("a ///$tab marker's own line is untouched; the line after gets indent fixed, blanks preserved",
+     identical(sec, "\tTRACE a=1;\nX///$tab Main\n\tTRACE b=2;"))
+
+  # DESIGN 4.11 (Adam 2026-08-17): SET/LET gets 0 indent, and the blank-line
+  # count on EITHER side of one is left exactly as authored - never forced
+  # to the standard two, never collapsed to zero.
+  dv <- lay("TRACE a=1;\n\n\nSET b=2;\nLET c=3;\n\nTRACE d=4;")
+  ok("SET/LET: 0 indent, blank-line count untouched on both sides",
+     identical(dv, "\tTRACE a=1;\n\n\nSET b=2;\nLET c=3;\n\n\tTRACE d=4;"))
 
   # file start: no leading WS token to rewrite at all (real case - both
   # fixtures start this way) - must indent line 1 without corrupting

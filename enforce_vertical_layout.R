@@ -7,8 +7,12 @@
 #   - Indentation is FLAT (DESIGN §4.5, decided 2026-08-17): 1 tab for a
 #     statement line, 2 for a field line, 3 for a continuation line (a line
 #     break before a field's expression finishes), 0 for a true developer
-#     comment. It does NOT scale with FOR/IF/SUB/DO/SWITCH nesting - see
-#     DESIGN §4.5 for why (simpler, avoids compounding §3.6's tab drift).
+#     comment, 0 for a SET/LET directive (DESIGN §4.11). It does NOT scale
+#     with FOR/IF/SUB/DO/SWITCH nesting - see DESIGN §4.5 for why (simpler,
+#     avoids compounding §3.6's tab drift).
+#   - A LOAD list's true first field (no leading separator comma) gets a
+#     two-space pad after its indent (DESIGN §4.4/§4.5), so its content
+#     lines up with the ", " in front of every comma-led field below it.
 #   - Blank lines (DESIGN §4.8): exactly two between top-level statements,
 #     none inside one. A whole control-flow block counts as ONE statement
 #     for this rule (its closing NEXT/END IF/etc. included) - that is what
@@ -23,9 +27,14 @@
 #     stays glued together. CONVENTION CALL, not yet confirmed with Adam
 #     (built under time pressure, 2026-08-17) - flag if wrong.
 #   - `///$tab` section markers (DESIGN §4.8/§6.2, Adam 2026-08-17): the
-#     WHOLE line carrying one, and the whitespace gap on EITHER side of it,
-#     is left completely untouched. Confirmed real data at
-#     app-unbuilt/script.qvs line 1 ("I///$tab 00-Main").
+#     WHOLE line carrying one is left completely untouched. The gap
+#     immediately AFTER one now has its indentation fixed like any other
+#     line (Adam 2026-08-17 - a table label directly after a section was
+#     wrongly left at column 0); only the blank-line COUNT of that gap
+#     stays untouched, same protection a SET/LET directive's own gaps get.
+#   - SET/LET directives (DESIGN §4.11, Adam 2026-08-17): 0 indent, and the
+#     blank-line count on EITHER side of one is left exactly as authored -
+#     never normalised to the two-blank-line rule, never collapsed to zero.
 #   - No new canonical_stream rule needed in verify.R: this pass only
 #     rewrites WS token TEXT (never reorders or edits a content token), and
 #     WS/COMMENT/VOID are already stripped before canonical_stream compares
@@ -35,7 +44,13 @@
 # Operates on a token stream (see qlik_tokenizer.R - source that first).
 # Vanilla base R only.
 
-.qvl_indent <- c(statement = "\t", field = "\t\t", continuation = "\t\t\t", comment = "")
+.qvl_indent <- c(statement = "\t", field = "\t\t", continuation = "\t\t\t",
+                  comment = "", directive = "")
+
+#' Count of newline characters in a whitespace token's text - used to
+#' reproduce a gap's original blank-line count exactly, when that count is
+#' being left untouched rather than normalised (DESIGN §4.8/§4.11).
+.qvl_count_newlines <- function(s) nchar(gsub("[^\n]", "", s))
 
 #' Index of the WS token whose newline+indent immediately precedes a line
 #' start, skipping over any VOID leftovers from an earlier pass - or NA if
@@ -54,7 +69,8 @@
 #'               ///$tab markers sharing a line), passed through unchanged
 #'   $changes  - data.frame(line, kind, before, after), one row per
 #'               rewritten gap. "kind" is the line's own kind (statement /
-#'               field / continuation / comment) - never "section", since
+#'               field / continuation / comment / directive) - never
+#'               "section", since
 #'               those are never rewritten.
 enforce_vertical_layout <- function(tokens) {
   bs <- find_block_structure(tokens)
@@ -102,9 +118,10 @@ enforce_vertical_layout <- function(tokens) {
   for (i in seq_len(nlines)) {
     kind_i <- L$kind[i]
     if (kind_i == "section") next                          # whole line: untouched
-    if (i > 1L && L$kind[i - 1L] == "section") next         # gap OUT of a section: untouched
 
     indent <- .qvl_indent[[kind_i]]
+    if (kind_i == "field" && isTRUE(L$first_field[i])) indent <- paste0(indent, "  ")
+
     ws_idx <- .preceding_ws_idx(t_type, L$idx[i])
 
     if (is.na(ws_idx)) {
@@ -113,14 +130,27 @@ enforce_vertical_layout <- function(tokens) {
       next
     }
 
+    before <- t_text[ws_idx]
+
+    # Blank-line COUNT is left exactly as authored - indentation is still
+    # fixed - on either side of a directive (SET/LET) and immediately after
+    # a ///$tab section marker (DESIGN §4.8/§4.11, Adam 2026-08-17). A
+    # directive's own incoming gap is protected by kind_i; its outgoing gap,
+    # and a section's outgoing gap, are protected by the PREVIOUS line's
+    # kind - the section's own line above is already skipped entirely, so
+    # only "coming out of one" needs handling here.
+    preserve_blanks <- kind_i == "directive" ||
+      (i > 1L && L$kind[i - 1L] %in% c("section", "directive"))
+
     target <- if (i == 1L) {
       indent   # nothing precedes line 1 - collapse any leading blank lines
+    } else if (preserve_blanks) {
+      paste0(strrep("\n", .qvl_count_newlines(before)), indent)
     } else {
       blanks <- if (eff_id[i] != eff_id[i - 1L]) 2L else 0L
       paste0(strrep("\n", blanks + 1L), indent)
     }
 
-    before <- t_text[ws_idx]
     if (identical(before, target)) next
 
     nch <- nch + 1L

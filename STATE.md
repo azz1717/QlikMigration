@@ -2,23 +2,24 @@
 
 **Position (2026-08-17):** SIX cosmetic passes, all green: aliases ->
 brackets -> leading commas -> intra-line spacing -> casing -> vertical
-layout. Pass 2 also brackets bare (unquoted) field references now (was a
-real gap). verify.R: 80 checks, 0 failed.
+layout. Layout had 4 real bugs, found by Adam against formatexample.txt and
+fixed same day: comma-led fields misclassified `statement` not `field`; no
+first-field alignment pad; table label unindented after a `///$tab` marker;
+SET/LET given normal statement indent/spacing instead of being exempted.
+verify.R: 83 checks, 0 failed. formatexample.txt is now Adam-confirmed
+correct for the single-LOAD-block case (by eye, not yet a verify.R fixture).
 
-**Next task:** open — the five phase-1 style rules originally scoped
-(DESIGN §4) are now all implemented. Candidates: §4.6 alias alignment (must
-run after layout, per README), §4.9 FROM clause, §4.10 comment removal, or
-start phase 2/3 (DESIGN §5). Ask Adam which.
+**Next task:** open — all five phase-1 style rules (DESIGN §4) now
+implemented. Candidates: §4.6 alias alignment (after layout, per README),
+§4.9 FROM clause, §4.10 comment removal, or phase 2/3 (DESIGN §5). Ask Adam.
 
 **Open items:**
 - Layout's comment-attachment convention (a leading comment glues to the
   FOLLOWING statement, not the one before it — DESIGN §4.8) was a judgment
-  call made under time pressure, not separately confirmed with Adam. Review
-  script_qvs_out.txt / the layout diff before treating it as settled.
-- The line immediately after a `///$tab` section marker is left unindented
-  (section-adjacent gaps are never touched) — known, deliberate, but worth
-  Adam's eyes on real output.
-- formatexample.txt is not a verify.R fixture; the alignment pad is covered
-  by argument and a synthetic test, never against that file directly.
+  call made under time pressure, not separately confirmed with Adam.
+- Pre-existing bug spotted in passing, NOT fixed here: pass 3 can attach a
+  trailing comma with no following field onto a `FROM` line instead of
+  warning. Own session. RESIDENT loads, prefix lines, control-flow indent
+  depth still open (DESIGN §4.11).
 
 (Cap: 25 lines. Longer means it is rotting — prune to position/next/open.)

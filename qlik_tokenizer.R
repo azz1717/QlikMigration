@@ -495,10 +495,15 @@ find_load_segments <- function(tokens) {
 #'       idx         - token index of the line's first token
 #'       line        - source line number
 #'       kind        - "statement"    1 tab  (table label, LOAD, FROM, FOR...)
-#'                     "field"        2 tabs (first line of a LOAD field)
+#'                     "field"        2 tabs (first line of a LOAD field,
+#'                                    plain or comma-led)
 #'                     "continuation" 3 tabs (line break before that field's
 #'                                    expression is finished - DESIGN 4.5)
 #'                     "comment"      column 0
+#'                     "directive"    0 tabs (a SET/LET statement, and any of
+#'                                    its own continuation lines - DESIGN
+#'                                    4.11; blank lines around it are left
+#'                                    untouched, same protection as "section")
 #'                     "section"      the WHOLE line carrying a ///$tab
 #'                                    marker (not just the marker itself) -
 #'                                    left ENTIRELY alone
@@ -507,6 +512,9 @@ find_load_segments <- function(tokens) {
 #'                     block shares one id (DESIGN 4.8, "block = one
 #'                     statement"), so two blank lines go where this changes
 #'       depth       - block nesting depth; 0 at top level
+#'       first_field - TRUE only for the LOAD list's true first field (the
+#'                     one sitting right after the LOAD keyword) - the one
+#'                     that needs the two-space alignment pad
 #'   $warnings - character vector for unbalanced blocks
 find_block_structure <- function(tokens) {
   n <- nrow(tokens)
@@ -580,10 +588,20 @@ find_block_structure <- function(tokens) {
   starts_stmt <- logical(nls)
   stmt_id     <- integer(nls)
   depth_out   <- integer(nls)
+  first_field <- logical(nls)
 
-  stack   <- character(0)
-  cur     <- 0L
-  pending <- TRUE   # next line start begins a statement
+  # Index of the next/previous non-trivia token at each position - used
+  # below to classify a leading-comma field line by what it actually
+  # separates rather than by the comma token itself, and to recognise a
+  # LOAD list's true first field (whatever token sits right after the LOAD
+  # keyword itself, comma-led or not - see the field/continuation block).
+  nxt_nt  <- next_non_trivia_idx(ty)
+  prev_nt <- prev_non_trivia_idx(ty)
+
+  stack         <- character(0)
+  cur           <- 0L
+  pending       <- TRUE   # next line start begins a statement
+  cur_directive <- FALSE  # is the CURRENT top-level statement a SET/LET?
 
   for (j in seq_len(nls)) {
     i <- ls_idx[j]
@@ -608,6 +626,14 @@ find_block_structure <- function(tokens) {
     w1 <- if (ty[i] == "WORD") lower[i] else ""
     nx <- if (ls_pos[j] < nc) content[ls_pos[j] + 1L] else NA_integer_
     w2 <- if (!is.na(nx) && ty[nx] == "WORD") lower[nx] else ""
+
+    # SET/LET statements (DESIGN §4.11, Adam 2026-08-17): 0 indent, blank
+    # lines around them left untouched - a "directive" kind distinct from
+    # "statement". Only re-evaluated when a new top-level statement is
+    # actually starting here, so a directive's own continuation lines (a
+    # multi-line SET/LET expression) inherit it rather than falling back to
+    # "statement" partway through.
+    if (pending) cur_directive <- nzchar(w1) && w1 %in% c("set", "let")
 
     opener <- NA_character_
     closer <- NA_character_
@@ -652,12 +678,39 @@ find_block_structure <- function(tokens) {
     stmt_id[j]     <- cur
     depth_out[j]   <- length(stack)
 
-    k <- findInterval(i, seg_lo)
-    kind[j] <- if (k >= 1L && i <= seg_hi[k]) {
-      if (i == seg_lo[k]) "field" else "continuation"
+    # A field line's own first token is normally its content - but after
+    # enforce_leading_commas (pass 3) has run, every field but the first
+    # starts with the separator COMMA itself, not its content. Classifying
+    # on the comma's own index put it in the gap BETWEEN two segments
+    # (neither's content_idx), which fell through to "statement" (1 tab
+    # instead of 2) - a real bug, not a hypothetical. Anchor on what the
+    # comma actually separates instead: the next non-trivia token. A
+    # depth>0 comma (mid-expression, never moved by pass 3) still lands
+    # inside its own segment's content, so it still resolves to
+    # "continuation" as before - this only changes the depth-0 case.
+    is_comma_lead <- ty[i] == "COMMA"
+    anchor <- if (is_comma_lead && !is.na(nxt_nt[i])) nxt_nt[i] else i
+
+    k <- findInterval(anchor, seg_lo)
+    kind[j] <- if (k >= 1L && anchor <= seg_hi[k]) {
+      if (anchor == seg_lo[k]) "field" else "continuation"
     } else {
       "statement"
     }
+    # The true first field of a LOAD list gets the two-space alignment pad
+    # (DESIGN §4.4/§4.5) so its content lines up with the ", " of every
+    # comma-led field below it - identified by what sits right before the
+    # segment's own content, not by whether THIS line happens to lead with
+    # a comma: pass 3 always runs before layout in the real pipeline, so in
+    # practice only the true first field is ever comma-less, but this stays
+    # correct even tested standalone (verify.R's layout self-tests run it
+    # directly on trailing-comma syntax).
+    if (kind[j] == "field") {
+      prv <- prev_nt[seg_lo[k]]
+      first_field[j] <- !is.na(prv) && ty[prv] == "WORD" && lower[prv] == "load"
+    }
+
+    if (cur_directive) kind[j] <- "directive"
 
     if (!is.na(opener)) stack <- c(stack, opener)
 
@@ -675,6 +728,7 @@ find_block_structure <- function(tokens) {
     lines = data.frame(
       idx = ls_idx, line = tokens$line[ls_idx], kind = kind,
       starts_stmt = starts_stmt, stmt_id = stmt_id, depth = depth_out,
+      first_field = first_field,
       stringsAsFactors = FALSE),
     warnings = warn)
 }

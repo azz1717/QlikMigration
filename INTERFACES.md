@@ -44,11 +44,13 @@ entry current in the same commit that changes its function.
   GOTCHA: its index arithmetic uses `1L` literals deliberately; an unsuffixed `1` silently makes
   start/end doubles and breaks callers doing `vapply(..., integer(1))`. Fixed 2026-08-17.
 - `find_block_structure(tokens) -> list(lines, warnings)` — classifies every LINE, for the vertical
-  layout pass. `lines` = data.frame(idx, line, kind, starts_stmt, stmt_id, depth), one row per line
-  start; kind is `statement`/`field`/`continuation`/`comment`/`section`. Reuses find_load_segments()
-  for field boundaries: a segment's FIRST line start is the field, any later one is a continuation.
-  Indentation is FLAT (DESIGN §4.5) so `kind` alone determines it — `depth` and `stmt_id` exist only
-  for §4.8's blank-line rule, where a whole block is ONE statement, its closer included.
+  layout pass. `lines` = data.frame(idx, line, kind, starts_stmt, stmt_id, depth, first_field), one
+  row per line start; kind is `statement`/`field`/`continuation`/`comment`/`directive`/`section`.
+  Reuses find_load_segments() for field boundaries: a segment's FIRST line start is the field, any
+  later one is a continuation. Indentation is FLAT (DESIGN §4.5) so `kind` alone determines it —
+  `depth` and `stmt_id` exist only for §4.8's blank-line rule, where a whole block is ONE statement,
+  its closer included. `first_field` is TRUE only for the field sitting right after the LOAD keyword
+  itself (DESIGN §4.4/§4.5's two-space alignment pad).
   GOTCHA: block keywords count only as a statement's FIRST word. That single guard is what stops
   `EXIT FOR WHEN ...;` opening a phantom block, with no per-keyword special-casing.
   GOTCHA: statement `IF` is told from function `IF(` by a depth-0 `THEN` on the line, NOT by a
@@ -60,6 +62,16 @@ entry current in the same commit that changes its function.
   The pending-new-statement check counts depth-0 semicolons strictly BEFORE each line's first
   token, not at-or-before — using an inclusive count made the semicolon's own line look like it
   came after its own statement had already ended.
+  GOTCHA (bug, fixed 2026-08-17): after pass 3 relocates a field separator to lead its line, that
+  line's own first token is the COMMA, not the field's content — and content_idx never includes the
+  leading comma, so the comma's own index fell in the gap BETWEEN two segments and every comma-led
+  field but the first misclassified as `statement` (1 tab) instead of `field` (2 tabs). Fixed by
+  classifying on what the comma actually separates (`next_non_trivia_idx()`) rather than its own
+  position — depth>0 commas (mid-expression, never moved by pass 3) are unaffected.
+  DESIGN §4.11 (Adam 2026-08-17): a SET/LET statement, and any of its own continuation lines, is
+  kind `directive` — 0 indent, blank lines on EITHER side left exactly as authored, never forced to
+  the standard two or collapsed to zero. Detected once per top-level statement (`pending`), not
+  per-token, so it survives a multi-line SET/LET expression.
 - Private: `.qlik_token_type` (token text -> type name), `.qlik_block_opener`, `.qlik_block_closer`
   (first word(s) of a statement -> block kind, or NA).
 
@@ -144,17 +156,25 @@ entry current in the same commit that changes its function.
 
 ## enforce_vertical_layout.R — pass 6
 
-- `enforce_vertical_layout(tokens)` — indentation and blank lines. DESIGN §3.4/§4.5/§4.8/§6.2.
+- `enforce_vertical_layout(tokens)` — indentation and blank lines. DESIGN §3.4/§4.5/§4.8/§4.11/§6.2.
   Consumes `find_block_structure()`. `$changes`: line, kind (the line's own kind — statement /
-  field / continuation / comment, never section), before, after — one row per rewritten gap.
-- Indent is FLAT (DESIGN §4.5): statement 1 tab, field 2, continuation 3, comment column 0 —
-  independent of FOR/IF/SUB/DO/SWITCH nesting depth.
+  field / continuation / comment / directive, never section), before, after — one row per rewritten
+  gap.
+- Indent is FLAT (DESIGN §4.5): statement 1 tab, field 2, continuation 3, comment column 0,
+  directive (SET/LET) 0 — independent of FOR/IF/SUB/DO/SWITCH nesting depth. A LOAD list's true
+  first field (`find_block_structure()`'s `first_field`) additionally gets a two-space pad after
+  its indent, so it lines up with the ", " of every comma-led field below it.
 - Blank lines (DESIGN §4.8): 2 between top-level statements, 0 inside one — driven by
   `find_block_structure()`'s `stmt_id`, which already treats a whole block as ONE statement.
 - A leading comment (run) is reattached to the FOLLOWING statement for this purpose — see DESIGN
   §4.8, and note this convention is not yet separately confirmed with Adam.
-- `///$tab` section lines, and the gap on EITHER side of one, are never rewritten (DESIGN §4.8) —
-  which means the line immediately after a section also keeps its original indentation.
+- `///$tab` section lines are never rewritten (DESIGN §4.8). The line immediately AFTER one now
+  gets its indentation fixed normally (Adam 2026-08-17 — a table label left at column 0 was wrong);
+  only the blank-line COUNT of that gap is left untouched, reproduced verbatim from the original
+  whitespace token rather than recomputed.
+- A `directive` (SET/LET) line gets the same blank-line protection on BOTH its incoming and
+  outgoing gap — DESIGN §4.11, Adam 2026-08-17: 0 indent, but never force/collapse the spacing
+  around one.
 - GOTCHA: only rewrites the leading-whitespace GAP for each line — it never inserts a new line
   break where the source didn't already have one, and never touches anything after a line's first
   token.
