@@ -35,6 +35,14 @@
 #   - SET/LET directives (DESIGN §4.11, Adam 2026-08-17): 0 indent, and the
 #     blank-line count on EITHER side of one is left exactly as authored -
 #     never normalised to the two-blank-line rule, never collapsed to zero.
+#   - FROM clause (DESIGN §4.9, Adam 2026-08-17): the format spec's opening
+#     paren - "(qvd)" and similar - joins the FROM path on one line, one
+#     space between, even when Qlik's own export wrapped it onto its own
+#     line (the common case). This is the one rule in this pass that
+#     removes a line break rather than just renormalising indent/blanks.
+#     Rule confirmed directly by Adam, not inferred from fixture content -
+#     app-unbuilt/script.qvs and [Grant Managing Region].txt are raw,
+#     unstyled input, never a style reference (see CLAUDE.md).
 #   - No new canonical_stream rule needed in verify.R: this pass only
 #     rewrites WS token TEXT (never reorders or edits a content token), and
 #     WS/COMMENT/VOID are already stripped before canonical_stream compares
@@ -118,6 +126,31 @@ enforce_vertical_layout <- function(tokens) {
   for (i in seq_len(nlines)) {
     kind_i <- L$kind[i]
     if (kind_i == "section") next                          # whole line: untouched
+
+    # FROM clause (DESIGN §4.9, Adam 2026-08-17): the format spec's opening
+    # paren joins the path on the SAME line as FROM, one space between -
+    # even though Qlik's own default export wraps it onto its own line.
+    # Detected structurally - the immediately preceding line starts with
+    # the WORD "from" - not by kind, so this bypasses the normal
+    # indent/blank-line machinery entirely: the gap collapses to a literal
+    # single space, no newline.
+    if (i > 1L) {
+      prev_idx <- L$idx[i - 1L]
+      if (t_type[L$idx[i]] == "LPAREN" && t_type[prev_idx] == "WORD" &&
+          tolower(t_text[prev_idx]) == "from") {
+        ws_idx <- .preceding_ws_idx(t_type, L$idx[i])
+        if (!is.na(ws_idx)) {
+          before <- t_text[ws_idx]
+          if (!identical(before, " ")) {
+            nch <- nch + 1L
+            ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
+            ch_before[nch] <- before; ch_after[nch] <- " "
+            t_text[ws_idx] <- " "
+          }
+        }
+        next
+      }
+    }
 
     indent <- .qvl_indent[[kind_i]]
     if (kind_i == "field" && isTRUE(L$first_field[i])) indent <- paste0(indent, "  ")

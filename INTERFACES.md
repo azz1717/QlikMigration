@@ -40,9 +40,12 @@ entry current in the same commit that changes its function.
   with the above. The call-position test (`t_type[next_non_trivia_idx(t_type)] == "LPAREN"`) is
   shared by casing and bracket references — promoted here 2026-08-17 when a second pass needed it.
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
-  segment: start, end, content_idx, has_as, alias_content_idx, line — all integer. Skips SELECT.
+  segment: start, end, content_idx, has_as, as_idx, alias_content_idx, line, load_tok_idx — all
+  integer except has_as (logical). Skips SELECT.
   GOTCHA: its index arithmetic uses `1L` literals deliberately; an unsuffixed `1` silently makes
   start/end doubles and breaks callers doing `vapply(..., integer(1))`. Fixed 2026-08-17.
+  `as_idx`/`load_tok_idx` added 2026-08-17 for the alias alignment pass — `load_tok_idx` is the
+  same value for every field of one LOAD list, so segments sharing it are one alignment block.
 - `find_block_structure(tokens) -> list(lines, warnings)` — classifies every LINE, for the vertical
   layout pass. `lines` = data.frame(idx, line, kind, starts_stmt, stmt_id, depth, first_field), one
   row per line start; kind is `statement`/`field`/`continuation`/`comment`/`directive`/`section`.
@@ -140,6 +143,13 @@ entry current in the same commit that changes its function.
   cannot end a value; `LOAD *` wildcard = previous non-trivia token is `load`, or `distinct`
   preceded by `load`. A wildcard gets no spacing rule in either direction.
 - Private: `.na_false` (NA -> FALSE in a logical mask).
+- **KNOWN GAP, TOP PRIORITY (found 2026-08-17, not yet fixed):** no rule forces a space around the
+  `AS` keyword. Two WORD tokens can't be lexically adjacent without whitespace already between
+  them, which is why every OTHER keyword-adjacency case is implicitly covered — but `AS` sitting
+  directly against a non-WORD token (`BRACKET`, `DQUOTE`, `SQUOTE`, `RPAREN`...) has no such
+  guarantee. Real case: `"field"as[alias]` survives passes 2-6 unchanged apart from bracketing and
+  casing, ending as `[field]AS[alias]` — no spaces at all. `enforce_alias_alignment.R` (pass 7)
+  had to be hardened to not crash on this rather than assume it can't happen. See STATE.md.
 
 ## enforce_reserved_word_case.R — pass 5
 
@@ -175,6 +185,11 @@ entry current in the same commit that changes its function.
 - A `directive` (SET/LET) line gets the same blank-line protection on BOTH its incoming and
   outgoing gap — DESIGN §4.11, Adam 2026-08-17: 0 indent, but never force/collapse the spacing
   around one.
+- FROM clause (DESIGN §4.9, Adam 2026-08-17): the format spec's opening paren — `(qvd)` and
+  similar — joins the FROM path on one line, one space between, even when the source has it
+  wrapped onto its own line (Qlik's own default export shape). Detected structurally (immediately
+  preceding line starts with the WORD `from`), not by kind — the only rule in this pass that
+  removes a line break rather than renormalising indent/blanks.
 - GOTCHA: only rewrites the leading-whitespace GAP for each line — it never inserts a new line
   break where the source didn't already have one, and never touches anything after a line's first
   token.
@@ -184,9 +199,41 @@ entry current in the same commit that changes its function.
 - Needs no new `canonical_stream` rule in verify.R: only WS token TEXT is ever rewritten, and
   WS/COMMENT/VOID are already stripped before the equivalence check compares anything.
 
+## enforce_alias_alignment.R — pass 7
+
+- `enforce_alias_alignment(tokens)` — aligns every field's `AS` to one column within its own LOAD
+  block. DESIGN §4.6. Must run LAST, after vertical layout — the column depends on each field's
+  FINAL indentation. Consumes `find_load_segments()` (its `load_tok_idx`/`as_idx` fields, added for
+  this pass) and `find_block_structure()` (to recognise a genuine one-field-per-line `field` kind
+  line, matched by LINE NUMBER not token index — a comma-led field's line-start token is the
+  leading comma, not the field's own content token). `$changes`: line, before, after.
+- Padding is TABS, always (Adam 2026-08-17, non-negotiable — scripts are hand-edited afterward).
+  Inserted BEFORE the existing single space in front of `AS` (guaranteed by intraline spacing), not
+  instead of it — `AS` lands one column past every tab stop, never on it.
+- Scope is per LOAD block, not per file (DESIGN §4.6): one enormous field only widens its own
+  block. A field whose content wraps onto another line before `AS` is excluded from BOTH the
+  column calculation and the rewrite entirely — left exactly as authored.
+- A field whose own column reaches `.eaa_max_field_width` (122, Adam 2026-08-17 — the exact length
+  of a real outlier field in formatexample.txt) or more gets the same exclusion treatment as a
+  wrapped field: "move onto the next widest column" means the block max is taken over the
+  remaining fields only.
+- GOTCHA (bug, fixed 2026-08-17): the content-width sum originally included the WS token
+  immediately before `AS` — the exact token this pass rewrites — so a second run measured the
+  first run's tab padding as content width and kept re-padding forever (220/1583 phantom changes
+  on the real fixtures). That WS token is now explicitly excluded from the width sum.
+- GOTCHA (bug, fixed 2026-08-17): a field with NO whitespace at all before `AS` (real case,
+  unstyled data in `app-unbuilt/script.qvs`: `"field"as[alias]`) crashed the column math, which
+  assumed intraline spacing always leaves a WS token there — true almost everywhere but not
+  universal on ugly input. Now excluded from alignment (same as any other malformed/outlier
+  field) instead of crashing. **This gap in pass 4 is real and not yet fixed — see STATE.md,
+  top priority.**
+- Private: `.eaa_tab_width`, `.eaa_max_field_width`, `.eaa_tab_col` (tab-aware column expansion),
+  `.eaa_preceding_ws_idx` (local duplicate of enforce_vertical_layout.R's helper — both a few
+  lines, not worth a shared-scanner entry).
+
 ## run_pipeline.R — the current full pipeline, not a snapshot
 
-- Script, not a function. `setwd("C:/Rtools")`, sources everything, runs all five passes in
+- Script, not a function. `setwd("C:/Rtools")`, sources everything, runs all seven passes in
   order, prints warnings, writes `script_out.txt`. Add new passes here.
 
 ## verify.R — standing verification suite; gates on exit status

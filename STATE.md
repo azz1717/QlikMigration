@@ -1,25 +1,23 @@
 # STATE — read this first; update before any commit that starts/finishes a task
 
-**Position (2026-08-17):** SIX cosmetic passes, all green: aliases ->
+**Position (2026-08-17):** SEVEN cosmetic passes, all green: aliases ->
 brackets -> leading commas -> intra-line spacing -> casing -> vertical
-layout. Layout had 4 real bugs, found by Adam against formatexample.txt and
-fixed same day: comma-led fields misclassified `statement` not `field`; no
-first-field alignment pad; table label unindented after a `///$tab` marker;
-SET/LET given normal statement indent/spacing instead of being exempted.
-verify.R: 83 checks, 0 failed. formatexample.txt is now Adam-confirmed
-correct for the single-LOAD-block case (by eye, not yet a verify.R fixture).
+layout -> alias alignment. Layout had 4 bugs found+fixed same day. Alignment
+(new, §4.6): tabs before AS's existing space, per-block column, 122-char
+outlier cap excluded. FROM clause (§4.9) also done: one line, one space.
+verify.R: 97 checks, 0 failed.
 
-**Next task:** open — all five phase-1 style rules (DESIGN §4) now
-implemented. Candidates: §4.6 alias alignment (after layout, per README),
-§4.9 FROM clause, §4.10 comment removal, or phase 2/3 (DESIGN §5). Ask Adam.
+**Next task — TOP PRIORITY:** `enforce_intraline_spacing` (pass 4) never
+forces a space around `AS` next to a non-WORD token (`"field"as[alias]` ->
+`[field]AS[alias]`, zero spaces, real unstyled-input case). Found building
+alignment, which was hardened not to crash on it rather than fix it — the
+actual fix belongs in pass 4. See INTERFACES.md's entry for that pass.
 
 **Open items:**
-- Layout's comment-attachment convention (a leading comment glues to the
-  FOLLOWING statement, not the one before it — DESIGN §4.8) was a judgment
-  call made under time pressure, not separately confirmed with Adam.
-- Pre-existing bug spotted in passing, NOT fixed here: pass 3 can attach a
-  trailing comma with no following field onto a `FROM` line instead of
-  warning. Own session. RESIDENT loads, prefix lines, control-flow indent
-  depth still open (DESIGN §4.11).
+- Layout's comment-attachment convention (DESIGN §4.8) still not separately
+  confirmed with Adam.
+- Pre-existing, NOT fixed: pass 3 can attach a trailing comma with no
+  following field onto a `FROM` line instead of warning. RESIDENT loads,
+  prefix lines, control-flow indent depth still open (§4.11).
 
 (Cap: 25 lines. Longer means it is rotting — prune to position/next/open.)

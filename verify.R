@@ -44,6 +44,7 @@ source("enforce_leading_commas.R")
 source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
 source("enforce_vertical_layout.R")
+source("enforce_alias_alignment.R")
 
 # ---- reporting ---------------------------------------------------------
 
@@ -264,7 +265,8 @@ PASSES <- list(
   "enforce_leading_commas"      = enforce_leading_commas,
   "enforce_intraline_spacing"   = enforce_intraline_spacing,
   "enforce_reserved_word_case"  = enforce_reserved_word_case,
-  "enforce_vertical_layout"     = enforce_vertical_layout
+  "enforce_vertical_layout"     = enforce_vertical_layout,
+  "enforce_alias_alignment"     = enforce_alias_alignment
 )
 
 verify_file <- function(path) {
@@ -326,6 +328,10 @@ verify_file <- function(path) {
   ok("layout: only WS token text changes, nothing else",
      identical(tokens$text[keep_before], r_lay$tokens$text[keep_after]) &&
        identical(tokens$type[keep_before], r_lay$tokens$type[keep_after]))
+
+  r_align <- enforce_alias_alignment(r_lay$tokens)
+  ok("alignment: every change is tabs plus the preserved space before AS",
+     nrow(r_align$changes) == 0L || all(grepl("^\t+ $", r_align$changes$after)))
 
   invisible(NULL)
 }
@@ -566,6 +572,63 @@ verify_vertical_layout <- function() {
   r2 <- enforce_vertical_layout(r1$tokens)
   ok("idempotent on a stream exercising every rule at once", nrow(r2$changes) == 0L)
 
+  # DESIGN 4.9 (Adam 2026-08-17): the format spec's opening paren joins the
+  # FROM path on one line, one space between, even though the source has it
+  # wrapped onto its own line (Qlik's own default export shape).
+  fr <- lay("[T]:\nLOAD [A]\nFROM x\n(qvd);")
+  ok("FROM clause: format spec joins the path on one line",
+     identical(fr, "\t[T]:\n\tLOAD [A]\n\tFROM x (qvd);"))
+
+  invisible(NULL)
+}
+
+# ---- alias alignment pass -----------------------------------------------
+
+verify_alias_alignment <- function() {
+  section("self-test: enforce_alias_alignment")
+
+  align <- function(src) paste(detokenize(enforce_alias_alignment(tokenize_qlik(src))$tokens),
+                                collapse = "\n")
+
+  # DESIGN 4.6: every AS in a block aligns to one column - the smallest tab
+  # stop (width 4) strictly past the widest field, TABS only (Adam
+  # 2026-08-17, non-negotiable) inserted BEFORE the existing single space
+  # before AS, not instead of it (Adam 2026-08-17) - AS lands one column
+  # past the tab stop, not on it. Field 1 ends col 13 (2 tabs + 2-space pad
+  # + "[A]"), field 2 ends col 14 (2 tabs + ", " + "[BB]") - both round up
+  # to tab stop 16, one tab each.
+  a1 <- align("[T]:\n\tLOAD\n\t\t  [A] AS [A]\n\t\t, [BB] AS [BB]\n\tFROM x;")
+  ok("two fields of different width land their AS on the same tab stop",
+     identical(a1, "[T]:\n\tLOAD\n\t\t  [A]\t AS [A]\n\t\t, [BB]\t AS [BB]\n\tFROM x;"))
+
+  # a field whose expression wraps onto another line before AS is excluded
+  # from BOTH the column calculation and the rewrite (Adam 2026-08-17) - the
+  # short field still aligns to its own width, unaffected by the wrapped one
+  a2 <- align(paste0(
+    "[T]:\n\tLOAD\n\t\t  [A] AS [A]\n\t\t, IF(x > 1,\n\t\t\t'y', 'n') AS [LongOne]\n\tFROM x;"))
+  ok("a wrapped field is excluded from the column and left untouched",
+     identical(a2, paste0(
+       "[T]:\n\tLOAD\n\t\t  [A]\t AS [A]\n\t\t, IF(x > 1,\n\t\t\t'y', 'n') AS [LongOne]\n\tFROM x;")))
+
+  # every rewritten gap is tabs followed by the one preserved space, never a
+  # bare space and never tabs that swallow the space
+  r <- enforce_alias_alignment(tokenize_qlik(
+    "[T]:\n\tLOAD\n\t\t  [A] AS [A]\n\t\t, [BB] AS [BB]\n\tFROM x;"))
+  ok("every change is tabs plus the preserved single space before AS",
+     nrow(r$changes) > 0L && all(grepl("^\t+ $", r$changes$after)))
+
+  # a second run of an already-aligned block is a no-op
+  again <- enforce_alias_alignment(r$tokens)
+  ok("idempotent once aligned", nrow(again$changes) == 0L)
+
+  # two separate LOAD blocks get independent columns - one enormous field in
+  # block 1 must not widen block 2's short field (DESIGN 4.6)
+  two_blocks <- align(paste0(
+    "[T1]:\n\tLOAD\n\t\t  [ReallyLongFieldName] AS [ReallyLongFieldName]\n\tFROM x;\n\n\n",
+    "[T2]:\n\tLOAD\n\t\t  [A] AS [A]\n\tFROM y;"))
+  ok("two LOAD blocks align independently",
+     grepl("\\[T2\\]:\\n\\tLOAD\\n\\t\\t  \\[A\\]\\t AS \\[A\\]", two_blocks))
+
   invisible(NULL)
 }
 
@@ -577,6 +640,7 @@ main <- function() {
   verify_detects_corruption()
   verify_block_structure()
   verify_vertical_layout()
+  verify_alias_alignment()
 
   fixtures <- c("[Grant Managing Region].txt", "app-unbuilt/script.qvs")
   for (f in fixtures) if (file.exists(f)) verify_file(f) else

@@ -50,6 +50,7 @@ source("enforce_leading_commas.R")
 source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
 source("enforce_vertical_layout.R")
+source("enforce_alias_alignment.R")
 
 tokens <- read_qlik_script("myscript.qvs")
 
@@ -59,11 +60,12 @@ r3 <- enforce_leading_commas(r2$tokens)
 r4 <- enforce_intraline_spacing(r3$tokens)
 r5 <- enforce_reserved_word_case(r4$tokens)
 r6 <- enforce_vertical_layout(r5$tokens)
+r7 <- enforce_alias_alignment(r6$tokens)
 
 r1$changes    # exactly what each stage did
-r6$warnings   # anything it declined to touch, or wants you to look at
+r7$warnings   # anything it declined to touch, or wants you to look at
 
-writeLines(detokenize(r6$tokens), "myscript_out.qvs")
+writeLines(detokenize(r7$tokens), "myscript_out.qvs")
 ```
 
 ## The passes
@@ -76,23 +78,24 @@ writeLines(detokenize(r6$tokens), "myscript_out.qvs")
 | 4 | `enforce_intraline_spacing` | comma, operator and parenthesis spacing within a line |
 | 5 | `enforce_reserved_word_case` | Qlik keywords and built-in functions become UPPER |
 | 6 | `enforce_vertical_layout` | indentation and blank lines between statements |
+| 7 | `enforce_alias_alignment` | aligns every field's `AS` to one column within its own LOAD block |
 
 Spacing runs after the comma pass, which supplies the separator it spaces
 (DESIGN §6.1). Casing runs last among the first five so that tokens spliced
-in by earlier passes are cased too. Layout runs last of all, since it is the
-only pass reading whole-script structure rather than local field segments.
-Alias alignment (not yet built) must always run after layout, because it is
-computed from the final indentation. See DESIGN §4.6.
+in by earlier passes are cased too. Layout runs after those five, since it
+is the only one of them reading whole-script structure rather than local
+field segments. Alias alignment runs LAST of all, because its column is
+computed from each field's final indentation (DESIGN §4.6).
 
 Current cost, whole pipeline including tokenizing:
 
 | script | lines | tokens | total |
 |--------|------:|-------:|------:|
-| `[Grant Managing Region].txt` | 762 | 4,969 | 0.57s |
-| `app-unbuilt/script.qvs` | 13,870 | 31,341 | 2.36s |
+| `[Grant Managing Region].txt` | 762 | 4,969 | 0.69s |
+| `app-unbuilt/script.qvs` | 13,870 | 31,341 | 2.93s |
 
-Re-measured 2026-08-17 with all six passes in place (was 0.42s / 1.97s over
-five). Token counts are the *input* stream.
+Re-measured 2026-08-17 with all seven passes in place (was 0.57s / 2.36s
+over six). Token counts are the *input* stream.
 
 ## The contract every pass honours
 

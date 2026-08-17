@@ -466,11 +466,40 @@ it. Confirmed against a real case, `[Grant Managing Region].txt` lines 19-20:
     IF(LEN("PMC Region.PMC Region Code") > 1, 'GMU Region',
     	IF(MATCH("PMC Region.PMC Region Abbr",'FNQLD','GNQLD'),'North Queensland',"PMC Region.PMC Region")) AS [NIAA Region],
 
-### 4.6 Alias alignment — not implemented
+### 4.6 Alias alignment — implemented (`enforce_alias_alignment`)
 
 Within a LOAD block, every `AS` is aligned to one column. The column is sized
 from the widest field line **in that block**, so one enormous expression
-widens only its own block rather than the whole file.
+widens only its own block rather than the whole file. Must run LAST in the
+pipeline — the column depends on each field's final indentation (§4.5).
+
+**Padding is tabs, always (Adam 2026-08-17, non-negotiable).** The scripts
+are hand-edited afterward, and every other indent/pad in this pipeline is
+already tabs — this was not treated as a per-feature choice to reconsider.
+The tabs are inserted **before** the single space intraline spacing already
+guarantees in front of `AS`, not instead of it — that space stays, so `AS`
+lands one column past every tab stop, never on it. The known consequence of
+tabs-for-alignment (§3.6: tab-run alignment only holds exactly at one tab
+width) is an accepted tradeoff, not a defect.
+
+**Two kinds of field are excluded from a block's column entirely** — left
+with their AS exactly as authored, no forced padding:
+- A field whose expression wraps onto a further line before its `AS`
+  (Adam 2026-08-17): already visually broken from the block's rhythm by
+  wrapping, so forcing every other field to match its width would be
+  absurd.
+- A field whose own column reaches **122 characters** or more (Adam
+  2026-08-17 — the exact length of a real outlier in formatexample.txt,
+  `IF("Grant Activity.Activity Id" = '4-ENJBSQ2', ...)`, not a round
+  number). One abnormally long field forcing every short field in the same
+  block to pad out to match it looked worse than no alignment at all. The
+  column is then set by the widest field *under* that threshold — "move
+  onto the next widest column."
+
+A field with no whitespace at all around `AS` (real case, unstyled input:
+`"field"as[alias]`) is also excluded — see §4.7's known gap below; that is
+a missing rule in an earlier pass, not something this pass should paper
+over by inventing spacing on its own.
 
 ### 4.7 Intra-line spacing — implemented (`enforce_intraline_spacing`)
 
@@ -492,6 +521,18 @@ widens only its own block rather than the whole file.
   takes no left space) and the **`LOAD *` wildcard**, which is typed
   `OPERATOR` but is not one.
 - Any other run of 2+ spaces in content collapses to one.
+
+**KNOWN GAP, TOP PRIORITY (found 2026-08-17, not yet fixed):** nothing here
+forces a space around `AS` itself. The "two `WORD`s can't be adjacent"
+argument above only protects `AS` from OTHER words — it says nothing about
+`AS` sitting directly against a non-`WORD` token (`BRACKET`, `DQUOTE`,
+`SQUOTE`, `RPAREN`...), which tokenizes just fine with zero whitespace.
+Real case, unstyled input: `"field"as[alias]` survives every earlier pass
+unchanged apart from bracketing (§4.2) and casing (§4.1), ending as
+`[field]AS[alias]` — no spaces at all. Discovered because it crashed
+`enforce_alias_alignment` (§4.6), which assumed a space there always
+exists; that pass was hardened not to crash on it, but the actual fix
+belongs here.
 
 That collapse rule needs one exception, narrower than originally expected.
 The concern was that a naive "collapse everything" rule would eat the
@@ -547,10 +588,15 @@ on both fixtures.
   continuation lines too (a multi-line SET/LET expression), not just its
   first line.
 
-### 4.9 FROM clause — not implemented
+### 4.9 FROM clause — implemented (`enforce_vertical_layout`)
 
-Path, format spec and terminating semicolon on one line:
-`FROM [lib://...](qvd);`
+Path, format spec and terminating semicolon on one line, one space before
+the format spec: `FROM [lib://...] (qvd);` — even though Qlik's own default
+export wraps the format spec onto its own line, which this pass now joins
+back (Adam 2026-08-17). Detected structurally (the immediately preceding
+line starts with the WORD `from`), not by line kind, and is the one rule in
+`enforce_vertical_layout` that removes a line break rather than just
+renormalising indent/blanks.
 
 ### 4.10 Comments — not implemented
 

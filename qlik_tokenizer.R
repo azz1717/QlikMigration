@@ -319,7 +319,14 @@ next_non_trivia_idx <- function(type) {
 #'       content_idx  - integer vector of indices for the segment's
 #'                      non-trivia (non WS/COMMENT) tokens
 #'       has_as       - TRUE if the segment already has a depth-0 AS clause
+#'       as_idx       - token index of that AS keyword, or NA if has_as is
+#'                      FALSE (added 2026-08-17 for alias alignment)
 #'       line         - source line the segment starts on
+#'       load_tok_idx - token index of the "LOAD" keyword that owns this
+#'                      segment - groups segments back into their own LOAD
+#'                      list (added 2026-08-17 for alias alignment, DESIGN
+#'                      §4.6: same value for every field of one LOAD, so
+#'                      consecutive segments sharing it are one block)
 #'   $warnings - character vector describing any LOAD statement whose end
 #'       (FROM/RESIDENT/INLINE/AUTOGENERATE/WHERE/;) could not be found
 find_load_segments <- function(tokens) {
@@ -418,8 +425,10 @@ find_load_segments <- function(tokens) {
           start = s_from, end = s_to,
           content_idx = content_idx,
           has_as = has_as,
+          as_idx = as_idx,
           alias_content_idx = alias_content_idx,
-          line = tokens$line[s_from]
+          line = tokens$line[s_from],
+          load_tok_idx = i
         )
       }
 
