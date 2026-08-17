@@ -139,13 +139,19 @@ check_state_cap <- function() {
 
 # --- 5. open questions live in STATE.md only -----------------------------
 check_no_tbd <- function() {
+  # Widened 2026-08-17 after the first version matched only "not yet
+  # specified" and missed a verify.R test label reading "not yet confirmed
+  # with Adam" - a convention Adam had already signed off. An open-question
+  # marker is a marker whatever words it uses; match the family, not a phrase.
+  pat <- paste("not yet specified", "not (yet |separately )?confirmed",
+               "\\bTBD\\b", "\\bFIXME\\b", "to be decided", sep = "|")
   bad <- character(0)
   for (f in setdiff(scan_files, c("STATE.md", "verify_docs.R"))) {
-    hits <- grep("not yet specified", read_utf8(f), ignore.case = TRUE)
+    hits <- grep(pat, read_utf8(f), ignore.case = TRUE)
     if (length(hits) > 0)
       bad <- c(bad, sprintf("%s:%s", f, paste(hits, collapse = ",")))
   }
-  ok("no 'not yet specified' markers outside STATE.md", length(bad) == 0, bad)
+  ok("no open-question markers outside STATE.md", length(bad) == 0, bad)
 }
 
 main <- function() {

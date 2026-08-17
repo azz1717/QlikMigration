@@ -286,5 +286,9 @@ entry current in the same commit that changes its function.
 - Checks: every DESIGN §-citation resolves to a real heading; pass list
   agrees across run_pipeline.R / verify.R PASSES / README table; public
   functions all appear in INTERFACES.md and every project-named function
-  INTERFACES mentions exists; STATE.md <= 25 lines; open-question ("not-
-  yet-specified") markers appear nowhere outside STATE.md.
+  INTERFACES mentions exists; STATE.md <= 25 lines; open-question markers
+  appear nowhere outside STATE.md. The marker wordings live in
+  `check_no_tbd`'s pattern and are deliberately NOT restated here — naming
+  them in prose trips the check that forbids them. Widened 2026-08-17 after
+  the first version matched one literal phrase and missed a stale verify.R
+  label that used different words.

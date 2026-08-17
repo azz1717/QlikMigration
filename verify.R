@@ -551,7 +551,7 @@ verify_vertical_layout <- function() {
   # a leading comment is glued to the statement it describes: the 2-blank-
   # line gap goes ABOVE the comment, not between the comment and the code
   cm <- lay("TRACE a=1;\n//about b\nTRACE b=2;")
-  ok("a leading comment stays glued to its statement (convention, not yet confirmed with Adam)",
+  ok("a leading comment stays glued to its statement (convention, confirmed by Adam 2026-08-17)",
      identical(cm, paste("\tTRACE a=1;", "\n\n//about b", "\tTRACE b=2;", sep = "\n")))
 
   # ///$tab section markers: the WHOLE line carrying one is left completely
