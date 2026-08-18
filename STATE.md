@@ -6,15 +6,15 @@ verify.R is styling-only, verify_docs.R gates every commit.
 
 **Next task:** phase 2, DESIGN §6.5 + §7.1/§7.2. Steps 1-4a DONE
 (json_strings +oracle, app_usage, script_loads, script_refs, usage_report,
-script_debt). 4b UNRESOLVED — first open item.
+script_debt). 4b: build report_mock.html into render_report.R.
 
 **Open items:**
-- 4b report design: TWO drafts rejected (data dump; then tab-grouped,
-  "arguably worse"). Start fresh WITH Adam; do not iterate render_report.R.
-  Layers 1-4a are sound and stay. DESIGN §7.2 records what was tried.
+- 4b: 3 drafts rejected. report_mock.html agreed in shape — WHAT and HOW
+  MUCH only; severity, effort and priority are Adam's call, never computed.
 - What can the work machine run? Decides whether jsonlite can be the oracle
   there as here. Adam to check; access, not capability.
 - Qlik behaviour for a repeated explicit table label? Unverified; 9 in app1.
+- script_loads misses bare `SQL SELECT` tables (no LOAD); app1's 118 is 4 short.
 - Parked, Adam's: before/after pruning report; explicit+unique table names
   as a forward design standard.
 - A qvd inventory (name + path + FIELDS) would resolve the 3 wildcard-path

@@ -363,6 +363,12 @@ entry current in the same commit that changes its function.
   the apparent cause (`DISTINCT` missing from the vocabulary) was wrong; it is present, and the
   casing pass does uppercase a lowercase `distinct`. `.SL_QUALIFIERS` survives only for the
   un-aliased-name strip, where removing the whole keyword vocabulary would mangle an expression.
+- **KNOWN GAP (2026-08-18): a bare `SQL SELECT` produces a table this file never sees.** The
+  model is built from LOAD statements, so `[TravelAreas]:` followed by `SQL SELECT ... FROM
+  Closest(...)` — no LOAD — yields no row. app-unbuilt has 4 such tables (`TravelAreas`,
+  `ClosestAssociations`, `ILOC to Hub Temp`, `OfficeFrom_OfficeTo_Route`), none of them in
+  `loads$table`, so the 118-table count is an undercount of the real model by 4. Found via
+  `sql_targets()` in script_debt.R, which counts 28 SQL targets to this file's 24.
 - Current: app2 42 loads -> 26 tables, 0 warnings. app-unbuilt 167 -> 118 tables, 7 warnings, all
   informational (3 wildcard paths, 4 un-aliased `DISTINCT [Field]`).
 - Private: `.sl_undelimit()`, `.sl_next_solid()`, `.sl_solid()`, `.sl_head()`, `.sl_label()`,
@@ -398,8 +404,9 @@ entry current in the same commit that changes its function.
 
 ## script_debt.R — the report's debt signals. NOT in the pipeline
 
-- `guid_literals(tokens, tabs)`, `commented_out_code(tokens, tabs)`, `duplicate_labels(loads)`.
-  `Rscript script_debt.R <script>` prints all three plus the direct-database-call count.
+- `guid_literals(tokens, tabs)`, `commented_out_code(tokens, tabs)`, `duplicate_labels(loads)`,
+  `sql_targets(tokens, tabs)`. `Rscript script_debt.R <script>` prints all four plus the
+  direct-database-call count.
 - The admission test for anything here (DESIGN §7.1): **if retargeting fixes it, it is not
   report material.** DEV connection strings are therefore NOT flagged — that is phase 3's job.
 - `guid_literals` is the WHOLE of hardcoded-value detection, deliberately. A general rule would
@@ -412,7 +419,23 @@ entry current in the same commit that changes its function.
 - `duplicate_labels` is an OBSERVATION, not a severity: whether a repeated label is intentional
   concatenation or an accident is not determinable from the script, and this repo has not
   verified Qlik's behaviour here. 9 in app-unbuilt, clustered as tab pairs (`Fleet`/`OLDFleet`).
-- Private: `.SD_GUID`, `.SD_CODEISH`.
+- `sql_targets` -> data.frame(line, tab, kind, server, schema, object, target). `kind` splits
+  `object` (a qualified `"SERVER".schema."Object"`) from `connector` (a connector function
+  call such as `Closest(...)`): an object needs a Cloud data connection, a connector call
+  needs the connector to exist on Cloud at all, and they are not the same job.
+- Token-based for the reason the whole file is: a raw grep of app-unbuilt finds 25 qualified
+  FROM targets, one of which is inside a comment. A commented-out SELECT is one COMMENT
+  token, so its FROM never becomes a token and cannot be miscounted.
+- Current app-unbuilt: 24 object references, 24 distinct, across 2 servers (21 in
+  `AZDB-ZEA-PRD-NIAADL01.abs`), plus 4 connector calls (`Closest` 3, `TravelAreas` 1).
+  app2: all zero.
+- The 28 targets against 24 `select` loads is NOT a discrepancy, and the split is the point:
+  the 24 OBJECT references map one-to-one onto the 24 `LOAD ...; SELECT ...;` loads (verified:
+  24 distinct owning loads, no duplicates). The 4 CONNECTOR calls are a different statement
+  form entirely — a bare `SQL SELECT ... FROM Closest(...)` under an explicit table label, with
+  no LOAD above it. `script_loads()` models LOAD statements, so it never sees them.
+- Private: `.SD_GUID`, `.SD_CODEISH`, `.sd_split_qualified()` (splits a qualified name from
+  the RIGHT, so a bare `Trip` is an object, not a server).
 
 ## usage_report.R — phase 2 step 4a, the cross-reference. NOT in the pipeline
 

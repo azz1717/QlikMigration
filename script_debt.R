@@ -85,6 +85,74 @@ duplicate_labels <- function(loads) {
   }))
 }
 
+
+#' Where the SQL SELECT statements actually go.
+#'
+#' Token-based, never raw text: a commented-out SELECT lives entirely inside
+#' one COMMENT token, so its FROM never becomes a token and cannot be counted.
+#' A raw grep over app-unbuilt's 13,869 lines cannot make that distinction and
+#' 3.7% of the file is disabled script.
+#'
+#' Recognises the two forms a Qlik SQL FROM takes: a qualified object name
+#' (`"SERVER".schema."Object"`, parts optionally quoted) and a connector
+#' function call (`Closest(...)`, `TravelAreas(...)`). They are different
+#' migration problems — an object needs a Cloud data connection, a connector
+#' call needs the connector to exist on Cloud at all — so `kind` separates
+#' them rather than the reader having to.
+#' @return data.frame(line, tab, kind, server, schema, object, target)
+sql_targets <- function(tokens, tabs = NULL) {
+  empty <- data.frame(line = integer(0), tab = character(0), kind = character(0),
+                      server = character(0), schema = character(0),
+                      object = character(0), target = character(0),
+                      stringsAsFactors = FALSE)
+  lower <- tolower(tokens$text)
+  insel <- in_select_region(tokens$type, lower)
+  from  <- which(insel & tokens$type == "WORD" & lower == "from")
+  if (!length(from)) return(empty)
+
+  n <- nrow(tokens)
+  out <- lapply(from, function(i) {
+    j <- i + 1L
+    while (j <= n && tokens$type[j] %in% c("WS", "COMMENT", "VOID")) j <- j + 1L
+    parts <- character(0)
+    kind <- "object"
+    while (j <= n) {
+      ty <- tokens$type[j]
+      if (ty == "LPAREN") { kind <- "connector"; break }
+      if (!ty %in% c("WORD", "DQUOTE", "BRACKET", "OTHER")) break
+      if (ty == "OTHER" && tokens$text[j] != ".") break
+      parts <- c(parts, tokens$text[j])
+      j <- j + 1L
+    }
+    if (!length(parts)) return(NULL)
+    target <- paste0(parts, collapse = "")
+    seg <- .sd_split_qualified(target)
+    data.frame(line = tokens$line[i],
+               tab = if (is.null(tabs)) NA_character_ else .sl_tab_at(tabs, tokens$line[i]),
+               kind = kind,
+               server = if (kind == "connector") NA_character_ else seg[1L],
+               schema = if (kind == "connector") NA_character_ else seg[2L],
+               object = if (kind == "connector") target else seg[3L],
+               target = target, stringsAsFactors = FALSE)
+  })
+  out <- out[!vapply(out, is.null, logical(1))]
+  if (!length(out)) return(empty)
+  do.call(rbind, out)
+}
+
+# Split `"SERVER".schema."Object"` into its three trailing parts. The
+# tokenizer hands back `abs.` as one WORD (the dot is a word character in the
+# token pattern), so the split is on text, after unquoting, and pads from the
+# RIGHT: an unqualified `Trip` is an object, not a server.
+.sd_split_qualified <- function(x) {
+  p <- regmatches(x, gregexpr("\"[^\"]*\"|[^\".]+", x, perl = TRUE))[[1L]]
+  p <- p[nzchar(p)]
+  p <- sub("^\"(.*)\"$", "\\1", p)
+  if (!length(p)) return(c(NA_character_, NA_character_, NA_character_))
+  p <- tail(p, 3L)
+  c(rep(NA_character_, 3L - length(p)), p)
+}
+
 main <- function(args) {
   if (!length(args)) stop("usage: Rscript script_debt.R <script>")
   source("script_loads.R")
@@ -95,6 +163,7 @@ main <- function(args) {
   g <- guid_literals(tok, tabs)
   c_ <- commented_out_code(tok, tabs)
   d <- duplicate_labels(l)
+  s <- sql_targets(tok, tabs)
 
   cat(args[1L], "\n", sep = "")
   cat("  direct database calls: ", sum(l$source_kind == "select"), "\n", sep = "")
@@ -104,6 +173,18 @@ main <- function(args) {
       " (", round(100 * c_$total_lines / c_$script_lines, 1), "%)\n", sep = "")
   cat("  duplicate table labels: ", nrow(d), "\n", sep = "")
   if (nrow(d)) print(d, row.names = FALSE)
+  obj <- s[s$kind == "object", ]
+  con <- s[s$kind == "connector", ]
+  cat(paste0("  SQL object references: ", nrow(obj), " (",
+             length(unique(obj$target)), " distinct) across ",
+             length(unique(na.omit(obj$server))), " server(s); connector calls: ",
+             nrow(con)), fill = TRUE)
+  if (nrow(obj)) {
+    byloc <- aggregate(list(refs = obj$target),
+                       by = list(server = obj$server, schema = obj$schema), FUN = length)
+    print(byloc[order(-byloc$refs), ], row.names = FALSE)
+  }
+  if (nrow(con)) print(as.data.frame(table(con$object, dnn = "connector")), row.names = FALSE)
 }
 
 if (sys.nframe() == 0L) main(commandArgs(trailingOnly = TRUE))
