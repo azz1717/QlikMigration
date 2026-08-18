@@ -23,7 +23,7 @@
   tr { break-inside: avoid; page-break-inside: avoid; }
   td { padding: 1.5px 0; vertical-align: baseline; }
   td.n { font-family: Consolas, "Courier New", monospace; text-align: right;
-         width: 16mm; padding-right: 6mm; font-weight: 600; }
+         width: 18mm; padding-right: 6mm; font-weight: 600; }
   td.u { color: #444; font-size: 9pt; width: 62mm; }
 
   footer { margin-top: 16px; border-top: 1px solid #999; padding-top: 5px;
@@ -48,7 +48,7 @@
 <h2>Application</h2>
 <table>
   <tr><td class="n">13,869</td><td>script lines</td><td class="u">55 tabs</td></tr>
-  <tr><td class="n">171</td><td>load statements</td><td class="u">121 tables produced <a class="fn" href="#wild">*</a></td></tr>
+  <tr><td class="n">171</td><td>load statements</td><td class="u">121 tables produced<a class="fn" href="#wild">*</a></td></tr>
   <tr><td class="n">76</td><td>distinct source files</td><td class="u">83 file loads; all qvd</td></tr>
 </table>
 </section>
@@ -66,17 +66,17 @@
 <section>
 <h2>Data model</h2>
 <table>
-  <tr><td class="n">40</td><td>tables unused</td><td class="u">of 121 <a class="fn" href="#wild">*</a></td></tr>
+  <tr><td class="n">40<a class="fn" href="#wild">*</a></td><td>tables unused</td><td class="u">of 121</td></tr>
   <tr><td class="n">14</td><td>tables unDROPped</td><td class="u">build-only, left in model</td></tr>
-  <tr><td class="n">1,437</td><td>fields unused</td><td class="u">55% of 2,632 loaded <a class="fn" href="#wild">*</a></td></tr>
-  <tr><td class="n">3</td><td>loads unresolved</td><td class="u">wildcard qvd paths <a class="fn" href="#wild">*</a></td></tr>
+  <tr><td class="n">1,437<a class="fn" href="#wild">*</a></td><td>fields unused</td><td class="u">55% of 2,632 loaded</td></tr>
+  <tr><td class="n">3</td><td>loads unresolved</td><td class="u">wildcard qvd paths<a class="fn" href="#wild">*</a></td></tr>
 </table>
 </section>
 
 <section>
 <h2>Script</h2>
 <table>
-  <tr><td class="n">513</td><td>lines of dead code</td><td class="u">3.7% of codebase</td></tr>
+  <tr><td class="n">2,869</td><td>lines of dead code</td><td class="u">20.7% of the script</td></tr>
   <tr><td class="n">21</td><td>inline loads</td><td class="u"></td></tr>
   <tr><td class="n">9</td><td>duplicate table labels</td><td class="u"></td></tr>
   <tr><td class="n">0</td><td>hardcoded record ids</td><td class="u"></td></tr>
@@ -96,7 +96,8 @@
 
 <footer>
   <p id="wild"><b>*</b> &mdash; 3 wildcard loads (<code>.../30 Curated Data Store/&hellip;/*.qvd</code>)
-     name no file, so the tables and fields they carry are not counted above.
+     name no file, so the tables and fields they carry are not counted above: these totals are a
+     floor. 23 field references the app uses match no known field and are most likely theirs.
      A qvd inventory listing fields would resolve them.</p>
   <p><b>unused</b> &mdash; loaded and never referenced again, in script or visuals.
      <b>unDROPped</b> &mdash; used to build other tables, not called by visuals, not dropped.</p>

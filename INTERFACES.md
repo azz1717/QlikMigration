@@ -434,9 +434,18 @@ entry current in the same commit that changes its function.
   flag `IF([Status] <> 'Completed')`, which is fine and far commoner than the real thing. A GUID
   in a load expression is always a patched record id. Precision measured: 2 hits in app2 (both
   genuine), 0 false positives across app-unbuilt's 13,869 lines.
-- `commented_out_code` counts LINES, not blocks — legibility is the cost. 513 of 13,869 in
-  app-unbuilt, 1 of 632 in app2. The code-vs-prose test is a keyword match and approximate by
-  design; a few misjudged blocks do not change what a reader takes from the total.
+- `commented_out_code` counts LINES, not blocks — legibility is the cost. **2,869 of 13,869 in
+  app-unbuilt (20.7%), 5 of 632 in app2**, leaving 51 lines of genuine commentary in the first.
+- Two tests plus contiguity, and the reason is that a `//` comment is one token PER LINE.
+  Keyword-only scoring reported 513 lines and called the other 2,407 prose; a 25-line sample
+  of that prose held 24 lines of commented-out field lists, inline data rows and expressions
+  (Adam predicted exactly this). Contiguity — adjacent comment lines are one block, and a
+  block any part of which looks like script is disabled entire — recovered 938. `.SD_CODESHAPE`
+  then catches the single commented-out FIELD sitting inside a LIVE load, which has no
+  neighbouring comment to group with: a trailing comma, a leading bracket or quote, or a
+  paren/`=`. That recovered 1,911 of the remaining 1,978 blocks; a 20-line sample of the 67
+  left behind is genuine commentary. Prose carrying a bracket counts as code, which is the
+  tolerable direction — the metric is how much disabled script a reader must wade through.
 - `duplicate_labels` is an OBSERVATION, not a severity: whether a repeated label is intentional
   concatenation or an accident is not determinable from the script, and this repo has not
   verified Qlik's behaviour here. 9 in app-unbuilt, clustered as tab pairs (`Fleet`/`OLDFleet`).
@@ -455,7 +464,8 @@ entry current in the same commit that changes its function.
   24 distinct owning loads, no duplicates). The 4 CONNECTOR calls are a different statement
   form entirely — a bare `SQL SELECT ... FROM Closest(...)` under an explicit table label, with
   no LOAD above it. `script_loads()` models LOAD statements, so it never sees them.
-- Private: `.SD_GUID`, `.SD_CODEISH`, `.sd_split_qualified()` (splits a qualified name from
+- Private: `.SD_GUID`, `.SD_CODEISH`, `.SD_CODESHAPE`, `.sd_comment_body()`,
+  `.sd_split_qualified()` (splits a qualified name from
   the RIGHT, so a bare `Trip` is an object, not a server).
 
 ## usage_report.R — phase 2 step 4a, the cross-reference. NOT in the pipeline

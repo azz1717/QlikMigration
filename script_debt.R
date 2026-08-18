@@ -23,10 +23,19 @@ source("qlik_tokenizer.R")
 # hardcoded-value detection, deliberately.
 .SD_GUID <- "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
 
-# Comment text that looks like script rather than prose. Approximate by
-# design: the metric is VOLUME of commented-out code, and a few misjudged
-# blocks either way do not change what a reader takes from "513 of 13,869".
+# Comment text that looks like script rather than prose. Two tests, because
+# one line of a commented-out load rarely carries a keyword.
 .SD_CODEISH <- "(?i)\\b(load|resident|from|drop\\s+table|store|join|where|inline|autogenerate)\\b"
+
+# SHAPE, for the lines between the keywords: a field list entry ends in a
+# comma, a delimited name opens with a bracket or quote, and an expression
+# carries parentheses or an `=`. Measured on app-unbuilt: this recovers 1,911
+# of the 1,978 comment blocks that keyword-plus-contiguity still called prose,
+# and a 20-line sample of the 67 it leaves behind is genuine commentary
+# ("Leave out the tiny trips"). Prose carrying a bracket or an `=` is counted
+# as code, which is the tolerable direction: the metric is how much disabled
+# script a reader has to wade through.
+.SD_CODESHAPE <- "[,;][ \t]*$|^[\\s]*[\\\\[\"]|[()=]"
 
 #' Hardcoded record identifiers.
 #' @return data.frame(line, tab, literal)
@@ -48,19 +57,57 @@ guid_literals <- function(tokens, tabs = NULL) {
 #' Commented-out code, measured in lines.
 #'
 #' Lines rather than blocks because legibility is the cost: a reader wading
-#' through 513 lines of disabled script cares about the wading, not how many
+#' through 500 lines of disabled script cares about the wading, not how many
 #' separate blocks it came in.
-#' @return list(blocks = data.frame(line, tab, n_lines), total_lines, script_lines)
+#'
+#' CONTIGUITY IS THE WHOLE ALGORITHM (Adam 2026-08-18). A `//` comment is one
+#' token PER LINE, so a commented-out 60-line LOAD matches a keyword on the
+#' two lines carrying LOAD and FROM and on none of the 58 field lines between
+#' them. Scoring each line alone reported 513 of 13,869 for app-unbuilt and
+#' called the other 2,407 comment lines prose; a 25-line sample of that
+#' "prose" was 24 lines of commented-out field lists, inline data rows and
+#' expressions. Adjacent comment lines are therefore one block, and a block
+#' any part of which looks like script is disabled script entire.
+#'
+#' The residue is genuine commentary, and on this codebase there is very
+#' little of it — which is itself the finding.
+#' @return list(blocks = data.frame(line, tab, n_lines), total_lines,
+#'   script_lines, prose_lines)
+# Comment text with its marker and indentation stripped, so the shape test
+# sees the line as it was written rather than the `//` in front of it.
+.sd_comment_body <- function(x)
+  sub("^[ \t]*(//+|/[*]|--)[ \t]*", "", gsub("[\\r\\n]", " ", x))
+
 commented_out_code <- function(tokens, tabs = NULL) {
-  i <- which(tokens$type == "COMMENT" & grepl(.SD_CODEISH, tokens$text, perl = TRUE) &
-             !grepl("^///\\$tab", tokens$text))
-  nl <- if (length(i)) vapply(strsplit(tokens$text[i], "\n"), length, integer(1)) else integer(0)
+  cm <- which(tokens$type == "COMMENT" & !grepl("^///\\$tab", tokens$text))
+  if (!length(cm))
+    return(list(blocks = data.frame(line = integer(0), tab = character(0),
+                                    n_lines = integer(0), stringsAsFactors = FALSE),
+                total_lines = 0L, script_lines = max(tokens$line), prose_lines = 0L))
+
+  # Two comment tokens belong to the same block when nothing but trivia sits
+  # between them — which for consecutive `//` lines is the newline itself.
+  solid <- !tokens$type %in% c("WS", "VOID")
+  run   <- cumsum(c(TRUE, vapply(seq_along(cm)[-1L], function(k)
+             any(solid[(cm[k - 1L] + 1L):(cm[k] - 1L)]), logical(1))))
+
+  nl    <- vapply(strsplit(tokens$text[cm], "
+"), length, integer(1))
+  hit   <- grepl(.SD_CODEISH, tokens$text[cm], perl = TRUE) |
+           grepl(.SD_CODESHAPE, .sd_comment_body(tokens$text[cm]), perl = TRUE)
+  code  <- run %in% unique(run[hit])
+
+  keep  <- cm[code]
+  first <- !duplicated(run[code])
   list(blocks = data.frame(
-         line = tokens$line[i],
-         tab = if (is.null(tabs)) rep(NA_character_, length(i))
-               else vapply(tokens$line[i], function(x) .sl_tab_at(tabs, x), character(1)),
-         n_lines = nl, stringsAsFactors = FALSE),
-       total_lines = sum(nl), script_lines = max(tokens$line))
+         line = tokens$line[keep][first],
+         tab = if (is.null(tabs)) rep(NA_character_, sum(first))
+               else vapply(tokens$line[keep][first],
+                           function(x) .sl_tab_at(tabs, x), character(1)),
+         n_lines = as.integer(tapply(nl[code], run[code], sum)),
+         stringsAsFactors = FALSE),
+       total_lines = sum(nl[code]), script_lines = max(tokens$line),
+       prose_lines = sum(nl[!code]))
 }
 
 #' Table names built by more than one independent load.

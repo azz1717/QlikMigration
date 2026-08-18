@@ -14,9 +14,9 @@ script_debt). 4b: build report_mock.html into render_report.R.
 - What can the work machine run? Decides whether jsonlite can be the oracle
   there as here. Adam to check; access, not capability.
 - Qlik behaviour for a repeated explicit table label? Unverified; 9 in app1.
-- 3 wildcard qvd loads make table/field totals a floor, not a count; report *s them.
-- Parked, Adam's: before/after pruning report; explicit+unique table names
-  as a forward design standard.
+- 3 wildcard qvd loads make table/field totals a floor; 23 used field refs match
+  nothing known and look like theirs, so they are load-bearing, not dead.
+- Parked, Adam's: before/after pruning report; explicit+unique table names.
 - A qvd inventory (name + path + FIELDS) resolves the 3 wildcard-path loads.
   Adam has names+paths; fields unknown, hundreds of qvds.
 - Bare word = field or variable? Blocks §4.11 bracketing outside LOAD field
