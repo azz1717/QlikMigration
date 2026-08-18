@@ -139,6 +139,117 @@ app_references <- function(dir) {
              stringsAsFactors = FALSE)
 }
 
+# --- declared assets: variables and master items --------------------------
+#
+# A different question from field usage above, and answered differently. A
+# master dimension or measure is referenced by its qId — `qLibraryId` in the
+# object that uses it — and never by its title, so the id is the only
+# reliable key. A variable is referenced by NAME, in chart expressions and in
+# the script alike, so both have to be searched.
+#
+# Over-inclusive on the same principle as the rest of phase 2: a variable
+# named in a comment counts as used. A false "used" leaves dead weight
+# behind; a false "unused" deletes something live.
+
+#' One metadata file's declared items.
+#'
+#' Values only, positionally: in document order a key string is immediately
+#' followed by its value string, which is all the structure this needs and
+#' keeps json_strings.R from having to become a parser.
+#' @return data.frame(id, name)
+.au_declared <- function(path, name_key) {
+  none <- data.frame(id = character(0), name = character(0), stringsAsFactors = FALSE)
+  if (!file.exists(path)) return(none)
+  s <- read_json_strings(path)
+  if (!nrow(s)) return(none)
+  val_at <- function(i) if (i < nrow(s) && !s$is_key[i + 1L]) s$text[i + 1L] else NA_character_
+  ids <- which(s$is_key & s$text == "qId")
+  if (!length(ids)) return(none)
+  nms <- which(s$is_key & s$text == name_key)
+  data.frame(
+    id   = vapply(ids, val_at, character(1)),
+    name = vapply(ids, function(i) {
+             k <- nms[nms > i]
+             if (!length(k)) NA_character_ else val_at(k[1L])
+           }, character(1)),
+    stringsAsFactors = FALSE)
+}
+
+#' Every string VALUE in the app's objects, as one blob.
+#'
+#' One blob rather than a vector because the search below is per-asset: a
+#' hundred variables against ten thousand strings is a hundred passes either
+#' way, and one long string is a single gregexpr instead of ten thousand.
+.au_object_blob <- function(dir) {
+  files <- list.files(file.path(dir, "objects"), pattern = "\\.json$", full.names = TRUE)
+  if (!length(files)) return("")
+  paste(unlist(lapply(files, function(f) {
+    x <- read_json_strings(f); x$text[!x$is_key]
+  }), use.names = FALSE), collapse = "\n")
+}
+
+# Whole-word containment, fixed-string matched so a name carrying a regex
+# metacharacter cannot change the pattern's meaning.
+.au_word_hit <- function(blob, nm) {
+  if (!nzchar(blob) || is.na(nm) || !nzchar(nm)) return(FALSE)
+  st <- gregexpr(nm, blob, fixed = TRUE)[[1L]]
+  if (st[1L] == -1L) return(FALSE)
+  en <- st + nchar(nm) - 1L
+  before <- ifelse(st > 1L, substr(rep(blob, length(st)), st - 1L, st - 1L), "")
+  after  <- ifelse(en < nchar(blob), substr(rep(blob, length(en)), en + 1L, en + 1L), "")
+  any(!grepl("[A-Za-z0-9_]", before) & !grepl("[A-Za-z0-9_]", after))
+}
+
+#' Which variables the script mentions, other than to define them.
+#'
+#' The token right of SET/LET is the definition itself and does not count as
+#' a use — otherwise every variable is used by virtue of existing.
+.au_var_in_script <- function(tokens, names) {
+  if (is.null(tokens) || !nrow(tokens) || !length(names)) return(rep(FALSE, length(names)))
+  prev   <- prev_non_trivia_idx(tokens$type)
+  lower  <- tolower(tokens$text)
+  is_def <- tokens$type == "WORD" & !is.na(prev) & lower[prev] %in% c("set", "let")
+  word   <- tokens$type == "WORD" & !is_def
+  other  <- paste(tokens$text[tokens$type != "WORD"], collapse = "\n")
+  vapply(names, function(nm) {
+    if (is.na(nm)) return(FALSE)
+    any(tokens$text[word] == nm) || .au_word_hit(other, nm)
+  }, logical(1), USE.NAMES = FALSE)
+}
+
+#' Declared app assets and whether anything references them.
+#'
+#' @param dir an app*-unbuilt directory.
+#' @param script_path defaults to the export's own copy.
+#' @return data.frame(kind, id, name, used)
+asset_usage <- function(dir, script_path = NULL) {
+  if (is.null(script_path)) script_path <- file.path(dir, "script.qvs")
+  blob <- .au_object_blob(dir)
+  tok  <- if (file.exists(script_path)) read_qlik_script(script_path) else NULL
+
+  v <- .au_declared(file.path(dir, "variables.json"),  "qName")
+  d <- .au_declared(file.path(dir, "dimensions.json"), "title")
+  m <- .au_declared(file.path(dir, "measures.json"),   "title")
+
+  # A master item is used when its ID appears; a variable when its NAME does.
+  by_id <- function(x, kind) {
+    if (!nrow(x)) return(cbind(kind = character(0), x, used = logical(0)))
+    data.frame(kind = kind, x,
+               used = vapply(x$id, function(i) .au_word_hit(blob, i), logical(1)),
+               row.names = NULL, stringsAsFactors = FALSE)
+  }
+  vu <- if (!nrow(v)) logical(0) else
+          vapply(v$name, function(n) .au_word_hit(blob, n), logical(1), USE.NAMES = FALSE) |
+          .au_var_in_script(tok, v$name)
+
+  rbind(
+    if (nrow(v)) data.frame(kind = "variable", v, used = vu,
+                            row.names = NULL, stringsAsFactors = FALSE)
+      else by_id(v, "variable"),
+    by_id(d, "dimension"),
+    by_id(m, "measure"))
+}
+
 # Run directly for a summary; `--csv <path>` writes the full table.
 main <- function(args) {
   csv  <- if ("--csv" %in% args) args[match("--csv", args) + 1L] else NA
@@ -159,6 +270,16 @@ main <- function(args) {
                 a, length(unique(x$source_file)), sum(x$n),
                 length(unique(x$ref)), u("bracketed"), u("quoted"), u("bare"),
                 u("whole-string")))
+  }
+
+  for (d in dirs) {
+    a <- asset_usage(d)
+    n <- function(k) sum(a$kind == k)
+    x <- function(k) sum(a$kind == k & !a$used)
+    cat(sprintf("%s assets: %d/%d variables unused, %d/%d master dimensions, %d/%d master measures
+",
+                basename(d), x("variable"), n("variable"), x("dimension"), n("dimension"),
+                x("measure"), n("measure")))
   }
 
   if (!is.na(csv)) {

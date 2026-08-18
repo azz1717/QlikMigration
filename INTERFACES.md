@@ -318,7 +318,23 @@ entry current in the same commit that changes its function.
   selection values (`"2022-23"`, `"Yes"`). Still collected, since a wrong exclusion deletes a live
   field; kept separate, so the report never claims `Yes` is a field. Do not re-fold into
   `"bracketed"`; step 4 decides what to do with them.
-- Private: `.au_undelimit()`.
+- `asset_usage(dir, script_path = NULL) -> data.frame(kind, id, name, used)` — the DECLARED
+  assets (variables, master dimensions, master measures) and whether anything references them.
+  `script_path` defaults to the export's own copy. A separate question from field usage above,
+  answered differently per kind.
+- A master item is matched by its **qId**, never its title: the object that uses one carries
+  `qLibraryId`, which holds the id. A variable is matched by NAME, in the app objects AND in the
+  script, since either may reference it.
+- The token right of `SET`/`LET` is a variable's own definition and does not count as a use —
+  without that guard every variable is used by virtue of existing. Everything else counts,
+  comments included: over-inclusive on the phase 2 principle that a false 'used' leaves dead
+  weight while a false 'unused' deletes something live.
+- Current: app-unbuilt 32/94 variables unused, 2/3 master dimensions, 0 measures declared.
+  app2-unbuilt 8/15 variables, 4/13 dimensions, 4/5 measures. Spot-checked against the raw
+  files: `vTrip`, `vPopWeight`, `vNTAdmin` each appear once in the script (their own SET) and
+  nowhere in objects/.
+- Private: `.au_undelimit()`, `.au_declared()`, `.au_object_blob()`, `.au_word_hit()`,
+  `.au_var_in_script()`.
 
 ## script_loads.R — phase 2 step 3, NOT a pass and NOT in the pipeline
 

@@ -14,11 +14,11 @@ script_debt). 4b: build report_mock.html into render_report.R.
 - What can the work machine run? Decides whether jsonlite can be the oracle
   there as here. Adam to check; access, not capability.
 - Qlik behaviour for a repeated explicit table label? Unverified; 9 in app1.
-- script_loads misses bare `SQL SELECT` tables (no LOAD); app1's 118 is 4 short.
+- TODO: script_loads must model bare `SQL SELECT` (118 -> 122), still counted separately.
 - Parked, Adam's: before/after pruning report; explicit+unique table names
   as a forward design standard.
-- A qvd inventory (name + path + FIELDS) would resolve the 3 wildcard-path
-  loads. Adam has names+paths before; fields unknown, hundreds of qvds.
+- A qvd inventory (name + path + FIELDS) resolves the 3 wildcard-path loads.
+  Adam has names+paths; fields unknown, hundreds of qvds.
 - Bare word = field or variable? Blocks §4.11 bracketing outside LOAD field
   lists and field-level usage. Phase 2 works around it (ambiguous = used).
 
