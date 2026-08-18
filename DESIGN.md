@@ -1197,26 +1197,94 @@ expressed against the token stream, and a one-line statement of why it is
 debt — the report is read by people deciding what to fix first, so a flag
 that cannot justify itself is noise.
 
-Two entries now have both, from Adam 2026-08-18, and phase 2's step 3 already
-detects them — `script_loads.R` emits the signal, §7 decides what to say
-about it. Note these are a **separate concern from pruning**: an inline load
-or a database call is debt whether or not anything references it.
+**The admission test** (Adam, 2026-08-18): *if retargeting fixes it, it is
+not report material.* A DEV connection string is fixed by pointing it
+somewhere valid, which is literally phase 3's job, so it is not flagged. A
+direct database call cannot be retargeted away — it needs rearchitecting into
+a qvd layer — so it is. Apply this before adding anything below; without it
+the report sprawls into everything anyone notices.
+
+Debt is a **separate concern from pruning**: a database call is debt whether
+or not anything references the table it builds.
 
 | flag | detection | why it is debt |
 |---|---|---|
-| direct database call | `source_kind == "select"` — the `LOAD ...; SELECT ...;` form | **Not permitted** by the team's Cloud build standards, and will not work there by design. Blocking, not cosmetic. 24 in app-unbuilt, 0 in app2. |
-| oversized inline load | `source_kind == "inline"` with a large `inline_rows` | Inline loads are legitimate for mapping and crosstabs, but not for importing raw data. A large block is a CSV that was pasted into the script. app-unbuilt's largest is **1113 rows** (`SiteVisitSurvey`); app2's is 33 (`RegionMap`, a genuine mapping table). |
+| direct database call | `source_kind == "select"` — the `LOAD ...; SELECT ...;` form | **Not permitted** by the Cloud build standards and will not work there by design. Blocking. 24 in app-unbuilt, 0 in app2. |
+| hardcoded record id | a GUID-shaped `SQUOTE` literal in a load expression | A patched-in record key. 2 in app2 (lines 242, 244), 0 in app-unbuilt. |
+| commented-out code | `COMMENT` tokens containing script keywords, measured in LINES | Never executed, so no runtime cost — purely what a reader must wade through. 513 of 13,869 lines in app-unbuilt; 1 in app2. |
 
-Row count is what separates the two inline cases, which is why step 3 carries
-`inline_rows` rather than a bare inline flag; the report states the count and
-the threshold is a styling-free judgement recorded in STATE.md.
+**Two things are surfaced for human judgement rather than flagged**, because
+the tool cannot call them:
+
+- **Inline loads.** Legitimate for mapping and crosstabs, not for importing
+  raw data — and Adam 2026-08-18 is explicit that a row-count threshold
+  cannot make that call: a huge block is a red flag but a small one gets no
+  automatic pass. Content decides. The report shows every inline load's
+  header, row count and **first ten rows** — enough to judge, where embedding
+  1113 rows would be actively counterproductive in a document meant to be
+  skimmed.
+- **Duplicate table labels.** 9 in app-unbuilt, clustered as tab pairs
+  (`Fleet`/`OLDFleet`). Whether that is intentional concatenation or an
+  accident is not determinable from the script, and this repo has not
+  verified Qlik's behaviour for a repeated explicit label — see STATE.md.
+
+**Hardcoded values in general are NOT detected**, deliberately (Adam,
+2026-08-18). `IF([Status] <> 'Completed')` is fine and far commoner than
+`IF([Organisation] = 'ABC Tour Guides')`; hardcoded dates are legitimate as
+often as not. A detector whose false positives outnumber its true ones
+teaches the reader to skim the section. Only the GUID sub-case is claimed,
+and the report says plainly that the general case is not covered.
 
 Remaining seed entries, each still owing both halves above:
 
 - loads from attached files
-- hardcoded values in the load script
 
-### 7.2 The pipeline's output is the priority, not the report
+### 7.2 What the report is for
+
+It answers one question — **how much of a mess is this app?** (Adam,
+2026-08-18). That is a judgement a developer makes, not a metric the tool
+computes, so the report's job is to let them see, grasp and weigh the major
+issues fast. Three consequences settled the layout:
+
+- **Count things to investigate, never percentages of the script.** "12
+  tables to look at" is a work estimate; "2% of lines" could be one cascading
+  monster or twelve trivia. The one exception is commented-out code, where
+  lines genuinely are the unit of the problem.
+- **No aggregate field totals either.** "12 tables, 187 fields" hides whether
+  that is one gargantuan table and eleven negligible ones. Per-table counts
+  live in the drill-down instead.
+- **Every finding names its `///$tab`.** A line number does not help someone
+  opening the script in Qlik; the tab is how they navigate.
+
+**The report design is NOT settled. Two drafts have been rejected** (Adam,
+2026-08-18): the first as a data dump with headings, the second — the
+tab-grouped rewrite described below — as no better. What follows is a record
+of what has been tried and why, not a specification to build against. The
+detection layers underneath it (steps 1-4a) are unaffected and stand.
+STATE.md carries the live item.
+
+**The unit is the tab, not the finding.** A first draft gave every detector a
+section and every section its whole table; Adam rejected it as information
+overload, and the diagnosis was that the unit was wrong. Findings cluster
+hard: 12 of app-unbuilt's 24 database calls are in one tab, and 15 of its 40
+unused tables sit in 10 tabs where nothing is used at all. Listed flat, both
+facts are invisible. Grouped by tab — which is how a developer navigates and
+works through a Qlik script — the second becomes "10 tabs look deletable
+outright", one cheap decision instead of 15 investigations.
+
+So the layout is: a verdict naming the concentration, three figures, the
+wholly-dead tabs, then tabs grouped as blocking / judgement / cleanup-only,
+each closed. The long cleanup tail sits behind a single expander. Unused
+fields are a deliberately quiet footnote — the migration carries apps across
+as they are, so field-level tidying is noted, not urged, and it is the least
+certain output produced here.
+
+**Major and minor breaches are never the same figure.** A database call
+blocks migration outright; a hardcoded record id keeps the app in `dev`
+status and must go before production sign-off. Combining them told app2 it
+had "2 blocking items" when nothing blocks it at all.
+
+### 7.3 The pipeline's output is the priority, not the report
 
 The report itself is a rendering job and can wait; base R can produce HTML,
 RTF or even a valid `.docx` with no packages at all. What cannot wait is
@@ -1235,7 +1303,7 @@ The pass is **read-only**: it never modifies the script. That keeps it
 clear of the §3.4 structural helpers and means it cannot affect
 verification.
 
-### 7.3 Run the detection at both ends
+### 7.4 Run the detection at both ends
 
 Because the pass is read-only and idempotent, running it on both the
 incoming script and the final output costs almost nothing — and the
@@ -1254,13 +1322,13 @@ measures it. A handover that lists only what is still wrong understates the
 work that was done.
 
 **The baseline must be captured once, not recomputed.** Once the pipeline can
-be re-run over a partly hand-fixed script (§7.4), "the input" stops being a
+be re-run over a partly hand-fixed script (§7.5), "the input" stops being a
 fixed thing. If the before figure is recomputed on each run it converges
 silently on the after figure and the improvement record erases itself.
 Capture the original on-prem script's findings once, store them alongside the
 run, and compare every later run against that stored baseline.
 
-### 7.4 The pipeline must be re-runnable over a hand-fixed script
+### 7.5 The pipeline must be re-runnable over a hand-fixed script
 
 Some warts will not be resolvable automatically. The expected workflow is
 therefore: run the pipeline, hand the report to whoever owns the app, let

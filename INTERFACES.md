@@ -327,8 +327,14 @@ entry current in the same commit that changes its function.
   `Rscript script_loads.R <script> [--csv <stem>]` prints a summary and optionally writes
   `<stem>-loads.csv` / `<stem>-fields.csv`.
 - `loads`: load_id, table, producer_kind, prefix, source_kind, source, line_start, line_end,
-  chain_of, n_declared, inline_rows, complete_fields.
+  chain_of, n_declared, inline_rows, complete_fields, tab.
   `fields`: load_id, table, field, line, aliased, via (`declared` / `wildcard`).
+  `inlines`: load_id, table, tab, n_rows, header, sample, line_start, line_end — `sample` is the
+  first TEN data rows only (DESIGN §7.1: a developer judges an inline load from its header and a
+  glimpse; embedding 1113 rows in a skimmable document is counterproductive).
+- `tab` comes from the `///$tab Name` markers and is on every load. It is how a developer
+  navigates a Qlik script — a line number alone does not locate anything in the Qlik editor.
+  55 tabs in app-unbuilt, 6 in app2, every load mapped.
   `load_id` is positional 1..n, the join key, stable only within one parse of one file.
 - **A LOAD is not a table** — `producer_kind` is the whole point of this script:
   `table` / `preceding` (stacked LOADs, one table, named by the TOP one) / `joins-into`
@@ -363,6 +369,50 @@ entry current in the same commit that changes its function.
   `.sl_stmt_end()`, `.sl_source()`, `.sl_is_wildcard()`, `.sl_inline()`, `.sl_autoname()`,
   `.sl_paren_target()`, `.sl_wild_rows()`, `.sl_empty_loads()`, `.sl_empty_fields()`,
   `.SL_PREFIXES`, `.SL_QUALIFIERS`.
+
+## render_report.R — phase 2 step 4b, the submittable document. NOT in the pipeline
+
+- `render_report(app_dir, script_path, out) -> path`. `Rscript render_report.R <app-dir>
+  [--script <p>] [--out <p>]`. Self-contained HTML: no external stylesheet, script, font or
+  image, and collapsibles are native `<details>` so no JS is needed.
+- HTML not .docx (Adam 2026-08-18): the report must be reviewable on the machine it is written
+  on, and .docx is not openable there. The 4a/4b split means any other format is a second
+  renderer over the same table, not a rewrite.
+- **The information design IS the deliverable** (DESIGN §7.2). The first draft gave every
+  detector a section and every section its whole table — rejected as information overload, and
+  the rewrite is governed by three rules that must survive any future edit:
+  1. **The unit is the TAB, not the finding.** 40 unused tables listed flat hides that 15 of
+     them sit in 10 tabs with nothing used in them at all — one cheap decision, not 15
+     investigations. `dead` tabs get their own callout above everything else.
+  2. **Count work, not findings.** 24 database calls is not 24 jobs: 12 are in one tab. The
+     verdict names the concentration.
+  3. **Nothing is visible until asked for**, bar the verdict, the three figures and the dead-tab
+     list. Tabs are grouped blocking / judgement / cleanup-only, and cleanup-only — the long
+     tail — sits behind a single expander.
+- Major and minor breaches are separate figures. A database call blocks migration; a hardcoded
+  record id keeps the app in `dev` and must go before production sign-off. Folding them together
+  told app2 it had "2 blocking items", which was wrong and alarming.
+- Visible rows: app-unbuilt 23 expanders + a 10-name list; app2 2 + none. Was 42 rows and
+  200-cell tables inline.
+- Private: `.h()` (HTML escape), `.tbl()`, `.plural()`, `.badges()`, `.css`.
+
+## script_debt.R — the report's debt signals. NOT in the pipeline
+
+- `guid_literals(tokens, tabs)`, `commented_out_code(tokens, tabs)`, `duplicate_labels(loads)`.
+  `Rscript script_debt.R <script>` prints all three plus the direct-database-call count.
+- The admission test for anything here (DESIGN §7.1): **if retargeting fixes it, it is not
+  report material.** DEV connection strings are therefore NOT flagged — that is phase 3's job.
+- `guid_literals` is the WHOLE of hardcoded-value detection, deliberately. A general rule would
+  flag `IF([Status] <> 'Completed')`, which is fine and far commoner than the real thing. A GUID
+  in a load expression is always a patched record id. Precision measured: 2 hits in app2 (both
+  genuine), 0 false positives across app-unbuilt's 13,869 lines.
+- `commented_out_code` counts LINES, not blocks — legibility is the cost. 513 of 13,869 in
+  app-unbuilt, 1 of 632 in app2. The code-vs-prose test is a keyword match and approximate by
+  design; a few misjudged blocks do not change what a reader takes from the total.
+- `duplicate_labels` is an OBSERVATION, not a severity: whether a repeated label is intentional
+  concatenation or an accident is not determinable from the script, and this repo has not
+  verified Qlik's behaviour here. 9 in app-unbuilt, clustered as tab pairs (`Fleet`/`OLDFleet`).
+- Private: `.SD_GUID`, `.SD_CODEISH`.
 
 ## usage_report.R — phase 2 step 4a, the cross-reference. NOT in the pipeline
 

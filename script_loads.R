@@ -212,7 +212,30 @@ source("qlik_reserved_words.R")
 
   hdr <- trimws(strsplit(lines[1L], delim, fixed = TRUE)[[1L]])
   hdr <- sub('^"(.*)"$', "\\1", sub("^'(.*)'$", "\\1", hdr))
-  list(fields = hdr[nzchar(hdr)], n_rows = length(lines) - 1L)
+  # Ten rows, never the block. Adam 2026-08-18: a developer judges an inline
+  # load's appropriateness from its header and a glimpse of the data —
+  # embedding 1113 rows in a document meant to be skimmed is counterproductive.
+  list(fields = hdr[nzchar(hdr)], n_rows = length(lines) - 1L,
+       sample = head(trimws(lines[-1L]), 10L))
+}
+
+# `///$tab Name` markers divide a Qlik script into tabs. They are how a
+# developer actually navigates it, so every load carries the tab it lives on —
+# a line number alone does not help someone opening the script in Qlik.
+.sl_tabs <- function(tokens) {
+  cm <- which(tokens$type == "COMMENT" & grepl("^///\\$tab", tokens$text))
+  if (length(cm) == 0L)
+    return(data.frame(line = integer(0), tab = character(0),
+                      stringsAsFactors = FALSE))
+  data.frame(line = tokens$line[cm],
+             tab  = trimws(sub("^///\\$tab", "", tokens$text[cm])),
+             stringsAsFactors = FALSE)
+}
+
+.sl_tab_at <- function(tabs, line) {
+  if (nrow(tabs) == 0L) return(NA_character_)
+  i <- which(tabs$line <= line)
+  if (!length(i)) NA_character_ else tabs$tab[max(i)]
 }
 
 # Qlik names an unlabelled table after its source: the qvd's base name, or the
@@ -254,11 +277,12 @@ script_loads <- function(tokens) {
 
   if (length(s) == 0L)
     return(list(loads = .sl_empty_loads(), fields = .sl_empty_fields(),
-                warnings = warn))
+                inlines = .sl_empty_inlines(), warnings = warn))
 
   load_tok <- vapply(s, function(x) x$load_tok_idx, integer(1))
   order_lt <- unique(load_tok)
   n        <- length(order_lt)
+  tabs     <- .sl_tabs(tokens)
 
   rec <- vector("list", n)
   for (i in seq_len(n)) {
@@ -298,6 +322,7 @@ script_loads <- function(tokens) {
     rec[[i]] <- c(list(load_tok = lt, seg = mine, label = lab$table,
                        inline_fields = if (is.null(inl)) character(0) else inl$fields,
                        inline_rows = if (is.null(inl)) NA_integer_ else inl$n_rows,
+                       inline_sample = if (is.null(inl)) character(0) else inl$sample,
                        prefix = if (length(ptxt)) paste(ptxt, collapse = " ") else NA_character_,
                        prefix_words = ptxt[tokens$type[pidx] == "WORD"],
                        head_start = if (length(head)) head[1L] else lt,
@@ -478,6 +503,21 @@ script_loads <- function(tokens) {
     n_declared = vapply(declared, nrow, integer(1)),
     inline_rows = vapply(rec, function(r) r$inline_rows, integer(1)),
     complete_fields = complete, stringsAsFactors = FALSE)
+  loads$tab <- vapply(loads$line_start, function(x) .sl_tab_at(tabs, x), character(1))
+
+  inlines <- do.call(rbind, lapply(which(!is.na(loads$inline_rows)), function(i)
+    data.frame(load_id = i, table = tbl[i], tab = loads$tab[i],
+               n_rows = rec[[i]]$inline_rows,
+               header = paste(rec[[i]]$inline_fields, collapse = ", "),
+               sample = paste(rec[[i]]$inline_sample, collapse = "\n"),
+               line_start = rec[[i]]$line_start, line_end = rec[[i]]$line_end,
+               stringsAsFactors = FALSE)))
+  if (is.null(inlines))
+    inlines <- data.frame(load_id = integer(0), table = character(0),
+                          tab = character(0), n_rows = integer(0),
+                          header = character(0), sample = character(0),
+                          line_start = integer(0), line_end = integer(0),
+                          stringsAsFactors = FALSE)
 
   fields <- do.call(rbind, lapply(seq_len(n), function(i) {
     r <- resolved[[i]]
@@ -487,7 +527,7 @@ script_loads <- function(tokens) {
   }))
   if (is.null(fields)) fields <- .sl_empty_fields()
 
-  list(loads = loads, fields = fields, warnings = warn)
+  list(loads = loads, fields = fields, inlines = inlines, warnings = warn)
 }
 
 `%||%` <- function(a, b) if (is.null(a) || (length(a) == 1L && is.na(a))) b else a
@@ -521,6 +561,12 @@ script_loads <- function(tokens) {
              line_start = integer(0), line_end = integer(0),
              chain_of = integer(0), n_declared = integer(0),
              inline_rows = integer(0), complete_fields = logical(0),
+             stringsAsFactors = FALSE)
+
+.sl_empty_inlines <- function()
+  data.frame(load_id = integer(0), table = character(0), tab = character(0),
+             n_rows = integer(0), header = character(0), sample = character(0),
+             line_start = integer(0), line_end = integer(0),
              stringsAsFactors = FALSE)
 
 .sl_empty_fields <- function()
