@@ -356,8 +356,12 @@ entry current in the same commit that changes its function.
   `table` / `preceding` (stacked LOADs, one table, named by the TOP one) / `joins-into`
   (JOIN or CONCATENATE, feeds a table someone else made) / `mapping` (ApplyMap fodder, never in
   the data model) / `multi-table` (a wildcard qvd PATH, see below).
-- `source_kind`: from / resident / inline / autogenerate / select / none. `select` is the ODBC
-  `LOAD ...; SELECT ...;` form — 24 of them in app-unbuilt, 0 in app2.
+- `source_kind`: from / resident / inline / autogenerate / select / sql-select / none.
+  `select` is the ODBC `LOAD ...; SELECT ...;` form — 24 in app-unbuilt, 0 in app2.
+  `sql-select` is a BARE `SQL SELECT` under a label, with no LOAD at all — 4 in app-unbuilt.
+  Kept as its own kind, not folded into `select` (Adam 2026-08-18): a database call is the
+  most expensive thing to carry to Cloud, so the report must be able to count this form
+  separately rather than have it disappear into a total.
 - Wildcard resolution: a `LOAD *` takes the fields of whatever feeds it. Preceding -> the
   statement BELOW (NOT the underlying qvd — DESIGN §6.5); RESIDENT -> that table, in a second
   pass once every table is known; INLINE -> the block's header row. `complete_fields` goes FALSE
@@ -379,15 +383,16 @@ entry current in the same commit that changes its function.
   the apparent cause (`DISTINCT` missing from the vocabulary) was wrong; it is present, and the
   casing pass does uppercase a lowercase `distinct`. `.SL_QUALIFIERS` survives only for the
   un-aliased-name strip, where removing the whole keyword vocabulary would mangle an expression.
-- **KNOWN GAP (2026-08-18): a bare `SQL SELECT` produces a table this file never sees.** The
-  model is built from LOAD statements, so `[TravelAreas]:` followed by `SQL SELECT ... FROM
-  Closest(...)` — no LOAD — yields no row. app-unbuilt has 4 such tables (`TravelAreas`,
-  `ClosestAssociations`, `ILOC to Hub Temp`, `OfficeFrom_OfficeTo_Route`), none of them in
-  `loads$table`, so the 118-table count is an undercount of the real model by 4. Found via
-  `sql_targets()` in script_debt.R, which counts 28 SQL targets to this file's 24.
-- Current: app2 42 loads -> 26 tables, 0 warnings. app-unbuilt 167 -> 118 tables, 7 warnings, all
-  informational (3 wildcard paths, 4 un-aliased `DISTINCT [Field]`).
-- Private: `.sl_undelimit()`, `.sl_next_solid()`, `.sl_solid()`, `.sl_head()`, `.sl_label()`,
+- Bare `SQL SELECT` is modelled by `.sl_bare_selects()`, appended after the LOAD-derived rows
+  so the chain logic never sees them. `find_load_segments()` is built on LOAD field lists and
+  cannot find one. The label is the `[Name]:` above the SELECT and the fields are its column
+  list, up to the depth-0 FROM. app-unbuilt: 4 loads, 3 distinct tables (`ClosestAssociations`
+  twice), 21 fields; 167 -> 171 loads and 118 -> 121 tables. app2 unchanged at 42/26.
+- Current (STYLED input): app2 42 loads -> 26 tables, 0 warnings. app-unbuilt 171 -> 121 tables,
+  7 warnings, all informational (3 wildcard paths, 4 un-aliased `DISTINCT [Field]`). On RAW input
+  every un-aliased field warns as well, which is thousands — not a regression, see the note above.
+- Private: `.sl_bare_selects()`, `.sl_bare_select_idx()`, `.sl_bare_label()`,
+  `.sl_bare_fields()`, `.sl_prev_solid_idx()`, `.sl_undelimit()`, `.sl_next_solid()`, `.sl_solid()`, `.sl_head()`, `.sl_label()`,
   `.sl_stmt_end()`, `.sl_source()`, `.sl_is_wildcard()`, `.sl_inline()`, `.sl_autoname()`,
   `.sl_paren_target()`, `.sl_wild_rows()`, `.sl_empty_loads()`, `.sl_empty_fields()`,
   `.SL_PREFIXES`, `.SL_QUALIFIERS`.

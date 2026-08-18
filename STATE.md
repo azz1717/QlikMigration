@@ -14,7 +14,7 @@ script_debt). 4b: build report_mock.html into render_report.R.
 - What can the work machine run? Decides whether jsonlite can be the oracle
   there as here. Adam to check; access, not capability.
 - Qlik behaviour for a repeated explicit table label? Unverified; 9 in app1.
-- TODO: script_loads must model bare `SQL SELECT` (118 -> 122), still counted separately.
+- 3 wildcard qvd loads make table/field totals a floor, not a count; report *s them.
 - Parked, Adam's: before/after pruning report; explicit+unique table names
   as a forward design standard.
 - A qvd inventory (name + path + FIELDS) resolves the 3 wildcard-path loads.

@@ -527,7 +527,126 @@ script_loads <- function(tokens) {
   }))
   if (is.null(fields)) fields <- .sl_empty_fields()
 
+  # A table can be produced with no LOAD at all — see .sl_bare_selects().
+  claimed <- unlist(lapply(rec, function(r)
+    if (identical(r$kind, "select")) .sl_next_solid(tokens, r$stmt_end + 1L) else NULL))
+  bare <- .sl_bare_selects(tokens, tabs, claimed, n)
+  if (nrow(bare$loads)) {
+    loads  <- rbind(loads, bare$loads)
+    fields <- rbind(fields, bare$fields)
+    for (i in which(is.na(bare$loads$table)))
+      warn <- c(warn, sprintf("line %d: bare SQL SELECT with no table label",
+                              bare$loads$line_start[i]))
+  }
+
   list(loads = loads, fields = fields, inlines = inlines, warnings = warn)
+}
+
+# --- bare SQL SELECT ------------------------------------------------------
+#
+# A table can be produced with no LOAD at all:
+#
+#   [TravelAreas]:
+#   SQL SELECT [Office], [Dataset_Cost] FROM TravelAreas(...);
+#
+# find_load_segments() is built on LOAD field lists, so it never sees one of
+# these, and app-unbuilt's model was 4 tables short as a result (Adam
+# 2026-08-18). They are modelled here and given their own `source_kind`,
+# `sql-select`, rather than being folded into `select`: a database call is
+# the single most expensive thing to carry to Cloud, so the report has to be
+# able to count this form separately, not merely include it in a total.
+
+# Statement-initial SELECT / SQL SELECT that is not already the second half
+# of a `LOAD ...; SELECT ...;` pair.
+.sl_bare_select_idx <- function(tokens, claimed) {
+  up   <- toupper(tokens$text)
+  cand <- which(tokens$type == "WORD" & up %in% c("SELECT", "SQL"))
+  cand <- setdiff(cand, claimed)
+  keep <- vapply(cand, function(i) {
+    p <- .sl_prev_solid_idx(tokens, i - 1L)
+    if (is.na(p)) return(TRUE)
+    tokens$type[p] == "SEMI" || tokens$text[p] == ":"
+  }, logical(1))
+  cand <- cand[keep]
+  # `SQL SELECT` is two tokens; keep only the first of an adjacent pair.
+  if (length(cand) > 1L) {
+    nxt <- vapply(cand, function(i) .sl_next_solid(tokens, i + 1L), integer(1))
+    cand <- cand[!(cand %in% nxt)]
+  }
+  cand
+}
+
+.sl_prev_solid_idx <- function(tokens, from) {
+  if (from < 1L) return(NA_integer_)
+  i <- from
+  while (i >= 1L && tokens$type[i] %in% c("WS", "COMMENT", "VOID")) i <- i - 1L
+  if (i < 1L) NA_integer_ else i
+}
+
+# The label above a bare SELECT: `[Name]:` — the colon is what makes it one.
+.sl_bare_label <- function(tokens, idx) {
+  p <- .sl_prev_solid_idx(tokens, idx - 1L)
+  if (is.na(p) || tokens$text[p] != ":") return(NA_character_)
+  q <- .sl_prev_solid_idx(tokens, p - 1L)
+  if (is.na(q) || !tokens$type[q] %in% c("BRACKET", "DQUOTE", "WORD")) return(NA_character_)
+  .sl_undelimit(tokens$text[q], tokens$type[q])
+}
+
+# The column list, between SELECT and its FROM. Depth-0 commas separate the
+# columns; a bare `*` means the field list is not knowable from the script,
+# exactly as it does for a `LOAD *`.
+.sl_bare_fields <- function(tokens, lo, hi) {
+  idx <- lo:hi
+  up  <- toupper(tokens$text[idx])
+  dep <- cumsum(tokens$type[idx] == "LPAREN") - cumsum(tokens$type[idx] == "RPAREN")
+  f   <- which(up == "FROM" & dep == 0L & tokens$type[idx] == "WORD")
+  if (!length(f)) return(list(fields = character(0), complete = FALSE))
+  span <- idx[seq_len(f[1L] - 1L)]
+  span <- span[-1L]                       # drop SELECT itself
+  if (!length(span)) return(list(fields = character(0), complete = FALSE))
+  d <- cumsum(tokens$type[span] == "LPAREN") - cumsum(tokens$type[span] == "RPAREN")
+  cut <- which(tokens$type[span] == "COMMA" & d == 0L)
+  parts <- split(span, cumsum(seq_along(span) %in% (cut + 1L)))
+  out <- vapply(parts, function(p) {
+    p <- p[!tokens$type[p] %in% c("WS", "COMMENT", "VOID", "COMMA")]
+    if (!length(p)) return(NA_character_)
+    k <- p[tokens$type[p] %in% c("BRACKET", "DQUOTE", "WORD")]
+    if (!length(k)) return(NA_character_)
+    .sl_undelimit(tokens$text[k[length(k)]], tokens$type[k[length(k)]])
+  }, character(1), USE.NAMES = FALSE)
+  out <- out[!is.na(out)]
+  if (any(vapply(parts, function(p) any(tokens$text[p] == "*"), logical(1))))
+    return(list(fields = out, complete = FALSE))
+  list(fields = out, complete = length(out) > 0L)
+}
+
+#' Bare SQL SELECT statements as loads, in the shape script_loads() returns.
+.sl_bare_selects <- function(tokens, tabs, claimed, next_id) {
+  idx <- .sl_bare_select_idx(tokens, claimed)
+  if (!length(idx))
+    return(list(loads = .sl_empty_loads(), fields = .sl_empty_fields()))
+
+  rows <- lapply(seq_along(idx), function(k) {
+    i    <- idx[k]
+    end  <- .sl_stmt_end(tokens, i)
+    lab  <- .sl_bare_label(tokens, i)
+    fl   <- .sl_bare_fields(tokens, i, end)
+    id   <- next_id + k
+    ls   <- tokens$line[if (is.na(lab)) i else max(1L, i - 4L)]
+    list(load = data.frame(
+           load_id = id, table = lab, producer_kind = "table",
+           prefix = NA_character_, source_kind = "sql-select", source = NA_character_,
+           line_start = tokens$line[i], line_end = tokens$line[end],
+           chain_of = NA_integer_, n_declared = length(fl$fields),
+           inline_rows = NA_integer_, complete_fields = fl$complete,
+           tab = .sl_tab_at(tabs, tokens$line[i]), stringsAsFactors = FALSE),
+         field = if (length(fl$fields))
+           data.frame(load_id = id, table = lab, field = fl$fields,
+                      line = tokens$line[i], aliased = FALSE, via = "declared",
+                      stringsAsFactors = FALSE) else NULL)
+  })
+  list(loads  = do.call(rbind, lapply(rows, `[[`, "load")),
+       fields = do.call(rbind, lapply(rows, `[[`, "field")) %||% .sl_empty_fields())
 }
 
 `%||%` <- function(a, b) if (is.null(a) || (length(a) == 1L && is.na(a))) b else a
