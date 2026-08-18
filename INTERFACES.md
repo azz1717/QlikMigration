@@ -290,14 +290,19 @@ entry current in the same commit that changes its function.
 
 - Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
 - `expression_references(text) -> data.frame(ref, kind)` — one string's field references, one row
-  per occurrence, in order. `kind` is `"bracketed"`, `"quoted"` or `"bare"`.
+  per occurrence, in order. `kind` is `"bracketed"`, `"quoted"`, `"bare"` or `"whole-string"`.
+- `"whole-string"`: a string containing no bracket, quote, paren, comma or semicolon is emitted
+  ENTIRE as one reference, as well as word by word. `qFieldDefs` holds unbracketed names, and
+  splitting `Latest Funding Financial Year` into four bare words meant its field was never emitted
+  and `LatestFinYear` was reported unreferenced — a live table marked deletable. Do not remove
+  this without re-running the raw-JSON false-negative check (see usage_report.R).
 - `file_references(path, label) -> data.frame(source_file, ref, kind, n)` — one JSON file,
   aggregated per reference. `read_json_strings()` supplies the strings.
 - `app_references(dir) -> data.frame(app, source_file, ref, kind, n)` — one app export,
   `source_file` relative to `dir`. Apps are NEVER merged (DESIGN §6.5: separate data models).
 - `Rscript app_usage.R [dir ...] [--csv <path>]` — per-app summary; `--csv` writes the full table.
-  Current: app-unbuilt 9 files / 5503 refs / 1150 unique (100 bracketed, 8 quoted, 1050 bare);
-  app2-unbuilt 22 files / 3635 / 804 (56 / 0 / 750). 5.5s for both, tokenizing string by string.
+  Current: app-unbuilt 9 files / 9697 refs / 1393 unique (100 bracketed, 8 quoted, 1050 bare,
+  662 whole-string); app2-unbuilt 22 files / 6387 / 978 (56 / 0 / 750 / 559).
 - Values only — JSON KEY strings are skipped (Adam 2026-08-18). A member name is structure, never
   expression text. This is NOT the mistake DESIGN §6.5 warns about: that one is privileging certain
   keys' VALUES, and every value is still scanned here whatever names it.
@@ -358,6 +363,55 @@ entry current in the same commit that changes its function.
   `.sl_stmt_end()`, `.sl_source()`, `.sl_is_wildcard()`, `.sl_inline()`, `.sl_autoname()`,
   `.sl_paren_target()`, `.sl_wild_rows()`, `.sl_empty_loads()`, `.sl_empty_fields()`,
   `.SL_PREFIXES`, `.SL_QUALIFIERS`.
+
+## usage_report.R — phase 2 step 4a, the cross-reference. NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+  Joins `app_usage.R` + `script_loads.R` + `script_refs.R`. Deletes nothing, prescribes nothing.
+- `usage_report(app_dir, script_path) -> list(tables, fields, undetermined, stores, warnings)`.
+  `script_path` defaults to the export's own copy; pass the STYLED script where you have it.
+- `Rscript usage_report.R <app-dir> [--script <path>] [--csv <stem>]`.
+- Categories are DESIGN §6.5's five. Current results:
+  app2-unbuilt 26 tables — 15 referenced, 9 build-only dropped, 2 unreferenced, 68 unreferenced
+  fields. app-unbuilt 118 tables — 48 referenced, 16 build-only dropped, 14 build-only retained,
+  40 unreferenced, 1440 unreferenced fields, 3 undetermined.
+- GOTCHA: `dropped` is tested BEFORE `app_used` and beats it. A dropped table is not in the final
+  data model, so an app match can only be its field NAMES coinciding with the successor table's —
+  exactly what a `_Temp` looks like. Testing app_used first put 7 of app2's 9 dropped tables in
+  `referenced`. For a table that is NOT dropped the same name-matching is correct rather than
+  coincidental: Qlik's model is associative, so two live tables sharing a field name share the
+  field.
+- Field-level findings are withheld where `complete_fields` is FALSE — an unresolved `*` means an
+  absent name proves nothing.
+- **Validation worth repeating after any change to matching**: for every field of every
+  `unreferenced` table, plain-substring search the raw JSON bytes, bypassing both the tokenizer
+  and `json_strings.R`. app2 returns 0 hits. app-unbuilt returns 8, all confirmed substring
+  collisions (`ILOC Code` inside the real field `ILOC Code 2021`; `Make` inside `MakeDate(`).
+  This check is what caught the `whole-string` false negative.
+- Private: `.ur_fold()`, `.ur_show()`.
+
+## script_refs.R — phase 2 step 4a, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+- `script_table_refs(tokens, table_names, own) -> data.frame(table, line, lead, kind)` with
+  `kind` = `use` / `drop` / `store` / `self`. `lead` is the enclosing statement's first word,
+  which is what separates a use (`RESIDENT Temp`) from a disposal (`DROP TABLE Temp`).
+- `script_disposals(tokens, table_names) -> list(drops, stores)`. STORE is scanned separately
+  because its TARGET matters: qvd generation inside a user-facing app violates the Cloud build
+  standards whether or not the table is otherwise used (DESIGN §7.1).
+- Exists because an app-only cross-reference marks every intermediate table unreferenced. A
+  `_Temp` read by a later RESIDENT load, or a mapping table consumed by ApplyMap, is used.
+- Deliberately over-inclusive: any token whose undelimited text equals a table name counts,
+  wherever it sits. A false `use` keeps a table that could have gone; a false `unused` deletes a
+  live one, and only the first is recoverable.
+- GOTCHA: match TYPED TOKENS, never raw text. A raw-text scan reports 18 STOREs in app-unbuilt
+  and 20 in app2; the real count in both is **ZERO** — every hit is the substring "Store" in the
+  connection path `lib://Curated Data Store:DataFiles/...`, which is one BRACKET token. Same trap
+  the tokenizer records for `for` (1242 raw, ~28 real). Raw `applymap` counts mislead the same
+  way: 11 in app-unbuilt, 0 real.
+- Current: app2 26 tables, 13 read elsewhere, 9 dropped, 0 stored. app-unbuilt 118 tables, 40
+  read elsewhere, 16 dropped, 0 stored.
+- Private: `.sr_undelimit()`, `.sr_statements()`.
 
 ## oracle_json_strings.R — development-machine cross-check, not shipped tooling
 

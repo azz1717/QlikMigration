@@ -6,8 +6,9 @@ verify.R is styling-only, verify_docs.R gates every commit.
 
 **Next task:** phase 2 usage extraction, DESIGN §6.5. Steps 1-3 DONE:
 json_strings.R (+oracle, 32 files 0 failed), app_usage.R (both apps),
-script_loads.R (app2 42->26 tables 0 warnings; app1 167->118, 7 informational).
-Step 4 next: 4a usage table, 4b renderer -> submittable document.
+script_loads.R, script_refs.R, usage_report.R. 4a RUNS: app2 26 tables
+(15 referenced / 9 dropped / 2 unreferenced); app1 118 (48/16/14/40).
+Step 4b next: renderer -> submittable document.
 
 **Open items:**
 - What can the work machine actually run? Decides whether jsonlite can be

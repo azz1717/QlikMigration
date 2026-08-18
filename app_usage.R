@@ -65,12 +65,27 @@ expression_references <- function(text) {
   bare <- tok$type == "WORD" & !call &
           !(tolower(tok$text) %in% QLIK_KEYWORDS)   # the vector is lowercase
 
-  if (!any(delimited) && !any(bare)) return(none)
+  # A string that is not an expression AT ALL is a field name in its entirety.
+  # `qFieldDefs` holds unbracketed names, and splitting one on whitespace
+  # destroys it: `Latest Funding Financial Year` became four bare words, the
+  # field itself was never emitted, and its table was reported unreferenced —
+  # the one direction that deletes something live (found 2026-08-18).
+  #
+  # The test is structural: no brackets, quotes, parens, commas or semicolons
+  # anywhere in the string. Words, numbers and hyphens are allowed, because
+  # real field names have them (`2021 Census by ILOC`, `Grant Activity-3`).
+  whole <- !any(tok$type %in% c("BRACKET", "DQUOTE", "SQUOTE", "LPAREN",
+                                "RPAREN", "COMMA", "SEMI")) &&
+           any(tok$type == "WORD") && nzchar(trimws(text))
+
+  if (!any(delimited) && !any(bare) && !whole) return(none)
 
   out <- data.frame(
     ref  = c(.au_undelimit(tok$text[delimited], tok$type[delimited]),
-             tok$text[bare]),
-    kind = c(dkind, rep("bare", sum(bare))),
+             tok$text[bare],
+             if (whole) trimws(text)),
+    kind = c(dkind, rep("bare", sum(bare)),
+             if (whole) "whole-string"),
     stringsAsFactors = FALSE)
 
   out[nzchar(out$ref), , drop = FALSE]
@@ -140,9 +155,10 @@ main <- function(args) {
   for (a in unique(all$app)) {
     x <- all[all$app == a, ]
     u <- function(k) length(unique(x$ref[x$kind == k]))
-    cat(sprintf("%s: %d files, %d references (%d unique) — %d bracketed, %d quoted, %d bare\n",
+    cat(sprintf("%s: %d files, %d references (%d unique) — %d bracketed, %d quoted, %d bare, %d whole-string\n",
                 a, length(unique(x$source_file)), sum(x$n),
-                length(unique(x$ref)), u("bracketed"), u("quoted"), u("bare")))
+                length(unique(x$ref)), u("bracketed"), u("quoted"), u("bare"),
+                u("whole-string")))
   }
 
   if (!is.na(csv)) {

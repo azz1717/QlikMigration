@@ -1094,16 +1094,73 @@ in phase 2 deletes anything:
 3. Script side: `find_load_segments()` for what each LOAD produces.
 4. Cross-reference, in two layers:
    - **4a, the usage table.** A structured intermediate — one row per load
-     and produced field, carrying app, script line range, table, field,
-     verdict (`referenced-bracketed` / `referenced-bare-ambiguous` /
-     `unreferenced`) and evidence. Greppable and diffable on its own, which
-     is what is wanted when a verdict looks wrong.
+     and produced field, carrying app, script line range, table, field, how
+     the reference was spelled (`bracketed` / `quoted` / `bare`, the last two
+     qualified as below) and evidence. Its per-table and per-field categories
+     are the five defined under "What the cross-reference distinguishes".
+     Greppable and diffable on its own, which is what is wanted when a
+     category looks wrong.
    - **4b, the renderer.** Turns 4a into the document. Base R, in a format
      already verified here (HTML / RTF / CSV, or the base-R `.docx` writer).
      Built once and reused for §7's debt report, which has the same shape:
      findings, evidence, and why each matters.
 
    Adam reviews the report before any pruning tool is written.
+
+**What the cross-reference distinguishes** (Adam, 2026-08-18). Five outcomes,
+and they are categories rather than a ranking. Phase 2 **detects and reports**;
+it prescribes nothing. Whether a removal or a `DROP` is automated here or left
+to a developer is undecided, so no category carries a recommended action — the
+value is in separating the cases at all, since a reviewer cannot see any of
+them from the script by eye.
+
+Per table:
+
+| category | condition |
+|---|---|
+| referenced | at least one of its fields appears in the app's own definition |
+| build-only, retained | no app reference; another statement reads it; no `DROP` disposes of it, so it occupies memory for the rest of the reload |
+| build-only, dropped | no app reference; another statement reads it; a `DROP` disposes of it — scaffolding behaving as intended |
+| unreferenced | loaded, then named nowhere at all: no join, no later load, no chart |
+| undetermined | a wildcard qvd path; its contents are outside the script |
+
+Per field, within a referenced table: **unreferenced field** — the field is
+loaded and appears in no expression anywhere.
+
+The three inputs are `app_used` (any field of the table appears in
+`app_usage.R`'s references, in any kind), `script_used` (a `script_refs.R`
+mention whose enclosing statement is not a `DROP`), and `dropped`.
+
+**Five encoding rules the categories depend on.** Each was a choice, and each
+moves the boundary of `unreferenced`:
+
+- **Case is folded at the join, and only there.** Steps 2 and 3 preserve it.
+  Folding over-reports usage, which under-prunes — the recoverable direction.
+- **A string that is not an expression is a field name in its entirety.**
+  `qFieldDefs` holds UNBRACKETED names, so treating every string as expression
+  text and splitting it on whitespace destroys them: `Latest Funding Financial
+  Year` became four bare words, the field was never emitted, and its table was
+  reported unreferenced. That is the one direction that deletes something
+  live. Such strings are now emitted whole, as kind `whole-string`, alongside
+  the per-word bare refs. The test is structural — no bracket, quote, paren,
+  comma or semicolon anywhere in the string. It is deliberately loose: a chart
+  title that happens to equal a field name will match, which over-reports
+  usage and under-prunes.
+- **A `quoted` match counts as app usage**, even though app JSON's double
+  quotes are literals (`"Yes"`). A field genuinely named `Yes` would be hidden
+  from the unreferenced list rather than wrongly added to it.
+- **A `bare` match counts as app usage**, per the ambiguity rule above. This
+  is the dominant effect on the result: app-unbuilt yields 1050 unique bare
+  references against 100 bracketed.
+- **The unit is a TABLE, not a load.** A table comprises its whole preceding
+  chain plus every `joins-into` load feeding it, so a finding is a set of line
+  ranges rather than one.
+- **Two things are excluded from verdicts**: `multi-table` loads entirely, and
+  field-level findings for any table whose `complete_fields` is FALSE.
+
+Position is not consulted. A table the app never references is idle from its
+last script read onward wherever that read sits, so the distinction that
+matters is whether a `DROP` exists at all, not where it is.
 
 **References carry provenance, not just names.** A set of names is enough to
 decide pruning but not enough to publish: the document must answer *why do
