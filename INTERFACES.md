@@ -399,29 +399,47 @@ entry current in the same commit that changes its function.
 
 ## render_report.R — phase 2 step 4b, the submittable document. NOT in the pipeline
 
-- `render_report(app_dir, script_path, out) -> path`. `Rscript render_report.R <app-dir>
-  [--script <p>] [--out <p>]`. Self-contained HTML: no external stylesheet, script, font or
-  image, and collapsibles are native `<details>` so no JS is needed.
-- HTML not .docx (Adam 2026-08-18): the report must be reviewable on the machine it is written
-  on, and .docx is not openable there. The 4a/4b split means any other format is a second
-  renderer over the same table, not a rewrite.
-- **The information design IS the deliverable** (DESIGN §7.2). The first draft gave every
-  detector a section and every section its whole table — rejected as information overload, and
-  the rewrite is governed by three rules that must survive any future edit:
-  1. **The unit is the TAB, not the finding.** 40 unused tables listed flat hides that 15 of
-     them sit in 10 tabs with nothing used in them at all — one cheap decision, not 15
-     investigations. `dead` tabs get their own callout above everything else.
-  2. **Count work, not findings.** 24 database calls is not 24 jobs: 12 are in one tab. The
-     verdict names the concentration.
-  3. **Nothing is visible until asked for**, bar the verdict, the three figures and the dead-tab
-     list. Tabs are grouped blocking / judgement / cleanup-only, and cleanup-only — the long
-     tail — sits behind a single expander.
-- Major and minor breaches are separate figures. A database call blocks migration; a hardcoded
-  record id keeps the app in `dev` and must go before production sign-off. Folding them together
-  told app2 it had "2 blocking items", which was wrong and alarming.
-- Visible rows: app-unbuilt 23 expanders + a 10-name list; app2 2 + none. Was 42 rows and
-  200-cell tables inline.
-- Private: `.h()` (HTML escape), `.tbl()`, `.plural()`, `.badges()`, `.css`.
+- `render_report(dir, script_path = NULL, out = NULL) -> path`. `Rscript render_report.R
+  <app-dir> [--script <p>] [--out <p>]`. `script_path` defaults to the export's own copy, `out`
+  to `<dir>-report.html`. Self-contained HTML: no external stylesheet, script, font or image,
+  and NO interaction of any kind — the page is printed, filed and read (Adam 2026-08-18).
+- HTML not .docx: the report must be reviewable on the machine it is written on, and .docx is
+  not openable there. The 4a/4b split means any other format is a second renderer over the same
+  table, not a rewrite.
+- **THE REPORT SUPPLIES QUANTITY AND NATURE; THE READER SUPPLIES THE VERDICT.** This is the
+  whole information design and three drafts died for want of it (DESIGN §7.2). Severity,
+  priority, effort and risk are the reader's judgement — an experienced developer sizes an app
+  in moments from facts, and any label this file invents ("blocking", "safe to delete", "needs
+  a decision") is that judgement taken away. No severity buckets, no ordering by importance, no
+  recommendations, no effort language, no expanders hiding the detail.
+- Nature is carried by NAMING, not adjectives: `21 tables loaded from AZDB-ZEA-PRD-NIAADL01`
+  tells a developer what the job is; `24 database calls block migration` tells them nothing
+  they can act on.
+- One A4 page, fixed 178mm body so screen and print wrap identically, `break-inside: avoid` on
+  every section and row and `break-after: avoid` on headings. Six sections, each a three-column
+  table: figure, what it is, grey qualifier.
+- **Section structure is STATIC across apps** (Adam 2026-08-18): a section with nothing in it
+  still renders its zero rows rather than being dropped. Comparing two reports is easier when
+  the reader never has to get their bearings, and a `0` is cheaper to ignore than a missing
+  section is to notice. app2 renders `0 tables loaded from a database`.
+- The wildcard asterisk marks BOTH the figure and its denominator — they are different unknowns
+  (an unresolved `LOAD *` hides both how many fields are unused and how many exist), and
+  flagging only one implies the other is known. Rendered only when unresolved wildcards exist,
+  with the footnote it links to.
+- `.rr_connector_label()` names the connector PRODUCT, derived not hardcoded: `Closest` and
+  `TravelAreas` name an operation and neither identifies itself to a reader. All calls mapping
+  to one known product give `GeoAnalytics connector calls`; a mixed or unrecognised set falls
+  back to plain `connector calls` with the function names carrying the nature. Extend
+  `.RR_CONNECTOR_PRODUCT` rather than widening a pattern. GeoAnalytics being deprecated is NOT
+  stated on the page — naming the connector is enough (Adam 2026-08-18).
+- The title is `qTitle` from `app-properties.json`, falling back to the directory name: the
+  directory is an artefact of unpacking an export, not the app's name. The date is `Sys.Date()`,
+  so a regenerated report re-dates itself.
+- `report_mock.html` in the repo root is the signed-off reference this file reproduces. Output
+  matches it row for row except `duplicate table labels`, which reads 10 rather than the mock's
+  9 — `ClosestAssociations` is built twice by bare `SQL SELECT`s, which the mock predates.
+- Private: `.h()` (HTML escape), `.num()`, `.plural()`, `.rr_title()`, `.rr_ext()`, `.rr_row()`,
+  `.rr_section()`, `.rr_connector_label()`, `.RR_STAR`, `.RR_CONNECTOR_PRODUCT`, `.rr_css`.
 
 ## script_debt.R — the report's debt signals. NOT in the pipeline
 

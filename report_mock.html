@@ -66,10 +66,10 @@
 <section>
 <h2>Data model</h2>
 <table>
-  <tr><td class="n">40<a class="fn" href="#wild">*</a></td><td>tables unused</td><td class="u">of 121</td></tr>
+  <tr><td class="n">40<a class="fn" href="#wild">*</a></td><td>tables unused</td><td class="u">of 121<a class="fn" href="#wild">*</a></td></tr>
   <tr><td class="n">14</td><td>tables unDROPped</td><td class="u">build-only, left in model</td></tr>
-  <tr><td class="n">1,437<a class="fn" href="#wild">*</a></td><td>fields unused</td><td class="u">55% of 2,632 loaded</td></tr>
-  <tr><td class="n">3</td><td>loads unresolved</td><td class="u">wildcard qvd paths<a class="fn" href="#wild">*</a></td></tr>
+  <tr><td class="n">1,437<a class="fn" href="#wild">*</a></td><td>fields unused</td><td class="u">55% of 2,632<a class="fn" href="#wild">*</a> loaded</td></tr>
+  <tr><td class="n">3</td><td>loads unresolved</td><td class="u">wildcard qvd paths</td></tr>
 </table>
 </section>
 
@@ -95,10 +95,7 @@
 
 
 <footer>
-  <p id="wild"><b>*</b> &mdash; 3 wildcard loads (<code>.../30 Curated Data Store/&hellip;/*.qvd</code>)
-     name no file, so the tables and fields they carry are not counted above: these totals are a
-     floor. 23 field references the app uses match no known field and are most likely theirs.
-     A qvd inventory listing fields would resolve them.</p>
+  <p id="wild"><b>*</b> &mdash; 3 wildcard loads name no file; their tables and fields are not counted.</p>
   <p><b>unused</b> &mdash; loaded and never referenced again, in script or visuals.
      <b>unDROPped</b> &mdash; used to build other tables, not called by visuals, not dropped.</p>
 </footer>

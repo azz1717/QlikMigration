@@ -1,25 +1,25 @@
-# render_report.R — phase 2 step 4b: the submittable document.
+# render_report.R - phase 2 step 4b: the submittable document.
 #
 # NOT part of the styling pipeline; nothing in run_pipeline.R sources this.
 # Base R only, self-contained HTML only: no external stylesheet, script, font
 # or image, because nothing can be assumed about the machine that opens it.
-# Collapsibles are native <details>, so no script is needed.
+# No interaction of any kind - this is a document to print, file and read.
 #
-# ONE question: how much work is this app to migrate? (DESIGN §7.2.)
+# ONE question: what and how much? Three drafts failed by answering a
+# different one. The rule that governs every line of this file:
 #
-# The information design is the deliverable, not the detections. First draft
-# gave every detector a section and every section its whole table — a data
-# dump with headings, rejected by Adam 2026-08-18 as information overload.
-# Three rules came out of that and they govern this file:
+#   THE REPORT SUPPLIES QUANTITY AND NATURE. THE READER SUPPLIES THE VERDICT.
 #
-#   1. THE UNIT IS THE TAB, not the finding. A developer navigates a Qlik
-#      script by `///$tab` and works through one at a time. 40 unused tables
-#      listed flat hides that 15 of them sit in 10 tabs with nothing used in
-#      them at all — which is one cheap decision, not 15 investigations.
-#   2. COUNT WORK, NOT FINDINGS. 24 database calls is not 24 jobs: 12 are in
-#      a single tab. "6 tabs to visit" is the effort estimate; 24 is trivia.
-#   3. NOTHING IS VISIBLE UNTIL ASKED FOR, bar the verdict. Everything else
-#      is one click away and closed by default.
+# Severity, priority, effort and risk are the reader's judgement - an
+# experienced developer sizes this app in moments from facts, and any label
+# this file invents (blocking, safe to delete, needs a decision) takes that
+# judgement away from them. So: no severity buckets, no ordering by
+# importance, no recommendations, no effort language. Name the actual thing -
+# the server, the connector, the count - and stop. DESIGN 7.2.
+#
+# Nature is carried by naming, not by adjectives: "21 tables loaded from
+# AZDB-ZEA-PRD-NIAADL01" tells a developer what the job is; "24 database
+# calls block migration" tells them nothing they can act on.
 
 source("usage_report.R")
 source("script_debt.R")
@@ -31,250 +31,204 @@ source("script_debt.R")
   gsub(">", "&gt;", x, fixed = TRUE)
 }
 
-.plural <- function(n, one, many = paste0(one, "s"))
-  paste0(n, " ", if (n == 1L) one else many)
+.num <- function(x) formatC(as.integer(x), format = "d", big.mark = ",")
 
-.tbl <- function(df, cols, labels) {
-  if (is.null(df) || !nrow(df)) return("")
-  paste0("<div class=scroll><table><thead><tr>",
-         paste0("<th>", .h(labels), "</th>", collapse = ""), "</tr></thead><tbody>",
-         paste(apply(df[, cols, drop = FALSE], 1L, function(r)
-           paste0("<tr>", paste0("<td>", .h(r), "</td>", collapse = ""), "</tr>")),
-           collapse = ""), "</tbody></table></div>")
+.plural <- function(n, word)
+  sprintf("%s %s%s", .num(n), word, if (as.integer(n) == 1L) "" else "s")
+
+# The app's real name, not the directory an export happened to unpack into.
+.rr_title <- function(dir) {
+  p <- file.path(dir, "app-properties.json")
+  if (file.exists(p)) {
+    s <- read_json_strings(p)
+    i <- which(s$is_key & s$text == "qTitle")
+    if (length(i) && i[1L] < nrow(s) && !s$is_key[i[1L] + 1L]) return(s$text[i[1L] + 1L])
+  }
+  basename(dir)
 }
 
-.css <- "
-:root{--fg:#161616;--dim:#6b6b6b;--line:#e2e2e0;--bg:#fff;--soft:#f7f7f5;
-  --fix:#9b2222;--decide:#8a5a12;--del:#2f6b46}
-*{box-sizing:border-box}
-body{margin:0 auto;padding:2.5rem 1.5rem 5rem;max-width:52rem;background:var(--bg);color:var(--fg);
-  font:15px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-h1{font-size:1.5rem;margin:0}
-.sub{color:var(--dim);font-size:.88rem;margin:.15rem 0 2rem}
-h2{font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
-  margin:2.8rem 0 .7rem;font-weight:600}
-.verdict{font-size:1.12rem;line-height:1.5;margin:0 0 1.5rem}
-.verdict b{font-weight:600}
-.figs{display:flex;gap:1.6rem;flex-wrap:wrap;margin:0 0 1.4rem;padding:1.1rem 0;
-  border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.fig{flex:1 1 9rem}
-.fig .n{font-size:2rem;font-weight:600;line-height:1}
-.fig .l{font-size:.86rem;font-weight:600;margin-top:.2rem}
-.fig .s{font-size:.78rem;color:var(--dim);margin-top:.1rem}
-.fig.fix .n{color:var(--fix)} .fig.decide .n{color:var(--decide)} .fig.del .n{color:var(--del)}
-.dead{background:var(--soft);border:1px solid var(--line);border-radius:7px;padding:.9rem 1.1rem;margin:.6rem 0}
-.dead ul{margin:.5rem 0 0;padding-left:1.1rem;columns:2;font-size:.9rem}
-.dead li{margin:.1rem 0;break-inside:avoid}
-details{border-bottom:1px solid var(--line)}
-details summary{cursor:pointer;padding:.6rem .2rem;display:flex;align-items:baseline;
-  gap:.5rem;flex-wrap:wrap;list-style:none}
-details summary::-webkit-details-marker{display:none}
-summary::before{content:'\\25B8';color:var(--dim);font-size:.75rem;transition:transform .12s}
-details[open] summary::before{content:'\\25BE'}
-.tabname{font-weight:600;flex:1 1 auto}
-.badge{font-size:.72rem;padding:.1rem .45rem;border-radius:99px;white-space:nowrap;
-  border:1px solid currentColor;font-weight:600}
-.b-fix{color:var(--fix)} .b-decide{color:var(--decide)} .b-del{color:var(--del)}
-.body{padding:.2rem 0 1rem 1.1rem}
-.body h4{font-size:.82rem;margin:.9rem 0 .25rem;color:var(--dim);text-transform:uppercase;
-  letter-spacing:.05em}
-.scroll{overflow-x:auto}
-table{border-collapse:collapse;width:100%;font-size:.85rem;margin:.2rem 0 .4rem}
-th,td{text-align:left;padding:.28rem .55rem;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--dim);font-weight:600;white-space:nowrap;font-size:.78rem}
-pre{background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:.45rem .65rem;
-  overflow-x:auto;font-size:.78rem;margin:.3rem 0}
-.q{color:var(--dim);font-size:.85rem;margin:.2rem 0 .6rem}
-footer{margin-top:3rem;font-size:.8rem;color:var(--dim)}
-footer details{border:0} footer summary{padding:.3rem 0}
-footer p{margin:.4rem 0}
-@media print{details{break-inside:avoid} details>.body{display:block!important}}
-"
+# Connector function -> the connector product it belongs to. `Closest` and
+# `TravelAreas` name an operation, not a product, and neither is familiar
+# enough to identify itself (Adam 2026-08-18) - the row has to say which
+# connector a call belongs to, because that is what determines whether it can
+# come to Cloud at all.
+#
+# Unrecognised functions are NOT guessed at: they still count, and the row
+# falls back to a bare "connector calls" with the function names carrying the
+# nature. Extend the list rather than widening a pattern.
+.RR_CONNECTOR_PRODUCT <- c(
+  Closest = "GeoAnalytics", TravelAreas = "GeoAnalytics",
+  Intersects = "GeoAnalytics", Dissolve = "GeoAnalytics",
+  Cluster = "GeoAnalytics", Simplify = "GeoAnalytics",
+  Route = "GeoAnalytics", Distance = "GeoAnalytics")
 
-.badges <- function(fix, dec, del) paste0(
-  if (fix) sprintf("<span class='badge b-fix'>%d to fix</span>", fix) else "",
-  if (dec) sprintf("<span class='badge b-decide'>%d to decide</span>", dec) else "",
-  if (del) sprintf("<span class='badge b-del'>%d to delete</span>", del) else "")
+# One product for every call, or none: a mixed set gets the generic label
+# rather than the label of whichever product happened to sort first.
+.rr_connector_label <- function(fn) {
+  if (!length(fn)) return("connector calls")
+  p <- unique(.RR_CONNECTOR_PRODUCT[fn])
+  if (length(p) == 1L && !is.na(p)) sprintf("%s connector calls", p) else "connector calls"
+}
 
-#' Render one app's migration review.
-render_report <- function(app_dir, script_path = file.path(app_dir, "script.qvs"),
-                          out = paste0(basename(app_dir), "-report.html")) {
-  ur   <- usage_report(app_dir, script_path)
+.rr_ext <- function(x) tolower(vapply(strsplit(x, ".", fixed = TRUE),
+  function(p) if (length(p) > 1L) p[length(p)] else "(none)", character(1)))
+
+# One row: figure, what it is, an optional grey qualifier. The asterisk marks
+# BOTH columns when the figure and its denominator are equally uncertain -
+# they are different unknowns and the reader is entitled to see both flagged
+# (Adam 2026-08-18).
+.RR_STAR <- '<a class="fn" href="#wild">*</a>'
+
+.rr_row <- function(fig, what, qual = "", star_fig = FALSE, star_qual = FALSE) {
+  s <- .RR_STAR
+  sprintf('  <tr><td class="n">%s%s</td><td>%s</td><td class="u">%s%s</td></tr>',
+          fig, if (star_fig) s else "", .h(what), qual, if (star_qual) s else "")
+}
+
+.rr_section <- function(title, rows)
+  c("<section>", sprintf("<h2>%s</h2>", .h(title)), "<table>", rows, "</table>",
+    "</section>", "")
+
+# A4 is the constraint, not a preference: the page is printed and filed. Fixed
+# body width so screen and print wrap identically, break-inside on every
+# section and row, break-after on headings so none is orphaned from its table.
+.rr_css <- c(
+'<style>',
+'  @page { size: A4 portrait; margin: 18mm 16mm; }',
+'  html, body { background: #fff; color: #000; }',
+'  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5pt;',
+'         line-height: 1.35; width: 178mm; margin: 16mm auto; }',
+'  header { border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 12px; }',
+'  h1 { font-size: 13pt; margin: 0; font-weight: 600; }',
+'  .date { font-size: 8.5pt; color: #333; margin-top: 2px; }',
+'  section { break-inside: avoid; page-break-inside: avoid; }',
+'  h2 { font-size: 9pt; font-weight: 700; letter-spacing: .08em;',
+'       text-transform: uppercase; margin: 16px 0 4px;',
+'       border-bottom: 1px solid #999; padding-bottom: 2px;',
+'       break-after: avoid; page-break-after: avoid; }',
+'  table { border-collapse: collapse; width: 100%; table-layout: fixed; }',
+'  tr { break-inside: avoid; page-break-inside: avoid; }',
+'  td { padding: 1.5px 0; vertical-align: baseline; }',
+'  td.n { font-family: Consolas, "Courier New", monospace; text-align: right;',
+'         width: 18mm; padding-right: 6mm; font-weight: 600; }',
+'  td.u { color: #444; font-size: 9pt; width: 62mm; }',
+'  footer { margin-top: 16px; border-top: 1px solid #999; padding-top: 5px;',
+'           font-size: 8.5pt; color: #333;',
+'           break-inside: avoid; page-break-inside: avoid; }',
+'  footer p { margin: 0 0 3px; }',
+'  a.fn { text-decoration: none; color: #000; font-weight: 700; }',
+'  @media print {',
+'    body { width: auto; margin: 0; font-size: 10pt; }',
+'    header { border-bottom-width: 1.5pt; }',
+'  }',
+'</style>')
+
+#' The one-page assessment.
+#'
+#' @param dir an app*-unbuilt directory.
+#' @param script_path defaults to the export's own copy; pass the STYLED
+#'   script where there is one.
+#' @param out output path; defaults to <dir>-report.html.
+#' @return the path written, invisibly.
+render_report <- function(dir, script_path = NULL, out = NULL) {
+  if (is.null(script_path)) script_path <- file.path(dir, "script.qvs")
+  if (is.null(out)) out <- paste0(basename(dir), "-report.html")
+
   tok  <- read_qlik_script(script_path)
-  sl   <- script_loads(tok)
   tabs <- .sl_tabs(tok)
-  L    <- sl$loads
-
-  guid <- guid_literals(tok, tabs)
+  L    <- script_loads(tok)$loads
+  ur   <- usage_report(dir, script_path)
+  st   <- sql_targets(tok, tabs)
+  ast  <- asset_usage(dir, script_path)
   com  <- commented_out_code(tok, tabs)
-  dup  <- duplicate_labels(L)
 
-  t <- ur$tables
-  t$tab <- vapply(t$table, function(nm) {
-    x <- L$tab[!is.na(L$table) & L$table == nm]
-    if (!length(x)) NA_character_ else x[1L] }, character(1))
-  t$lines <- paste0(t$line_start, "–", t$line_end)
+  # An unresolved wildcard path makes the model a floor rather than a count,
+  # so every table and field total is marked - denominators included.
+  wild  <- sum(!L$complete_fields)
+  w     <- wild > 0L
+  title <- .rr_title(dir)
 
-  db  <- L[L$source_kind == "select", ]
-  inl <- sl$inlines
-  all_tabs <- unique(na.omit(L$tab))
+  n_tables <- length(unique(na.omit(L$table)))
+  from     <- L[L$source_kind == "from" & !is.na(L$source), ]
+  src      <- unique(from$source)
+  ext      <- .rr_ext(src)
+  ext_note <- if (!length(src)) "" else if (length(unique(ext)) == 1L)
+                paste("all", unique(ext))
+              else paste(sprintf("%d %s", as.integer(table(ext)), names(table(ext))),
+                         collapse = ", ")
+  delim    <- sum(.rr_ext(from$source) %in% c("csv", "txt", "tsv", "psv"))
 
-  # --- per tab -------------------------------------------------------------
-  per <- function(tb) list(
-    db     = db[!is.na(db$tab) & db$tab == tb, ],
-    guid   = guid[!is.na(guid$tab) & guid$tab == tb, ],
-    inl    = inl[!is.na(inl$tab) & inl$tab == tb, ],
-    dup    = dup[grepl(tb, dup$tabs, fixed = TRUE), ],
-    unused = t[!is.na(t$tab) & t$tab == tb & t$category == "unreferenced", ],
-    undrop = t[!is.na(t$tab) & t$tab == tb & t$category == "build-only, retained", ],
-    total  = sum(!is.na(t$tab) & t$tab == tb))
+  app <- .rr_section("Application", c(
+    .rr_row(.num(max(tok$line)), "script lines",
+            sprintf("%s tabs", .num(length(unique(L$tab))))),
+    .rr_row(.num(nrow(L)), "load statements",
+            sprintf("%s tables produced", .num(n_tables)), star_qual = w),
+    .rr_row(.num(length(src)), "distinct source files",
+            sprintf("%s file loads; %s", .num(nrow(from)), .h(ext_note)))))
 
-  P <- lapply(all_tabs, per); names(P) <- all_tabs
-  # Major and minor breaches are NOT the same figure. A database call blocks
-  # migration outright; a hardcoded record id keeps the app in `dev` status and
-  # must go before production sign-off (Adam 2026-08-18). Folding them together
-  # told app2 it had "2 blocking items", which is wrong and alarming.
-  nfix <- vapply(P, function(p) nrow(p$db), integer(1))
-  nmin <- vapply(P, function(p) nrow(p$guid), integer(1))
-  ndec <- vapply(P, function(p) nrow(p$inl) + nrow(p$dup), integer(1))
-  ndel <- vapply(P, function(p) nrow(p$unused) + nrow(p$undrop), integer(1))
+  obj <- st[st$kind == "object", ]
+  con <- st[st$kind == "connector", ]
+  srv <- if (nrow(obj)) sort(table(obj$server), decreasing = TRUE) else integer(0)
+  db  <- .rr_section("Database loads", c(
+    if (length(srv))
+      vapply(seq_along(srv), function(i)
+        .rr_row(.num(srv[i]), sprintf("tables loaded from %s", names(srv)[i])),
+        character(1))
+    else .rr_row("0", "tables loaded from a database"),
+    .rr_row(.num(nrow(con)), .rr_connector_label(con$object),
+            if (nrow(con))
+              paste(sprintf("%s &times;%d", .h(names(table(con$object))),
+                            as.integer(table(con$object))), collapse = ", ")
+            else ""),
+    .rr_row(.num(delim), "csv / delimited file loads")))
 
-  # A tab with tables, none of them used: delete the tab, not its tables.
-  # One decision instead of N investigations — the cheapest work in the report.
-  dead <- all_tabs[vapply(P, function(p)
-    p$total > 0L && nrow(p$unused) == p$total, logical(1))]
-  rest <- all_tabs[!(all_tabs %in% dead)]
+  cat_n <- function(k) sum(ur$tables$category == k)
+  n_fld <- nrow(ur$fields)
+  n_unu <- sum(ur$fields$field_finding)
+  model <- .rr_section("Data model", c(
+    .rr_row(.num(cat_n("unreferenced")), "tables unused",
+            sprintf("of %s", .num(n_tables)), star_fig = w, star_qual = w),
+    .rr_row(.num(cat_n("build-only, retained")), "tables unDROPped",
+            "build-only, left in model"),
+    .rr_row(.num(n_unu), "fields unused",
+            sprintf("%.0f%% of %s%s loaded", 100 * n_unu / max(n_fld, 1L),
+                    .num(n_fld), if (w) .RR_STAR else ""),
+            star_fig = w),
+    .rr_row(.num(wild), "loads unresolved", "wildcard qvd paths")))
 
-  # Three groups, because a tab needing a rearchitect and a tab with one spare
-  # table are not the same errand. Cleanup-only tabs are the long tail and go
-  # behind a single expander — 42 sibling rows is the overload being fixed.
-  g_block <- rest[nfix[rest] > 0L]
-  g_judge <- rest[nfix[rest] == 0L & (ndec[rest] + nmin[rest]) > 0L]
-  g_clean <- rest[nfix[rest] == 0L & (ndec[rest] + nmin[rest]) == 0L & ndel[rest] > 0L]
-  g_block <- g_block[order(-nfix[g_block])]
-  g_judge <- g_judge[order(-ndec[g_judge])]
-  g_clean <- g_clean[order(-ndel[g_clean])]
+  scr <- .rr_section("Script", c(
+    .rr_row(.num(com$total_lines), "lines of dead code",
+            sprintf("%.1f%% of the script", 100 * com$total_lines / com$script_lines)),
+    .rr_row(.num(sum(L$source_kind == "inline")), "inline loads"),
+    .rr_row(.num(nrow(duplicate_labels(L))), "duplicate table labels"),
+    .rr_row(.num(nrow(guid_literals(tok, tabs))), "hardcoded record ids"),
+    .rr_row(.num(nrow(script_disposals(tok, unique(na.omit(L$table)))$stores)),
+            "in-app qvd generations", "STORE statements")))
 
-  # --- verdict -------------------------------------------------------------
-  worst   <- if (nrow(db)) names(sort(table(db$tab), decreasing = TRUE))[1L] else NA
-  worst_n <- if (nrow(db)) max(table(db$tab)) else 0L
-
-  say <- c(
-    if (sum(nfix))
-      sprintf("<b>%s</b> must be rearchitected before this app can run on Cloud%s.",
-              .plural(sum(nfix), "database call"),
-              if (!is.na(worst) && worst_n > 1L)
-                sprintf(" &mdash; %d of them in <b>%s</b> alone", worst_n, .h(worst)) else "")
-    else "Nothing here blocks this app from running on Cloud.",
-    if (length(dead))
-      sprintf("<b>%s</b> of %d contain nothing the app uses and look deletable outright.",
-              .plural(length(dead), "tab"), length(all_tabs)),
-    if (sum(ndec))
-      sprintf("%s %s a human judgement no tool can make.",
-              .plural(sum(ndec), if (sum(nfix)) "further item" else "item"),
-              if (sum(ndec) == 1L) "needs" else "need"),
-    if (length(g_clean))
-      sprintf("The remaining %s need only cleanup.", .plural(length(g_clean), "tab")),
-    if (sum(nmin))
-      sprintf("%s %s before production sign-off, though %s not block migration.",
-              .plural(sum(nmin), "hardcoded record id"),
-              if (sum(nmin) == 1L) "must go" else "must go",
-              if (sum(nmin) == 1L) "it does" else "they do"))
-
-  figs <- paste0(
-    sprintf("<div class='fig fix'><div class=n>%d</div><div class=l>to fix</div><div class=s>blocks migration &middot; %s</div></div>",
-            sum(nfix), .plural(sum(nfix > 0L), "tab")),
-    sprintf("<div class='fig decide'><div class=n>%d</div><div class=l>to decide</div><div class=s>needs judgement &middot; %s</div></div>",
-            sum(ndec), .plural(sum(ndec > 0L), "tab")),
-    sprintf("<div class='fig del'><div class=n>%d</div><div class=l>to delete</div><div class=s>unused &middot; %s</div></div>",
-            sum(ndel), .plural(sum(ndel > 0L), "tab")))
-
-  # --- per-tab detail ------------------------------------------------------
-  block <- function(tb) {
-    p <- P[[tb]]; b <- ""
-    if (nrow(p$db))
-      b <- paste0(b, "<h4>Direct database calls</h4><p class=q>Not permitted on Cloud; each needs moving to a qvd layer.</p>",
-                  .tbl(transform(p$db, lines = paste0(line_start, "–", line_end)),
-                       c("table", "lines"), c("Table", "Lines")))
-    if (nrow(p$guid))
-      b <- paste0(b, "<h4>Hardcoded record ids</h4>",
-                  .tbl(p$guid, c("line", "literal"), c("Line", "GUID")))
-    if (nrow(p$inl)) {
-      b <- paste0(b, "<h4>Inline loads</h4><p class=q>Fine for mapping and crosstabs, not for importing data. The content decides.</p>",
-        paste0(vapply(seq_len(nrow(p$inl)), function(i) sprintf(
-          "<details><summary><span class=tabname>%s</span><span class=q>%s rows &middot; lines %d&ndash;%d</span></summary><div class=body><p class=q><b>Fields:</b> %s</p><pre>%s</pre><p class=q>First 10 of %d rows.</p></div></details>",
-          .h(p$inl$table[i]), .h(p$inl$n_rows[i]), p$inl$line_start[i], p$inl$line_end[i],
-          .h(p$inl$header[i]), .h(p$inl$sample[i]), p$inl$n_rows[i]), character(1)), collapse = ""))
-    }
-    if (nrow(p$dup))
-      b <- paste0(b, "<h4>Duplicate table labels</h4><p class=q>Built by more than one load. Intentional concatenation or accident cannot be told from the script.</p>",
-                  .tbl(p$dup, c("table", "tabs", "lines"), c("Table", "Tabs", "At lines")))
-    if (nrow(p$unused))
-      b <- paste0(b, "<h4>Tables never used</h4>",
-                  .tbl(p$unused, c("table", "n_fields", "sources", "lines"),
-                       c("Table", "Fields", "Source", "Lines")))
-    if (nrow(p$undrop))
-      b <- paste0(b, "<h4>Tables never dropped</h4><p class=q>Built, used to make others, then held in memory for the rest of the reload.</p>",
-                  .tbl(p$undrop, c("table", "n_fields", "sources", "lines"),
-                       c("Table", "Fields", "Source", "Lines")))
-    sprintf("<details><summary><span class=tabname>%s</span>%s</summary><div class=body>%s</div></details>",
-            .h(tb), .badges(nfix[[tb]] + nmin[[tb]], ndec[[tb]], ndel[[tb]]), b)
+  arow <- function(k, label) {
+    all <- sum(ast$kind == k)
+    .rr_row(.num(sum(ast$kind == k & !ast$used)), label,
+            if (all) sprintf("%s declared", .num(all)) else "none declared")
   }
+  assets <- .rr_section("App assets", c(
+    arow("variable", "variables unused"),
+    arow("dimension", "master dimensions unused"),
+    arow("measure", "master measures unused")))
 
-  group <- function(tabs, heading, blurb, wrap = FALSE) {
-    if (!length(tabs)) return("")
-    inner <- paste(vapply(tabs, block, character(1)), collapse = "")
-    if (!wrap)
-      return(paste0("<h2>", heading, "</h2><p class=q>", blurb, "</p>", inner))
-    paste0("<h2>", heading, "</h2><details><summary><span class=tabname>",
-           .plural(length(tabs), "tab"), " with cleanup only</span>",
-           .badges(0L, 0L, sum(ndel[tabs])),
-           "</summary><div class=body><p class=q>", blurb, "</p>", inner,
-           "</div></details>")
-  }
-
-  deadblock <- if (length(dead)) paste0(
-    "<div class=dead><b>", .plural(length(dead), "tab"),
-    "</b> where no table is used by the app &mdash; ",
-    sum(vapply(dead, function(d) P[[d]]$total, integer(1))),
-    " tables in total. Deleting the tab is one decision rather than a table-by-table review.",
-    "<ul>", paste0(vapply(dead, function(d) sprintf("<li>%s <span class=q>(%s)</span></li>",
-      .h(d), .plural(P[[d]]$total, "table")), character(1)), collapse = ""), "</ul></div>") else ""
-
-  nfld <- sum(ur$fields$field_finding)
-
-  html <- paste0(
-    "<title>", .h(basename(app_dir)), " migration review</title><style>", .css, "</style>",
-    "<h1>", .h(basename(app_dir)), "</h1>",
-    "<p class=sub>Migration review &middot; ", .h(format(Sys.Date(), "%d %B %Y")),
-    " &middot; ", nrow(t), " tables across ", length(all_tabs), " tabs &middot; ",
-    com$script_lines, " lines</p>",
-
-    "<p class=verdict>", paste(Filter(nchar, say), collapse = " "), "</p>",
-    "<div class=figs>", figs, "</div>",
-
-    if (length(dead)) paste0("<h2>Whole tabs that look dead</h2>", deadblock) else "",
-
-    group(g_block, "Blocking migration",
-          "These carry database calls that will not run on Cloud. Expand for the detail."),
-    group(g_judge, "Needing a judgement call",
-          "Nothing here can be decided by a tool &mdash; someone has to look."),
-    group(g_clean, "Cleanup only",
-          "Unused or undropped tables, nothing blocking. Safe to leave for later.",
-          wrap = TRUE),
-
-    "<footer><h2>Footnotes</h2>",
-    sprintf("<details><summary>%s loaded but never used anywhere</summary><div class=body><p>Noted, not urged: this migration carries apps across as they are, and field-level tidying is not the priority. It is also the least certain output here &mdash; a field counts as used if its name appears anywhere in the app, including as a bare word.</p></div></details>",
-            .plural(nfld, "field")),
-    sprintf("<details><summary>%s of commented-out script (%.1f%% of the file)</summary><div class=body><p>Never executed, so no runtime cost &mdash; purely what a reader has to wade through.</p>%s</div></details>",
-            .plural(com$total_lines, "line"),
-            100 * com$total_lines / com$script_lines,
-            .tbl(head(com$blocks[order(-com$blocks$n_lines), ], 10),
-                 c("tab", "line", "n_lines"), c("Tab", "At line", "Lines"))),
-    sprintf("<details><summary>What this review covers, and what it cannot</summary><div class=body><p>%sA table counts as used if any of its fields is named anywhere in the app, including as a bare word, so the deletable list is a floor rather than a total.</p><p>Connection validity is out of scope by design &mdash; that is the retargeting phase's job. Hardcoded values are not detected in general, only GUIDs: a broader rule flags far more legitimate code than real problems.</p><p>Nothing here has been changed, and no removal is implied to be safe without testing.</p></div></details>",
-            if (nrow(ur$undetermined))
-              sprintf("<b>%s could not be assessed at all</b> &mdash; they read every qvd matching a wildcard path, so their tables and fields are outside the script. ",
-                      .plural(nrow(ur$undetermined), "load")) else ""),
+  html <- c(
+    sprintf("<title>%s &mdash; Cloud migration assessment</title>", .h(title)),
+    .rr_css,
+    "<header>",
+    sprintf("  <h1>Cloud migration assessment &mdash; %s</h1>", .h(title)),
+    sprintf('  <div class="date">%s</div>',
+            sub("^0", "", format(Sys.Date(), "%d %B %Y"))),
+    "</header>", "",
+    app, db, model, scr, assets,
+    "<footer>",
+    if (w) sprintf('  <p id="wild"><b>*</b> &mdash; %s name no file; their tables and fields are not counted.</p>',
+                   .plural(wild, "wildcard load")) else NULL,
+    "  <p><b>unused</b> &mdash; loaded and never referenced again, in script or visuals.",
+    "     <b>unDROPped</b> &mdash; used to build other tables, not called by visuals, not dropped.</p>",
     "</footer>")
 
   writeLines(html, out, useBytes = TRUE)
@@ -288,8 +242,8 @@ main <- function(args) {
   args <- setdiff(args, c("--out", out))
   if (!length(args)) stop("usage: Rscript render_report.R <app-dir> [--script <p>] [--out <p>]")
   cat("wrote ", render_report(args[1L],
-        if (is.na(scr)) file.path(args[1L], "script.qvs") else scr,
-        if (is.na(out)) paste0(basename(args[1L]), "-report.html") else out), "\n", sep = "")
+        if (is.na(scr)) NULL else scr,
+        if (is.na(out)) NULL else out), "\n", sep = "")
 }
 
 if (sys.nframe() == 0L) main(commandArgs(trailingOnly = TRUE))

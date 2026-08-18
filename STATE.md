@@ -6,11 +6,11 @@ verify.R is styling-only, verify_docs.R gates every commit.
 
 **Next task:** phase 2, DESIGN §6.5 + §7.1/§7.2. Steps 1-4a DONE
 (json_strings +oracle, app_usage, script_loads, script_refs, usage_report,
-script_debt). 4b: build report_mock.html into render_report.R.
+script_debt, render_report). Phase 2 tooling COMPLETE; next is use.
 
 **Open items:**
-- 4b: 3 drafts rejected. report_mock.html agreed in shape — WHAT and HOW
-  MUCH only; severity, effort and priority are Adam's call, never computed.
+- 4b DONE: render_report.R emits the signed-off report_mock.html from live
+  data. WHAT and HOW MUCH only; severity/effort are Adam's, never computed.
 - What can the work machine run? Decides whether jsonlite can be the oracle
   there as here. Adam to check; access, not capability.
 - Qlik behaviour for a repeated explicit table label? Unverified; 9 in app1.
