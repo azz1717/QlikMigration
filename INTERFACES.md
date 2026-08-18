@@ -592,6 +592,29 @@ entry current in the same commit that changes its function.
   adding a pass that makes a NEW kind of legitimate change means adding one there too.
 - Private: `.unquote`, `.short`, `.window`, `.tail` (display/comparison helpers).
 
+## console_ui.R — crude console menu over run_pipeline.R / render_report.R
+
+- Script; run it (`Rscript console_ui.R`), don't source it. Not a pass, not phase 2 tooling —
+  a launcher on top of both. `main()` loops: pick formatting or report, pick an app, run it,
+  repeat until quit.
+- Shells out to `run_pipeline.R` / `render_report.R` via `system2(RSCRIPT, ...)`, one process per
+  run, rather than sourcing either — `run_pipeline.R` is documented as "a script, not a function"
+  and executes on source.
+- Apps are any subfolder (recursive, from the current working directory) containing
+  `app-properties.json`. Display name is `qTitle` from that file, falling back to the folder name
+  — same rule `render_report.R`'s `.rr_title()` uses, so a name on screen matches the report title.
+- Formatting always runs on `<app-dir>/script.qvs`, output always `<app-dir>/script_out.txt` —
+  no path prompts. Report output path is `render_report.R`'s own default
+  (`<basename(app-dir)>-report.html` in the current working directory).
+- GOTCHA (verified 2026-08-19, corrects the assumption in the console-input trap note below):
+  `readLines("stdin", n = 1)` called repeatedly, each time as a fresh `"stdin"` string, reopens a
+  new anonymous connection — the first call gets data, every call after it silently returns
+  `character(0)`, no error. Fix: open ONE connection (`file("stdin")`) at the top of the script
+  and reuse it for every prompt. `.cui_read_line()` is the only place input is read, for exactly
+  this reason — don't add a second `readLines("stdin", ...)` call elsewhere.
+- Private: `.cui_read_line()`, `.cui_find_apps()`, `.cui_pick_app()`, `.cui_run_formatting()`,
+  `.cui_run_report()`.
+
 ## verify_docs.R — documentation consistency; gates on exit status, no fixtures
 
 - Script; run it, don't source it. Safe at ANY testing stage — reads only
