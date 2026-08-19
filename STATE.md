@@ -1,8 +1,8 @@
 # STATE — read this first; update before any commit that starts/finishes a task
 
-**Position: §4.10 done; §7.5 idempotence fixed** (Adam, 2026-08-20): pass 8
-styles commented-out fields; pass 6's split-gap bug fixed, pipeline now a
-fixed point on both fixtures. UNCOMMITTED, stage 3 not yet run. §4.1-§4.9 closed.
+**Position: §4.10 + §7.5 CLOSED** (Adam, 2026-08-20): pass 8 styles
+commented-out fields; pass 6's split-gap idempotence bug fixed. 275ca86,
+stage3 119/0, merged to phase2-pruning. §4.1-§4.10 closed.
 
 **Next task:** phase 2, DESIGN §6.5 + §7.1/§7.2. Tooling COMPLETE — next is USE.
 
