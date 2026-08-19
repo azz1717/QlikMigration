@@ -23,6 +23,8 @@
 #   5. enforce_reserved_word_case - Qlik keywords and functions -> UPPER
 #   6. enforce_vertical_layout    - indentation/blank lines -> DESIGN §4.5/§4.8
 #   7. enforce_alias_alignment    - AS column alignment -> DESIGN §4.6
+#   8. enforce_commented_field_style - the same rules, applied to
+#      commented-out fields, by rewriting comment TEXT only -> DESIGN §4.10
 #
 # WHY THAT ORDER (it is not arbitrary — three of the four constraints are
 # real bugs waiting if you reorder):
@@ -71,12 +73,13 @@ source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
 source("enforce_vertical_layout.R")
 source("enforce_alias_alignment.R")
+source("enforce_commented_field_style.R")
 
 # Used for error messages and for --changes file names, so the wording of a
 # pass name lives in exactly one place.
 PASS_LABELS <- c("explicit aliases", "bracket references", "leading commas",
                  "intra-line spacing", "reserved-word casing",
-                 "vertical layout", "alias alignment")
+                 "vertical layout", "alias alignment", "commented field style")
 
 USAGE <- paste(
   "Reformat a Qlik load script to the house style guide.",
@@ -181,7 +184,9 @@ r5 <- run_pass(5, enforce_reserved_word_case, r4$tokens)
 r6 <- run_pass(6, enforce_vertical_layout,    r5$tokens)
 r7 <- run_pass(7, enforce_alias_alignment,    r6$tokens)
 
-results <- list(r1, r2, r3, r4, r5, r6, r7)
+r8 <- run_pass(8, enforce_commented_field_style, r7$tokens)
+
+results <- list(r1, r2, r3, r4, r5, r6, r7, r8)
 
 # --- report and write ----------------------------------------------------
 # Warnings are the pipeline's "I saw this and left it alone" list. They are
@@ -194,7 +199,7 @@ if (length(warnings_all) > 0) {
   cat("No warnings.\n")
 }
 
-writeLines(detokenize(r7$tokens), output_path)
+writeLines(detokenize(r8$tokens), output_path)
 cat("Wrote ", output_path, "\n", sep = "")
 
 # --- optional: what each pass actually did -------------------------------
@@ -214,6 +219,7 @@ if (want_changes) {
     cat(sprintf("  %d. %-21s %5d changes -> %s\n",
                 i, PASS_LABELS[i], nrow(changes), csv_path))
   }
+
 }
 
 # To poke at the results by hand instead, open R in this folder and run

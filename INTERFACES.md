@@ -254,6 +254,44 @@ entry current in the same commit that changes its function.
   `.eaa_preceding_ws_idx` (local duplicate of enforce_vertical_layout.R's helper — both a few
   lines, not worth a shared-scanner entry).
 
+## enforce_commented_field_style.R — pass 8
+
+- `enforce_commented_field_style(tokens)` — applies the §4 rules to commented-out LOAD fields.
+  `$changes`: line, before, after. DESIGN §4.10 (Adam 2026-08-20). Runs LAST, after alignment.
+- **THE INVARIANT: it rewrites the text of COMMENT tokens and nothing else.** No live token is
+  added, removed, moved or altered; the row count cannot change. verify.R asserts this directly
+  (`no live token is touched at all`), which is the whole safety story in one check.
+- Styling is not reimplemented: it builds a synthetic one-field `LOAD`, runs the REAL passes 1,
+  2, 4 and 5 over it, and reads the field back (`.scf_style_fragment`). Passes 3, 6 and 7 are
+  deliberately excluded — comma placement, indentation and the alignment column depend on the
+  comment's context, which the synthetic stream does not have, so this pass supplies them.
+- Alignment shares the live column: it measures the modal `AS` column of the live fields in the
+  same LOAD block (pass 7 aligns a block to one column and excludes outliers, so the mode is the
+  block's column; the max would chase an outlier). `//` occupies columns 0-1, which the first tab
+  stop absorbs, so commented and live fields land in the same columns.
+- **Eligibility — four independent refusals, each load-bearing.** The comment must sit inside a
+  LOAD field list AND own its source line (a trailing comment shares its line with live code, and
+  this pass rewrites whole lines); `///$tab` and block comments are skipped; the body must parse
+  as a field rather than prose; and the body must be paren-BALANCED, which excludes one line of a
+  multi-line commented expression.
+- A commented FIRST field gets §4.5's two-space pad, not a leading comma — otherwise
+  uncommenting it yields `LOAD , [X]`.
+- GOTCHA: the WS token carrying a line break also carries the NEXT line's indentation (the layout
+  pass rewrites that one gap per line). Treating the token after the break as the line start drops
+  the indent and measures every alias column two tabs short. `.scf_line_text_before()` exists for
+  exactly this.
+- "Never grow a token's `$text` to inject syntax" is about syntax LATER passes must recognise by
+  type. This pass runs last and its output stays inside a comment, where nothing will read it as
+  syntax — rewriting text is correct precisely here.
+- HISTORY worth keeping: the first implementation unwrapped commented fields into real tokens,
+  ran passes 1-7, and re-commented. It bought shared alignment for free and cost four corruptions,
+  all caught by verify.R at stage 3 — pass 3 moving separators across the comment/live boundary
+  (`LOAD , [X]`, and two live fields merged into one), pass 6 re-anchoring a statement terminator
+  onto a doomed line (a LOAD lost its `;` and ran into the following SELECT), a comma added per
+  re-run, and multi-line expressions styled half at a time. See git history before changing shape.
+- Private: `.scf_statement_words`, `.scf_field_words`, `.SCF_TAB`, `.scf_col`,
+  `.scf_body_is_field`, `.scf_style_fragment`, `.scf_line_text_before`.
+
 ## json_strings.R — phase 2 step 1, NOT a pass and NOT in the pipeline
 
 - Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5).
@@ -554,7 +592,9 @@ entry current in the same commit that changes its function.
 ## run_pipeline.R — the current full pipeline, not a snapshot
 
 - Script, not a function. `setwd(PROJECT_DIR)` (= `C:/Rtools`, existence-checked), sources
-  everything, runs all seven passes in order, prints warnings, writes output. Add new passes here.
+  everything, runs all eight passes in order, prints warnings, writes output. Add new passes here.
+- EIGHT passes now (pass 8 is `enforce_commented_field_style`, added 2026-08-20). `PASS_LABELS`
+  has eight entries and the eight `source("...")` lines are still the machine-read list.
 - Takes optional positional args: `Rscript run_pipeline.R [options] <input_path> <output_path>`.
   Defaults (no args) are `"[Grant Managing Region].txt"` -> `script_out.txt`, unchanged from before
   this became parameterized (2026-08-17, for the staged testing methodology in CLAUDE.md — one
@@ -585,6 +625,13 @@ entry current in the same commit that changes its function.
   the point of action. Interactive sourcing is unaffected.
 - `canonical_stream(tokens) -> list(canon, line)` — reduces a stream to meaning-carrying
   entries, normalising away exactly what the passes are ALLOWED to change.
+  GOTCHA: it DROPS COMMENT tokens. Until 2026-08-20 that meant nothing in verify.R asserted
+  anything at all about comment content — the whole suite passed on a run that mangled every
+  comment in the file. Harmless while comments were exempt from formatting; not harmless now.
+- `commented_field_bodies(tokens) -> character` — canonical form of every `//` comment body,
+  which is what closes that blind spot. Each body is wrapped in a synthetic `LOAD ... ;` so it is
+  normalised by the SAME rules live fields get; separator commas are dropped, because pass 3
+  migrates them across the comment/live boundary in both directions by design.
 - `check_equivalent(before, after, max_report=3) -> TRUE | character` — the important check.
   Detects a single insertion/deletion and says so instead of reporting the whole cascade.
 - `verify_file(path)`, `verify_detects_corruption()`, `ok(label, passed, detail)`, `section(...)`.

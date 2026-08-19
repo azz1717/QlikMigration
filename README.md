@@ -79,6 +79,7 @@ writeLines(detokenize(r7$tokens), "myscript_out.qvs")
 | 5 | `enforce_reserved_word_case` | Qlik keywords and built-in functions become UPPER |
 | 6 | `enforce_vertical_layout` | indentation and blank lines between statements |
 | 7 | `enforce_alias_alignment` | aligns every field's `AS` to one column within its own LOAD block |
+| 8 | `enforce_commented_field_style` | applies all of the above to commented-out fields, by rewriting comment text only |
 
 Spacing runs after the comma pass, which supplies the separator it spaces
 (DESIGN §6.1). Casing runs last among the first five so that tokens spliced
@@ -86,6 +87,14 @@ in by earlier passes are cased too. Layout runs after those five, since it
 is the only one of them reading whole-script structure rather than local
 field segments. Alias alignment runs LAST of all, because its column is
 computed from each field's final indentation (DESIGN §4.6).
+
+Pass 8 applies the same rules to commented-out LOAD fields, so uncommenting
+one yields a line that reloads without a hand-fix — comma placement and a
+missing alias used to break the script every time. It rewrites the TEXT OF
+COMMENT TOKENS AND NOTHING ELSE: commented script never becomes live tokens,
+which is what keeps it from interfering with the seven passes before it. An
+earlier design did unwrap comments into real tokens, and DESIGN §4.10 records
+the four distinct corruptions that followed.
 
 Current cost, whole pipeline including tokenizing:
 

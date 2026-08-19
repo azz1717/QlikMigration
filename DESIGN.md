@@ -640,15 +640,79 @@ the last field line (`, [A] + 1 AS [C];`). Deliberately no carve-out: the
 boundary stays visible through §4.8's blank lines, not through a stranded
 terminator.
 
-### 4.10 Comments — not implemented
+### 4.10 Comments — styling implemented; removal (§6.3) still not started
 
-- Commented-out code is removed, each removal logged in `$changes` with the
-  **full original text** (not a preview) so it is auditable and revertible.
 - A comment counts as dead code only when **both** hold: it sits inside a
   LOAD field list, **and** its body parses as a field reference or expression
   (optionally with an `AS` alias, optionally with a trailing comma). Both
   conditions are required so that prose notes written between fields survive.
 - Surviving comments move to column 0 (§4.5).
+
+**Commented-out fields are styled, not exempt (Adam 2026-08-20).** Every rule
+in §4 that applies to a live field applies to a commented-out one: casing,
+bracketing, explicit aliasing, leading commas, intra-line spacing, indentation
+and alias alignment. Adam reviewed the formatted scripts in the Qlik script
+editor with the project group and reversed the original exemption.
+
+Two reasons, and the second is functional, not cosmetic:
+
+- Unstyled comments among styled fields cause reader fatigue — mixed quoting,
+  trailing commas and absent aliases in the middle of an aligned block.
+- Uncommenting a field almost always required hand-fixing it before the script
+  would reload: comma placement and missing aliases break a LOAD. Styling them
+  in place removes that step, and removes it again for the re-targeting phase,
+  which would otherwise add a second manual edit per line.
+
+The mechanism is `enforce_commented_field_style.R`, pass 8, running last.
+**It rewrites the text of COMMENT tokens and nothing else** — no live token
+is added, removed, moved or altered. Styling is not reimplemented: it builds
+a synthetic one-field `LOAD`, runs the real passes 1, 2, 4 and 5 over it and
+reads the field back. Comma placement, indentation and the alignment column
+are supplied by the pass, because they depend on context the synthetic
+stream does not have. Alignment shares the live column by measuring the
+modal `AS` column of the live fields in the same block; `//` occupies
+columns 0-1, which the first tab stop absorbs, so commented and live fields
+land in the same columns. `//` sits at column 0, so deleting it leaves an
+executable line.
+
+Four exclusions, each load-bearing rather than cautious:
+
+- A comment must OWN its source line. A trailing comment (`[A] AS [B], // ...`)
+  shares its line with live script, and this pass rewrites whole lines.
+- The body must parse as a field, not prose, or an English note between
+  fields gets rewritten as pseudo-code.
+- The body must be paren-BALANCED. A commented-out expression can span
+  several lines, each its own `//` token; styling one line of it is
+  meaningless and its depth never returns to zero.
+- Block comments (`/* */`) can span lines and wrap live code.
+
+A commented FIRST field gets §4.5's two-space pad rather than a leading
+comma, or uncommenting it would produce `LOAD , [X]`.
+
+**Why not unwrap the comments into real tokens.** The first implementation
+did exactly that — unwrap, run passes 1-7, re-comment — which bought shared
+alias alignment for free because the commented field was genuinely a segment
+of the same LOAD block. It also put commented script into the live stream,
+and four distinct corruptions followed, every one caught by `verify.R` at
+stage 3 and none of them by the suite as it stood before:
+
+- pass 3 relocated field separators ACROSS the comment/live boundary,
+  emitting `LOAD , [X]` and merging two live fields into one;
+- pass 6's orphan-`;` rescue re-anchored a statement terminator onto a line
+  that was about to become a comment, so a LOAD lost its terminator and ran
+  on into the following `SELECT`;
+- a re-run read the styled leading comma as part of the field and added
+  another, growing one comma per run;
+- multi-line commented expressions were styled one line at a time.
+
+The lesson is not that those four were unfixable — each was fixed — but that
+the approach kept producing new instances of the same class: passes that
+reasonably assume every token they see is live. Pass 8 makes the class
+impossible instead of enumerating it. `verify.R` asserts the invariant
+directly: every non-COMMENT token identical, row count unchanged.
+
+Styling a dead field is **not** a substitute for deleting it: §6.3 (removal)
+remains open and unstarted, and is a separate endpoint.
 
 ### 4.11 Out of scope
 
