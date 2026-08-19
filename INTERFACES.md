@@ -206,6 +206,16 @@ entry current in the same commit that changes its function.
 - GOTCHA: other than the `;`-relocation above, this pass only rewrites the leading-whitespace GAP
   for each line — it never inserts a new line break where the source didn't already have one, and
   never touches anything after a line's first token.
+- GOTCHA (bug, fixed 2026-08-20): a line's leading gap is not always ONE token. Earlier passes
+  void in place rather than deleting rows, so a gap can arrive as `WS VOID WS` (pass 4 blanking
+  something mid-gap). `.preceding_ws_run()` returns EVERY WS row of that run; callers read `before`
+  as its concatenation, write the target into the LAST row and blank the rest (voided in one call
+  after the loop). Taking only the WS nearest the line start — what this helper did before the
+  fix — stranded the earlier fragment along with any trailing space or extra newline it carried,
+  and miscounted `.qvl_count_newlines(before)` for the preserve-blanks branch. That was the whole
+  of the pipeline's non-idempotence: 11 lines drifted on a second run over
+  `[Grant Managing Region].txt` (DESIGN §7.5). Not a CRLF problem — `readLines()` strips CR, so no
+  CR ever reaches the token stream.
 - GOTCHA: line 1 usually has no preceding WS token at all (true of both fixtures). That insertion
   is deferred until AFTER the main loop finishes — doing it mid-loop shifts every later original
   token index by one and silently corrupts the rest of the file (caught before commit, 2026-08-17).
@@ -251,8 +261,11 @@ entry current in the same commit that changes its function.
   field) instead of crashing. Pass 4's gap that made this reachable is now fixed too (same day —
   see its entry above), so this exclusion path is defensive rather than live, but stays in place.
 - Private: `.eaa_tab_width`, `.eaa_max_field_width`, `.eaa_tab_col` (tab-aware column expansion),
-  `.eaa_preceding_ws_idx` (local duplicate of enforce_vertical_layout.R's helper — both a few
-  lines, not worth a shared-scanner entry).
+  `.eaa_preceding_ws_idx` (nearest preceding WS row, skipping VOIDs). It is NO LONGER the twin of
+  enforce_vertical_layout.R's helper: that one became `.preceding_ws_run()` on 2026-08-20 and
+  returns the whole WS run. This pass has the same latent multi-row-gap bug (see pass 6's GOTCHA)
+  but no observed case — its gaps are intra-line and it runs after pass 6 has already
+  renormalised them. Promote to a shared scanner if a case ever shows up.
 
 ## enforce_commented_field_style.R — pass 8
 

@@ -1,16 +1,16 @@
 # STATE — read this first; update before any commit that starts/finishes a task
 
-**Position: §4.10 reopened + done** (Adam + group, 2026-08-20): commented-out
-fields styled via NEW PASS 8, comment text only. 3 stages run, --stage3 119/0.
-UNCOMMITTED. §4.1-§4.9 closed.
+**Position: §4.10 done; §7.5 idempotence fixed** (Adam, 2026-08-20): pass 8
+styles commented-out fields; pass 6's split-gap bug fixed, pipeline now a
+fixed point on both fixtures. UNCOMMITTED, stage 3 not yet run. §4.1-§4.9 closed.
 
 **Next task:** phase 2, DESIGN §6.5 + §7.1/§7.2. Tooling COMPLETE — next is USE.
 
 **Open items:**
 - §4.10 scope: commented-out TABLES and multi-line commented expressions
   stay unstyled. Adam's call whether to extend.
-- Re-run over own output churns 11 lines (CRLF); PRE-EXISTING at 4c73dd7,
-  violates §7.5, touches closed §4.7/§4.8.
+- run_pipeline.R hard-codes PROJECT_DIR="C:/Rtools", so a worktree run
+  silently tests main's passes. Adam's call whether to derive it from $0.
 - Parked, Adam's: before/after pruning report; explicit+unique table names.
 - What can the work machine run? Decides whether jsonlite can be the oracle
   there as here. Adam to check; access, not capability.

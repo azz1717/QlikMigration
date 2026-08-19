@@ -254,7 +254,7 @@ Load *,
     IF([Performance Review Status] like '*Complete*',    		
             If([Performance Review Completion Date] > TODAY()- 90 and [Performance Review Completion Date] < TODAY(), 1,0))  AS 'Performance Review Completed in Last 90 Days',
     IF([Performance Review Status] like '*Complete*',    		
-            If([Performance Review Completion Date] > TODAY()- 7 and [Performance Review Completion Date] < TODAY(), 1,0))  AS 'Performance Review Completed in Last 7 Days',
+            If([Performance Review Completion Date] > TODAY()- 7 and [Performance Review Completion Date] < TODAY(), 1,0))  AS 'Performance Review Completed in Last 7 Days'
 ;
 LOAD [Grant Activity Performance.Activity Id] as [Activity Id], 
 	[Grant Activity Performance.Milestone Id], 
