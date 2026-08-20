@@ -186,6 +186,49 @@ to.
 
 Both take vectors. Collect indices during a pass and apply them in one call.
 
+### 2.5 Pass ordering — one dependency graph, not eight independent facts
+
+The eight passes run in the fixed order `run_pipeline.R` lists. Most of that
+order is free; four edges are not, and this is the one place all four are
+stated together rather than scattered across INTERFACES.md entries and
+§6.1's roadmap note.
+
+**The constraints:**
+
+| edge | why |
+|---|---|
+| `enforce_leading_commas` (3) before `enforce_intraline_spacing` (4) | pass 3 supplies the comma pass 4's §4.7 spacing rule reacts to |
+| `enforce_leading_commas` (3) before `enforce_vertical_layout` (6) | `find_block_structure()` classifies a comma-led field line by where the comma sits; pass 3 must have already moved it |
+| passes 1-6 before `enforce_alias_alignment` (7) | the alignment column is measured from each field's FINAL text and indentation — anything that can still change either invalidates the measurement |
+| `enforce_alias_alignment` (7) before `enforce_commented_field_style` (8) | pass 8 reads the live block's already-aligned `AS` column to match commented fields to it |
+
+Everything else is free: passes 1, 2 and 5 have no ordering constraint among
+themselves or against 3/4/6, and casing (5) in particular can sit anywhere
+in 1-6.
+
+**Evidence, not assertion.** Adjacent-pair swaps and full permutations were
+run against all three fixtures and diffed against canonical-order output.
+`formatexample.txt` alone is misleading here: at only 2,399 characters it
+under-exercises the model enough that all 720 orderings of passes 1-6
+appeared to be explained by the 3-before-4 edge alone, with zero
+counterexamples. `[Grant Managing Region].txt` breaks that immediately — the
+3-before-6 edge only shows up once comma-led fields actually appear near
+block boundaries. A further refinement (letting casing float past alignment,
+since it is a pure text-recasing pass and never changes column width) held
+for 300 random full 8-pass orders on the GMR fixture, then failed on
+`app-unbuilt/script.qvs` on the very first order tried — casing interacting
+with a real script's SELECT regions and connector calls changes token counts
+in a way GMR's simpler structure never triggers. The conservative rule
+above (all of 1-6 before 7) is the one that held with zero mispredictions
+across 60 random full orders on the production script. **Small fixtures
+under-test ordering claims specifically; verify a reordering against the
+production script, not only the two smaller fixtures.**
+
+Not added to `verify.R` (2026-08-20, Adam): the check would cost real
+runtime for a property that is unlikely to regress silently — a pass moved
+out of order is a one-line diff in `run_pipeline.R`, easy to review by eye
+against this table.
+
 ---
 
 ## 3. Decisions and evidence
@@ -938,6 +981,7 @@ Implemented after `enforce_leading_commas` (it supplies the comma that
 spacing don't otherwise interact — one only rewrites `WORD` text, the other
 only touches `WS` tokens — so their relative order was free; layout and
 alignment (§6.2 onward) still come after this pass, per the original plan.
+Full constraint set across all eight passes, with evidence: §2.5.
 
 #### Finishing
 

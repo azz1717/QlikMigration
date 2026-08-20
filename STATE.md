@@ -1,8 +1,8 @@
 # STATE — read this first; update before any commit that starts/finishes a task
 
 **Position: §4.1-§4.10 CLOSED.** `undelimit()` is the repo's one delimiter strip
-— 4 twins folded in, incl. signed-off pass 2; verify.R's `.unquote` stays separate
-ON PURPOSE. Stage 3 GREEN 39870c9: 119/0, both fixtures byte-identical.
+— 4 twins folded in; verify.R's `.unquote` stays separate ON PURPOSE. Stage 3
+GREEN: 119/0. Pass-ordering constraints consolidated + evidenced, DESIGN §2.5.
 
 **Next task:** phase 2, DESIGN §6.5 + §7.1/§7.2. Tooling COMPLETE — next is USE.
 
