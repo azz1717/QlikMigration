@@ -329,6 +329,14 @@ next_non_trivia_idx <- function(type) {
 #' @return character vector, same length as `text`.
 undelimit <- function(text, type) {
   if (!length(text)) return(character(0))
+  # GOTCHA: ifelse() returns a value shaped like its TEST, so a length-1
+  # `type` against an N-token `text` silently yields ONE name instead of N.
+  # Recycle explicitly, and make a genuine mismatch an ERROR rather than a
+  # quiet truncation - that failure cost 2 of app2's GUID findings and
+  # reported 0 without complaining (2026-08-20).
+  if (length(type) == 1L) type <- rep(type, length(text))
+  if (length(type) != length(text))
+    stop("undelimit(): `type` must be length 1 or the same length as `text`")
   body <- substr(text, 2L, nchar(text) - 1L)
   ifelse(type == "DQUOTE",  gsub('""', '"', body, fixed = TRUE),
   ifelse(type == "SQUOTE",  gsub("''", "'", body, fixed = TRUE),

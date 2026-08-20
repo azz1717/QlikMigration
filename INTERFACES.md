@@ -42,6 +42,11 @@ entry current in the same commit that changes its function.
 - `undelimit(text, type) -> character` — strips a reference token's delimiters and unescapes a
   doubled quote char (`""` -> `"`, `''` -> `'`); BRACKET has no escape so its body is taken as-is.
   A NON-delimited token (WORD, NUMBER...) comes back unchanged; length-0 input gives `character(0)`.
+  `type` may be length 1 (recycled) or the same length as `text`; any other length is an ERROR.
+  GOTCHA: that recycling is load-bearing, not a convenience. `ifelse()` returns a value shaped
+  like its TEST, so passing a scalar `type` with an N-token `text` used to yield ONE name and no
+  complaint — it silently dropped 2 of app2's 2 GUID findings and reported 0 (caught 2026-08-20 by
+  an output baseline, not by any test). A length mismatch now stops instead of truncating.
   ELEMENTWISE — N tokens in, N names out. Promoted 2026-08-20 from three drifted private twins in
   `app_usage.R` / `script_refs.R` / `script_loads.R`, all of which already sourced this file.
   GOTCHA: the N-tokens-to-ONE-name FOLD is deliberately NOT here. `script_loads.R` wraps this in

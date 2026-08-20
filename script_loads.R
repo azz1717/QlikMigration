@@ -198,10 +198,10 @@ source("qlik_reserved_words.R")
   if (length(d)) {
     q <- idx[d[1L] + 2L]
     if (!is.na(q) && q <= hi && tokens$type[q] == "SQUOTE")
-      delim <- substr(tokens$text[q], 2L, nchar(tokens$text[q]) - 1L)
+      delim <- undelimit(tokens$text[q], "SQUOTE")
   }
 
-  body  <- substr(tokens$text[b], 2L, nchar(tokens$text[b]) - 1L)
+  body  <- undelimit(tokens$text[b], "BRACKET")
   lines <- strsplit(body, "\r?\n")[[1L]]
   lines <- lines[nzchar(trimws(lines))]
   if (length(lines) == 0L) return(NULL)

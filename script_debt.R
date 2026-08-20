@@ -43,14 +43,14 @@ guid_literals <- function(tokens, tabs = NULL) {
   i <- which(tokens$type == "SQUOTE")
   if (!length(i)) return(data.frame(line = integer(0), tab = character(0),
                                     literal = character(0), stringsAsFactors = FALSE))
-  body <- substr(tokens$text[i], 2L, nchar(tokens$text[i]) - 1L)
+  body <- undelimit(tokens$text[i], "SQUOTE")
   k <- i[grepl(.SD_GUID, body)]
   if (!length(k)) return(data.frame(line = integer(0), tab = character(0),
                                     literal = character(0), stringsAsFactors = FALSE))
   data.frame(line = tokens$line[k],
              tab = if (is.null(tabs)) NA_character_
                    else vapply(tokens$line[k], function(x) .sl_tab_at(tabs, x), character(1)),
-             literal = substr(tokens$text[k], 2L, nchar(tokens$text[k]) - 1L),
+             literal = undelimit(tokens$text[k], "SQUOTE"),
              stringsAsFactors = FALSE)
 }
 
