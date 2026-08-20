@@ -39,6 +39,18 @@ entry current in the same commit that changes its function.
 - `next_non_trivia_idx(type) -> integer/NA per position` — next non-WS/COMMENT/VOID index. Symmetric
   with the above. The call-position test (`t_type[next_non_trivia_idx(t_type)] == "LPAREN"`) is
   shared by casing and bracket references — promoted here 2026-08-17 when a second pass needed it.
+- `undelimit(text, type) -> character` — strips a reference token's delimiters and unescapes a
+  doubled quote char (`""` -> `"`, `''` -> `'`); BRACKET has no escape so its body is taken as-is.
+  A NON-delimited token (WORD, NUMBER...) comes back unchanged; length-0 input gives `character(0)`.
+  ELEMENTWISE — N tokens in, N names out. Promoted 2026-08-20 from three drifted private twins in
+  `app_usage.R` / `script_refs.R` / `script_loads.R`, all of which already sourced this file.
+  GOTCHA: the N-tokens-to-ONE-name FOLD is deliberately NOT here. `script_loads.R` wraps this in
+  `paste(collapse = "")` as its own `.sl_name()` at the two sites that need it — folding inside
+  `undelimit()` would make the return LENGTH depend on the caller, which is the confusion the
+  promotion removed. Its four single-token callers use `undelimit()` directly.
+  GOTCHA: `enforce_bracket_references.R`'s `.unescape_bracketable(raw, quote_char)` is a FOURTH
+  twin, still separate — different signature, and it sits in signed-off styling code whose
+  refactor would need a stage-3 re-run. Adam's call; see STATE.md.
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
   segment: start, end, content_idx, has_as, as_idx, alias_content_idx, line, load_tok_idx — all
   integer except has_as (logical). Skips SELECT.
@@ -384,7 +396,7 @@ entry current in the same commit that changes its function.
   app2-unbuilt 8/15 variables, 4/13 dimensions, 4/5 measures. Spot-checked against the raw
   files: `vTrip`, `vPopWeight`, `vNTAdmin` each appear once in the script (their own SET) and
   nowhere in objects/.
-- Private: `.au_undelimit()`, `.au_declared()`, `.au_object_blob()`, `.au_word_hit()`,
+- Private: `.au_declared()`, `.au_object_blob()`, `.au_word_hit()`,
   `.au_var_in_script()`.
 
 ## script_loads.R — phase 2 step 3, NOT a pass and NOT in the pipeline
@@ -443,7 +455,8 @@ entry current in the same commit that changes its function.
   7 warnings, all informational (3 wildcard paths, 4 un-aliased `DISTINCT [Field]`). On RAW input
   every un-aliased field warns as well, which is thousands — not a regression, see the note above.
 - Private: `.sl_bare_selects()`, `.sl_bare_select_idx()`, `.sl_bare_label()`,
-  `.sl_bare_fields()`, `.sl_prev_solid_idx()`, `.sl_undelimit()`, `.sl_next_solid()`, `.sl_solid()`, `.sl_head()`, `.sl_label()`,
+  `.sl_bare_fields()`, `.sl_prev_solid_idx()`, `.sl_name()` (shared `undelimit()` + the
+  collapse-to-one-name fold), `.sl_next_solid()`, `.sl_solid()`, `.sl_head()`, `.sl_label()`,
   `.sl_stmt_end()`, `.sl_source()`, `.sl_is_wildcard()`, `.sl_inline()`, `.sl_autoname()`,
   `.sl_paren_target()`, `.sl_wild_rows()`, `.sl_empty_loads()`, `.sl_empty_fields()`,
   `.SL_PREFIXES`, `.SL_QUALIFIERS`.
@@ -584,7 +597,7 @@ entry current in the same commit that changes its function.
   way: 11 in app-unbuilt, 0 real.
 - Current: app2 26 tables, 13 read elsewhere, 9 dropped, 0 stored. app-unbuilt 118 tables, 40
   read elsewhere, 16 dropped, 0 stored.
-- Private: `.sr_undelimit()`, `.sr_statements()`.
+- Private: `.sr_statements()`. Undelimiting is the shared `undelimit()`.
 
 ## oracle_json_strings.R — development-machine cross-check, not shipped tooling
 

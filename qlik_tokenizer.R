@@ -304,6 +304,37 @@ next_non_trivia_idx <- function(type) {
   nt[findInterval(seq_len(n), nt) + 1L]
 }
 
+#' Strip a reference token's delimiters, unescaping any doubled quote char.
+#'
+#' Promoted 2026-08-20 from three private twins that had drifted apart:
+#' `.au_undelimit` (app_usage.R), `.sr_undelimit` (script_refs.R) and
+#' `.sl_undelimit` (script_loads.R). All three phase 2 files already source
+#' this one, so there was never a reason for three.
+#'
+#' ELEMENTWISE: N tokens in, N names out. script_loads.R separately needs an
+#' N-tokens-to-ONE-name fold (an un-aliased field's inferred name; a
+#' parenthesised connector target) and wraps this in `paste(collapse = "")`
+#' at the two call sites that want it. That fold is a naming decision of its
+#' own, not a property of undelimiting - keeping it here would have made the
+#' return length depend on the caller, which is exactly the confusion this
+#' promotion set out to remove.
+#'
+#' GOTCHA: a NON-delimited token (WORD, NUMBER...) comes back UNCHANGED.
+#' Stripping the first and last character unconditionally - what
+#' `.au_undelimit` did, safe only because it happened never to be handed one
+#' - turns the field `Year` into `ea`.
+#'
+#' @param text token text vector.
+#' @param type matching token type vector.
+#' @return character vector, same length as `text`.
+undelimit <- function(text, type) {
+  if (!length(text)) return(character(0))
+  body <- substr(text, 2L, nchar(text) - 1L)
+  ifelse(type == "DQUOTE",  gsub('""', '"', body, fixed = TRUE),
+  ifelse(type == "SQUOTE",  gsub("''", "'", body, fixed = TRUE),
+  ifelse(type == "BRACKET", body, text)))
+}
+
 # ---- shared LOAD field-list scanner ------------------------------------
 # Most style-guide passes need to operate per-field within LOAD statements
 # while leaving SELECT ... ; (raw SQL passed to LIB CONNECT TO) alone. This

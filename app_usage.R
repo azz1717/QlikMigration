@@ -20,14 +20,6 @@ source("qlik_tokenizer.R")
 source("qlik_reserved_words.R")
 source("json_strings.R")
 
-# Strip the delimiters off a reference token. Qlik has no escape inside `[ ]`,
-# so a bracket body is taken as-is; a doubled `""` inside a quoted reference is
-# the one escape that exists.
-.au_undelimit <- function(text, type) {
-  body <- substr(text, 2L, nchar(text) - 1L)
-  ifelse(type == "DQUOTE", gsub('""', '"', body, fixed = TRUE), body)
-}
-
 #' Field references in one piece of expression text.
 #'
 #' @param text a single string, already unescaped out of its JSON.
@@ -81,7 +73,7 @@ expression_references <- function(text) {
   if (!any(delimited) && !any(bare) && !whole) return(none)
 
   out <- data.frame(
-    ref  = c(.au_undelimit(tok$text[delimited], tok$type[delimited]),
+    ref  = c(undelimit(tok$text[delimited], tok$type[delimited]),
              tok$text[bare],
              if (whole) trimws(text)),
     kind = c(dkind, rep("bare", sum(bare)),

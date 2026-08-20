@@ -30,16 +30,12 @@ source("qlik_reserved_words.R")
                   "REPLACE", "ONLY", "FIRST", "SEMANTIC", "HIERARCHY",
                   "CROSSTABLE", "GENERIC", "UNLESS", "WHEN", "INTERVALMATCH")
 
-# Delimiters off; a doubled quote inside a quoted identifier is the one escape.
-# Vectorised: `content_idx` is a RANGE, not a single token — an un-aliased
-# expression field spans several tokens and all of them arrive here at once.
-.sl_undelimit <- function(text, type) {
-  body <- substr(text, 2L, nchar(text) - 1L)
-  out  <- ifelse(type == "DQUOTE",  gsub('""', '"', body, fixed = TRUE),
-          ifelse(type == "SQUOTE",  gsub("''", "'", body, fixed = TRUE),
-          ifelse(type == "BRACKET", body, text)))
-  paste(out, collapse = "")
-}
+# One name out of a token RANGE. `undelimit()` (qlik_tokenizer.R) is
+# elementwise; the join is this file's own naming rule, not part of it — an
+# un-aliased expression field spans several tokens and its inferred name is
+# all of them run together. The two callers that pass a range use this; the
+# four that pass a single token call `undelimit()` directly.
+.sl_name <- function(text, type) paste(undelimit(text, type), collapse = "")
 
 # First non-trivia token at or after `from`, unbounded.
 #
@@ -121,7 +117,7 @@ source("qlik_reserved_words.R")
 .sl_label <- function(tokens, head) {
   if (length(head) >= 2L && tokens$type[head[2L]] == "OTHER" &&
       tokens$text[head[2L]] == ":")
-    return(list(table = .sl_undelimit(tokens$text[head[1L]], tokens$type[head[1L]]),
+    return(list(table = undelimit(tokens$text[head[1L]], tokens$type[head[1L]]),
                 prefix_idx = head[-(1:2)]))
   list(table = NA_character_, prefix_idx = head)
 }
@@ -150,7 +146,7 @@ source("qlik_reserved_words.R")
   after <- function(k) {
     p <- idx[which(up == k)[1L] + 1L]
     if (is.na(p) || p > hi) NA_character_
-    else .sl_undelimit(tokens$text[p], tokens$type[p])
+    else undelimit(tokens$text[p], tokens$type[p])
   }
 
   if ("RESIDENT"     %in% up) return(list(kind = "resident",     src = after("RESIDENT")))
@@ -426,7 +422,7 @@ script_loads <- function(tokens) {
       if (!x$has_as)
         warn <- c(warn, sprintf("line %d: field with no AS; produced name inferred from `%s`",
                                 x$line, paste(tokens$text[j], collapse = "")))
-      nm <- c(nm, .sl_undelimit(tokens$text[j], tokens$type[j]))
+      nm <- c(nm, .sl_name(tokens$text[j], tokens$type[j]))
       ln <- c(ln, x$line); al <- c(al, x$has_as)
     }
     declared[[i]] <- data.frame(field = nm, line = ln, aliased = al,
@@ -589,7 +585,7 @@ script_loads <- function(tokens) {
   if (is.na(p) || tokens$text[p] != ":") return(NA_character_)
   q <- .sl_prev_solid_idx(tokens, p - 1L)
   if (is.na(q) || !tokens$type[q] %in% c("BRACKET", "DQUOTE", "WORD")) return(NA_character_)
-  .sl_undelimit(tokens$text[q], tokens$type[q])
+  undelimit(tokens$text[q], tokens$type[q])
 }
 
 # The column list, between SELECT and its FROM. Depth-0 commas separate the
@@ -612,7 +608,7 @@ script_loads <- function(tokens) {
     if (!length(p)) return(NA_character_)
     k <- p[tokens$type[p] %in% c("BRACKET", "DQUOTE", "WORD")]
     if (!length(k)) return(NA_character_)
-    .sl_undelimit(tokens$text[k[length(k)]], tokens$type[k[length(k)]])
+    undelimit(tokens$text[k[length(k)]], tokens$type[k[length(k)]])
   }, character(1), USE.NAMES = FALSE)
   out <- out[!is.na(out)]
   if (any(vapply(parts, function(p) any(tokens$text[p] == "*"), logical(1))))
@@ -658,7 +654,7 @@ script_loads <- function(tokens) {
   rp  <- which(tokens$type[idx] == "RPAREN")[1L]
   if (is.na(lp) || is.na(rp) || rp <= lp + 1L) return(NA_character_)
   inner <- idx[(lp + 1L):(rp - 1L)]
-  .sl_undelimit(tokens$text[inner], tokens$type[inner])
+  .sl_name(tokens$text[inner], tokens$type[inner])
 }
 
 # Wildcard-derived rows. Kept a function because `extra` is empty far more

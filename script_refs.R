@@ -17,14 +17,6 @@
 
 source("qlik_tokenizer.R")
 
-.sr_undelimit <- function(text, type) {
-  if (!(type %in% c("BRACKET", "DQUOTE", "SQUOTE"))) return(text)
-  body <- substr(text, 2L, nchar(text) - 1L)
-  if (type == "DQUOTE") gsub('""', '"', body, fixed = TRUE)
-  else if (type == "SQUOTE") gsub("''", "'", body, fixed = TRUE)
-  else body
-}
-
 # Statement id per token, and the first solid WORD of each statement. The
 # leading word is what says whether a mention is a use (`RESIDENT Temp`) or a
 # disposal (`DROP TABLE Temp`) — the same name means opposite things.
@@ -64,7 +56,7 @@ script_table_refs <- function(tokens, table_names, own = NULL) {
 
   cand <- which(tokens$type %in% c("WORD", "BRACKET", "DQUOTE", "SQUOTE"))
   txt  <- tolower(vapply(cand, function(i)
-    .sr_undelimit(tokens$text[i], tokens$type[i]), character(1)))
+    undelimit(tokens$text[i], tokens$type[i]), character(1)))
   hit  <- cand[txt %in% names(lut)]
   if (length(hit) == 0L)
     return(data.frame(table = character(0), line = integer(0),
@@ -72,7 +64,7 @@ script_table_refs <- function(tokens, table_names, own = NULL) {
                       stringsAsFactors = FALSE))
 
   tbl  <- unname(lut[tolower(vapply(hit, function(i)
-    .sr_undelimit(tokens$text[i], tokens$type[i]), character(1)))])
+    undelimit(tokens$text[i], tokens$type[i]), character(1)))])
   lead <- st$lead[st$sid[hit]]
   line <- tokens$line[hit]
 
@@ -117,8 +109,8 @@ script_disposals <- function(tokens, table_names) {
                                                 c("store", "*", "from")))]
     tg <- idx[into + 1L]
     stores <- rbind(stores, data.frame(
-      table = if (length(nm)) .sr_undelimit(tokens$text[nm[1L]], tokens$type[nm[1L]]) else NA_character_,
-      into  = if (!is.na(tg)) .sr_undelimit(tokens$text[tg], tokens$type[tg]) else NA_character_,
+      table = if (length(nm)) undelimit(tokens$text[nm[1L]], tokens$type[nm[1L]]) else NA_character_,
+      into  = if (!is.na(tg)) undelimit(tokens$text[tg], tokens$type[tg]) else NA_character_,
       line  = tokens$line[idx[1L]], stringsAsFactors = FALSE))
   }
 
