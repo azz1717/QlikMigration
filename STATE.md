@@ -1,7 +1,8 @@
 # STATE — read this first; update before any commit that starts/finishes a task
 
 **Position: §4.1-§4.10 CLOSED** (Adam, 2026-08-20; 275ca86, stage3 119/0).
-`undelimit()` promoted to qlik_tokenizer.R from 3 phase 2 twins, outputs identical.
+`undelimit()` promoted to qlik_tokenizer.R; all 4 twins gone, incl. pass 2.
+Styling output byte-identical on both fixtures — stage 3 NOT yet run (Adam's).
 
 **Next task:** phase 2, DESIGN §6.5 + §7.1/§7.2. Tooling COMPLETE — next is USE.
 
@@ -10,8 +11,7 @@
   stay unstyled. Adam's call whether to extend.
 - run_pipeline.R hard-codes PROJECT_DIR="C:/Rtools", so a worktree run
   silently tests main's passes. Adam's call whether to derive it from $0.
-- Parked, Adam's: before/after pruning report; explicit+unique table names;
-  4th undelimit twin `.unescape_bracketable` (pass 2) — closed code, needs stage 3.
+- Parked, Adam's: before/after pruning report; explicit+unique table names.
 - What can the work machine run? Decides whether jsonlite can be the oracle
   there as here. Adam to check; access, not capability.
 - Qlik behaviour for a repeated explicit table label? Unverified; 9 in app1.

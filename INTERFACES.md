@@ -48,9 +48,9 @@ entry current in the same commit that changes its function.
   `paste(collapse = "")` as its own `.sl_name()` at the two sites that need it — folding inside
   `undelimit()` would make the return LENGTH depend on the caller, which is the confusion the
   promotion removed. Its four single-token callers use `undelimit()` directly.
-  GOTCHA: `enforce_bracket_references.R`'s `.unescape_bracketable(raw, quote_char)` is a FOURTH
-  twin, still separate — different signature, and it sits in signed-off styling code whose
-  refactor would need a stage-3 re-run. Adam's call; see STATE.md.
+  Pass 2 uses it too (2026-08-20, Adam: no twins anywhere), passing the token's own type — its
+  guard admits only DQUOTE/SQUOTE, which is the same mapping this function applies internally.
+  **This is now the ONLY delimiter-stripping code in the repo. A fifth copy is a bug.**
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
   segment: start, end, content_idx, has_as, as_idx, alias_content_idx, line, load_tok_idx — all
   integer except has_as (logical). Skips SELECT.
@@ -128,7 +128,7 @@ entry current in the same commit that changes its function.
   in `app-unbuilt/script.qvs`'s chunking loop.
 - `verify.R`'s `canonical_stream` mirrors this exact scope+rule to fold a bare field and its
   bracketed form to the same canonical entry — see its comment block before changing either side.
-- Private: `.unescape_bracketable` (strip quotes, collapse doubled quote chars).
+- No private helpers. Delimiter stripping is the shared `undelimit()`.
 
 ## enforce_leading_commas.R — pass 3
 
