@@ -1424,10 +1424,25 @@ and a literal block have no qvd to retarget.
 
 **Styling first is what makes this tractable, and the size of the effect is
 the argument.** On RAW input `app-unbuilt` shows 1787 expression segments and
-1770 bare words; after the pipeline, 179 and 75 (4 distinct). §4.2 bracketing
-converts most apparent expressions into plain references and removes ~96% of
-the bare-word ambiguity that §4.11 and phase 2 both stall on. Retargeting a
-raw script would face that ambiguity in full.
+1770 bare words; after the pipeline, 179 and 75. §4.2 bracketing converts most
+apparent expressions into plain references. Retargeting a raw script would
+face that ambiguity in full.
+
+**The bare-word problem does not reach the rewriter at all** (measured
+2026-08-20). Over the source sides of every `from` load in the styled
+`app-unbuilt`, there are **131 WORD tokens and every one is a function name
+or a keyword** — `IF`, `MATCH`, `GEOMAKEPOINT`, `TODAY`, `LEN`. Styled `app2`
+is the same: 102 WORD tokens, all functions. **Zero bare field references, in
+either app.** §4.2 brackets every reference in a LOAD field list, and a LOAD
+field list is the entire territory the rewriter works in.
+
+So the standing "bare word = field or variable?" question — which blocks
+§4.11 and forces phase 2 to count ambiguous words as used — **does not apply
+to retargeting**. It bites outside LOAD field lists, which is exactly where
+§4.11 is out of scope and where retargeting never goes. Every reference the
+rewriter must find is delimited, so it can be found exactly rather than
+guessed at. Do not import phase 2's conservative bare-word handling here; it
+would be answering a question that this stage does not ask.
 
 **GAP, must be closed before the resolver is written** (2026-08-20):
 `script_loads()` reports the **produced** field name — the right side of the
