@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Community Profile Nprint(3) — Cloud migration assessment</title>
+<style>
+  @page { size: A4 portrait; margin: 18mm 16mm; }
+
+  html, body { background: #fff; color: #000; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5pt; line-height: 1.35;
+         width: 178mm; margin: 16mm auto; }
+
+  header { border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 12px; }
+  h1 { font-size: 13pt; margin: 0; font-weight: 600; }
+  .date { font-size: 8.5pt; color: #333; margin-top: 2px; }
+
+  section { break-inside: avoid; page-break-inside: avoid; }
+  h2 { font-size: 9pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+       margin: 16px 0 4px; border-bottom: 1px solid #999; padding-bottom: 2px;
+       break-after: avoid; page-break-after: avoid; }
+
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  td { padding: 1.5px 0; vertical-align: baseline; }
+  td.n { font-family: Consolas, "Courier New", monospace; text-align: right;
+         width: 18mm; padding-right: 6mm; font-weight: 600; }
+  td.u { color: #444; font-size: 9pt; width: 62mm; }
+
+  footer { margin-top: 16px; border-top: 1px solid #999; padding-top: 5px;
+           font-size: 8.5pt; color: #333; break-inside: avoid; page-break-inside: avoid; }
+  footer p { margin: 0 0 3px; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 8pt; }
+  a.fn { text-decoration: none; color: #000; font-weight: 700; }
+
+  @media print {
+    body { width: auto; margin: 0; font-size: 10pt; }
+    header { border-bottom-width: 1.5pt; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cloud migration assessment — Community Profile Nprint(3)</h1>
+  <div class="date">18 August 2026</div>
+</header>
+
+<section>
+<h2>Application</h2>
+<table>
+  <tr><td class="n">13,869</td><td>script lines</td><td class="u">55 tabs</td></tr>
+  <tr><td class="n">171</td><td>load statements</td><td class="u">121 tables produced<a class="fn" href="#wild">*</a></td></tr>
+  <tr><td class="n">76</td><td>distinct source files</td><td class="u">83 file loads; all qvd</td></tr>
+</table>
+</section>
+
+<section>
+<h2>Database loads</h2>
+<table>
+  <tr><td class="n">21</td><td>tables loaded from AZDB-ZEA-PRD-NIAADL01</td><td class="u"></td></tr>
+  <tr><td class="n">3</td><td>tables loaded from AZDB-AUE-PRD-NIAADL01</td><td class="u"></td></tr>
+  <tr><td class="n">4</td><td>GeoAnalytics connector calls</td><td class="u">Closest &times;3, TravelAreas &times;1</td></tr>
+  <tr><td class="n">0</td><td>csv / delimited file loads</td><td class="u"></td></tr>
+</table>
+</section>
+
+<section>
+<h2>Data model</h2>
+<table>
+  <tr><td class="n">40<a class="fn" href="#wild">*</a></td><td>tables unused</td><td class="u">of 121<a class="fn" href="#wild">*</a></td></tr>
+  <tr><td class="n">14</td><td>tables unDROPped</td><td class="u">build-only, left in model</td></tr>
+  <tr><td class="n">1,437<a class="fn" href="#wild">*</a></td><td>fields unused</td><td class="u">55% of 2,632<a class="fn" href="#wild">*</a> loaded</td></tr>
+  <tr><td class="n">3</td><td>loads unresolved</td><td class="u">wildcard qvd paths</td></tr>
+</table>
+</section>
+
+<section>
+<h2>Script</h2>
+<table>
+  <tr><td class="n">2,869</td><td>lines of dead code</td><td class="u">20.7% of the script</td></tr>
+  <tr><td class="n">21</td><td>inline loads</td><td class="u"></td></tr>
+  <tr><td class="n">9</td><td>duplicate table labels</td><td class="u"></td></tr>
+  <tr><td class="n">0</td><td>hardcoded record ids</td><td class="u"></td></tr>
+  <tr><td class="n">0</td><td>in-app qvd generations</td><td class="u">STORE statements</td></tr>
+</table>
+</section>
+
+<section>
+<h2>App assets</h2>
+<table>
+  <tr><td class="n">32</td><td>variables unused</td><td class="u">94 declared</td></tr>
+  <tr><td class="n">2</td><td>master dimensions unused</td><td class="u">3 declared</td></tr>
+  <tr><td class="n">0</td><td>master measures unused</td><td class="u">none declared</td></tr>
+</table>
+</section>
+
+
+<footer>
+  <p id="wild"><b>*</b> &mdash; 3 wildcard loads name no file; their tables and fields are not counted.</p>
+  <p><b>unused</b> &mdash; loaded and never referenced again, in script or visuals.
+     <b>unDROPped</b> &mdash; used to build other tables, not called by visuals, not dropped.</p>
+</footer>
+</body>
+</html>

@@ -49,6 +49,7 @@ source("enforce_intraline_spacing.R")
 source("enforce_reserved_word_case.R")
 source("enforce_vertical_layout.R")
 source("enforce_alias_alignment.R")
+source("enforce_commented_field_style.R")
 
 # ---- reporting ---------------------------------------------------------
 
@@ -104,6 +105,15 @@ section <- function(...) { cat("\n== ", ..., " ==\n", sep = ""); flush(stdout())
 # verification status - notably §1.5, that LOAD X and LOAD X AS X load
 # identically, which is what licenses collapsing X AS X here.
 
+# DELIBERATELY NOT qlik_tokenizer.R's undelimit(), though it computes the
+# same thing. Adam 2026-08-20, when every other copy in the repo was folded
+# into that one: this file is the check, and a check that shares its
+# implementation with the code under test cannot fail independently of it.
+# undelimit() is what the PASSES use to decide what a reference is called;
+# .unquote is this suite's own separate statement of the same DESIGN §1
+# assumption, so a bug in one is still visible to the other.
+#
+# So: this is not an oversight and not a leftover twin. Do not merge it.
 .unquote <- function(s, q) {
   inner <- substr(s, 2, nchar(s) - 1)
   gsub(paste0(q, q), q, inner, fixed = TRUE)
@@ -263,6 +273,47 @@ check_equivalent <- function(before, after, max_report = 3) {
 
 # ---- the suite ---------------------------------------------------------
 
+#' Canonical form of every `//` comment body in a stream.
+#'
+#' canonical_stream() drops COMMENT tokens outright, so until this existed
+#' NOTHING in verify.R asserted anything whatsoever about comment content -
+#' the 97 checks passed on a run that mangled every comment in the file.
+#' That was harmless while comments were exempt from formatting (DESIGN
+#' §4.10, pre-2026-08-20) and is not harmless now that they are styled.
+#'
+#' Each body is canonicalised by the SAME rules live fields get: it is
+#' wrapped in a synthetic `LOAD ... ;` so find_load_segments() sees a field
+#' list, which is what licenses canonical_stream() to fold a bare word and
+#' its bracketed form together (and a self-alias onto its field). Comparing
+#' anything less normalised would report every legitimate styling change as
+#' a corruption.
+#'
+#' Separator commas are dropped from the result. Pass 3 deliberately moves a
+#' comma from the end of one line to the start of the next, which migrates
+#' it ACROSS the comment/live boundary in both directions; position is
+#' exactly what this check must not be sensitive to.
+#'
+#' @param tokens a token stream data.frame.
+#' @return character vector, all comment bodies' canonical entries in order.
+commented_field_bodies <- function(tokens) {
+  cm <- which(tokens$type == "COMMENT" &
+                startsWith(tokens$text, "//") &
+                !startsWith(tokens$text, "///$"))
+  if (length(cm) == 0) return(character(0))
+
+  out <- character(0)
+  for (i in cm) {
+    body <- sub("^//+", "", tokens$text[i])
+    if (!nzchar(trimws(body))) next
+    cs <- canonical_stream(tokenize_qlik(paste0("LOAD ", body, " ;")))$canon
+    # strip the synthetic wrapper and every separator comma
+    if (length(cs) > 0 && cs[1] == "W:LOAD") cs <- cs[-1]
+    if (length(cs) > 0 && cs[length(cs)] == "P:;") cs <- cs[-length(cs)]
+    out <- c(out, cs[cs != "P:,"])
+  }
+  out
+}
+
 PASSES <- list(
   "ensure_explicit_aliases"     = ensure_explicit_aliases,
   "enforce_bracket_references"  = enforce_bracket_references,
@@ -270,7 +321,8 @@ PASSES <- list(
   "enforce_intraline_spacing"   = enforce_intraline_spacing,
   "enforce_reserved_word_case"  = enforce_reserved_word_case,
   "enforce_vertical_layout"     = enforce_vertical_layout,
-  "enforce_alias_alignment"     = enforce_alias_alignment
+  "enforce_alias_alignment"     = enforce_alias_alignment,
+  "enforce_commented_field_style" = enforce_commented_field_style
 )
 
 verify_file <- function(path) {
@@ -346,6 +398,41 @@ verify_file <- function(path) {
   ok("alignment: every change is tabs plus the preserved space before AS",
      nrow(r_align$changes) == 0L || all(grepl("^\t+ $", r_align$changes$after)))
 
+  # 6. commented-out fields (DESIGN §4.10, Adam 2026-08-20)
+  # Pass 8 rewrites the TEXT OF COMMENT TOKENS AND NOTHING ELSE. That single
+  # invariant replaces the whole apparatus the earlier unwrap/rewrap design
+  # needed, so check it directly and exactly: every non-COMMENT row must be
+  # byte-identical, and the row count must not move.
+  r_cmt <- enforce_commented_field_style(tokens)
+  keep_c <- tokens$type != "COMMENT"
+  ok("commented fields: no live token is touched at all",
+     nrow(r_cmt$tokens) == nrow(tokens) &&
+       identical(tokens$text[keep_c], r_cmt$tokens$text[keep_c]) &&
+       identical(tokens$type, r_cmt$tokens$type) &&
+       identical(tokens$line, r_cmt$tokens$line))
+
+  ok("commented fields: every change is a comment, still a comment",
+     nrow(r_cmt$changes) == 0L ||
+       all(startsWith(r_cmt$changes$before, "//") &
+             startsWith(r_cmt$changes$after, "//")))
+
+  # the styled text must read back as ONE comment token - if a rewrite ever
+  # emitted a newline it would split into live script on the next line
+  ok("commented fields: each restyled line re-reads as a single comment",
+     nrow(r_cmt$changes) == 0L ||
+       all(vapply(r_cmt$changes$after, function(x) {
+         tk <- tokenize_qlik(x); nrow(tk) == 1L && tk$type[1] == "COMMENT"
+       }, logical(1))))
+
+  # and the field inside the comment must still mean the same thing
+  before_c <- commented_field_bodies(tokens)
+  after_c  <- commented_field_bodies(r_cmt$tokens)
+  ok("commented fields: every comment body preserved through styling",
+     identical(before_c, after_c),
+     if (!identical(before_c, after_c))
+       sprintf("%d canonical comment entries before, %d after",
+               length(before_c), length(after_c)) else NULL)
+
   invisible(NULL)
 }
 
@@ -409,12 +496,75 @@ verify_detects_corruption <- function() {
   ok("the real function call is left bare, not bracketed into [YEAR](x)",
      any(r3$tokens$type == "WORD" & r3$tokens$text == "YEAR"))
 
-  # the safety boundary this pass exists to respect: a bare word OUTSIDE a
-  # LOAD field list - a FOR loop counter or a LET-assigned variable, real
-  # names from app-unbuilt/script.qvs's chunking loop - must never be
-  # bracketed. Bracketing chunkText would turn a variable reference into a
-  # field reference and silently change what the script does.
-  src4 <- "LET chunkText = '';\nFOR i = 1 to 3\nLET chunkText = chunkText & i;\nNEXT"
+  # --- commented-out fields (DESIGN §4.10, Adam 2026-08-20) --------------
+  # Pass 8 styles commented-out fields by rewriting comment TEXT ONLY. The
+  # tests that matter are the eligibility boundaries: what it refuses to
+  # touch is as load-bearing as what it styles, because a wrong call here is
+  # silent - the script still runs, it just says something else.
+  src_c1 <- paste("[T]:", "LOAD", "    [A] AS [X],",
+                "//     \"B.b%\",", "    [C] AS [Y]", "FROM x;", sep = "
+")
+  t_c1 <- tokenize_qlik(src_c1)
+  r_c1 <- enforce_commented_field_style(t_c1)
+  ok("pass 8: a commented field inside a LOAD list is styled",
+     nrow(r_c1$changes) == 1L,
+     sprintf("%d change(s)", nrow(r_c1$changes)))
+  ok("pass 8: the styled result is bracketed, aliased and comma-led",
+     nrow(r_c1$changes) == 1L &&
+       grepl("[B.b%]", r_c1$changes$after[1], fixed = TRUE) &&
+       grepl(" AS ", r_c1$changes$after[1], fixed = TRUE) &&
+       grepl("^//	*, ", r_c1$changes$after[1]))
+  ok("pass 8: live script is untouched, token for token",
+     identical(t_c1$text[t_c1$type != "COMMENT"],
+               r_c1$tokens$text[r_c1$tokens$type != "COMMENT"]) &&
+       identical(t_c1$type, r_c1$tokens$type))
+  ok("pass 8: idempotent",
+     nrow(enforce_commented_field_style(r_c1$tokens)$changes) == 0L)
+
+  # prose between fields must NOT be rewritten as code
+  src_c2 <- paste("[T]:", "LOAD", "    [A] AS [X],",
+                "//  check this against the source system first",
+                "    [C] AS [Y]", "FROM x;", sep = "
+")
+  ok("pass 8: a prose note between fields is left alone",
+     nrow(enforce_commented_field_style(tokenize_qlik(src_c2))$changes) == 0L)
+
+  # a trailing comment shares its line with live code; this pass rewrites
+  # whole lines, so it must decline
+  src_c3 <- paste("[T]:", "LOAD", "    [A] AS [X], //  [B.b%] AS [Z],",
+                "    [C] AS [Y]", "FROM x;", sep = "
+")
+  ok("pass 8: a trailing comment on a live line is refused",
+     nrow(enforce_commented_field_style(tokenize_qlik(src_c3))$changes) == 0L)
+
+  # half of a multi-line commented expression: styling it alone is
+  # meaningless and its paren depth never returns to zero
+  src_c4 <- paste("[T]:", "LOAD", "    [A] AS [X],",
+                "//    IF(LEN([B.b%]) > 1, [B.b%],",
+                "//    'x')) AS [Z],", "    [C] AS [Y]", "FROM x;", sep = "
+")
+  ok("pass 8: an unbalanced expression fragment is refused",
+     nrow(enforce_commented_field_style(tokenize_qlik(src_c4))$changes) == 0L)
+
+  # a commented FIRST field gets the two-space pad, not a leading comma -
+  # otherwise uncommenting it yields "LOAD , [X]", which Qlik rejects
+  src_c5 <- paste("[T]:", "LOAD", "//     \"B.b%\",", "    [C] AS [Y]",
+                 "FROM x;", sep = "
+")
+  r_c5 <- enforce_commented_field_style(tokenize_qlik(src_c5))
+  ok("pass 8: a commented FIRST field is padded, not comma-led",
+     nrow(r_c5$changes) == 1L && !grepl("^//	*,", r_c5$changes$after[1]),
+     if (nrow(r_c5$changes)) r_c5$changes$after[1] else "no change")
+
+  # the safety boundary enforce_bracket_references exists to respect: a bare
+  # word OUTSIDE a LOAD field list - a FOR loop counter or a LET-assigned
+  # variable, real names from app-unbuilt/script.qvs's chunking loop - must
+  # never be bracketed. Bracketing chunkText would turn a variable reference
+  # into a field reference and silently change what the script does.
+  src4 <- "LET chunkText = '';
+FOR i = 1 to 3
+LET chunkText = chunkText & i;
+NEXT"
   r4 <- enforce_bracket_references(tokenize_qlik(src4))
   ok("a LET/FOR variable is never bracketed",
      !any(r4$tokens$type == "BRACKET") &&

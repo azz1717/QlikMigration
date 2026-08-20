@@ -186,6 +186,49 @@ to.
 
 Both take vectors. Collect indices during a pass and apply them in one call.
 
+### 2.5 Pass ordering — one dependency graph, not eight independent facts
+
+The eight passes run in the fixed order `run_pipeline.R` lists. Most of that
+order is free; four edges are not, and this is the one place all four are
+stated together rather than scattered across INTERFACES.md entries and
+§6.1's roadmap note.
+
+**The constraints:**
+
+| edge | why |
+|---|---|
+| `enforce_leading_commas` (3) before `enforce_intraline_spacing` (4) | pass 3 supplies the comma pass 4's §4.7 spacing rule reacts to |
+| `enforce_leading_commas` (3) before `enforce_vertical_layout` (6) | `find_block_structure()` classifies a comma-led field line by where the comma sits; pass 3 must have already moved it |
+| passes 1-6 before `enforce_alias_alignment` (7) | the alignment column is measured from each field's FINAL text and indentation — anything that can still change either invalidates the measurement |
+| `enforce_alias_alignment` (7) before `enforce_commented_field_style` (8) | pass 8 reads the live block's already-aligned `AS` column to match commented fields to it |
+
+Everything else is free: passes 1, 2 and 5 have no ordering constraint among
+themselves or against 3/4/6, and casing (5) in particular can sit anywhere
+in 1-6.
+
+**Evidence, not assertion.** Adjacent-pair swaps and full permutations were
+run against all three fixtures and diffed against canonical-order output.
+`formatexample.txt` alone is misleading here: at only 2,399 characters it
+under-exercises the model enough that all 720 orderings of passes 1-6
+appeared to be explained by the 3-before-4 edge alone, with zero
+counterexamples. `[Grant Managing Region].txt` breaks that immediately — the
+3-before-6 edge only shows up once comma-led fields actually appear near
+block boundaries. A further refinement (letting casing float past alignment,
+since it is a pure text-recasing pass and never changes column width) held
+for 300 random full 8-pass orders on the GMR fixture, then failed on
+`app-unbuilt/script.qvs` on the very first order tried — casing interacting
+with a real script's SELECT regions and connector calls changes token counts
+in a way GMR's simpler structure never triggers. The conservative rule
+above (all of 1-6 before 7) is the one that held with zero mispredictions
+across 60 random full orders on the production script. **Small fixtures
+under-test ordering claims specifically; verify a reordering against the
+production script, not only the two smaller fixtures.**
+
+Not added to `verify.R` (2026-08-20, Adam): the check would cost real
+runtime for a property that is unlikely to regress silently — a pass moved
+out of order is a one-line diff in `run_pipeline.R`, easy to review by eye
+against this table.
+
 ---
 
 ## 3. Decisions and evidence
@@ -640,15 +683,79 @@ the last field line (`, [A] + 1 AS [C];`). Deliberately no carve-out: the
 boundary stays visible through §4.8's blank lines, not through a stranded
 terminator.
 
-### 4.10 Comments — not implemented
+### 4.10 Comments — styling implemented; removal (§6.3) still not started
 
-- Commented-out code is removed, each removal logged in `$changes` with the
-  **full original text** (not a preview) so it is auditable and revertible.
 - A comment counts as dead code only when **both** hold: it sits inside a
   LOAD field list, **and** its body parses as a field reference or expression
   (optionally with an `AS` alias, optionally with a trailing comma). Both
   conditions are required so that prose notes written between fields survive.
 - Surviving comments move to column 0 (§4.5).
+
+**Commented-out fields are styled, not exempt (Adam 2026-08-20).** Every rule
+in §4 that applies to a live field applies to a commented-out one: casing,
+bracketing, explicit aliasing, leading commas, intra-line spacing, indentation
+and alias alignment. Adam reviewed the formatted scripts in the Qlik script
+editor with the project group and reversed the original exemption.
+
+Two reasons, and the second is functional, not cosmetic:
+
+- Unstyled comments among styled fields cause reader fatigue — mixed quoting,
+  trailing commas and absent aliases in the middle of an aligned block.
+- Uncommenting a field almost always required hand-fixing it before the script
+  would reload: comma placement and missing aliases break a LOAD. Styling them
+  in place removes that step, and removes it again for the re-targeting phase,
+  which would otherwise add a second manual edit per line.
+
+The mechanism is `enforce_commented_field_style.R`, pass 8, running last.
+**It rewrites the text of COMMENT tokens and nothing else** — no live token
+is added, removed, moved or altered. Styling is not reimplemented: it builds
+a synthetic one-field `LOAD`, runs the real passes 1, 2, 4 and 5 over it and
+reads the field back. Comma placement, indentation and the alignment column
+are supplied by the pass, because they depend on context the synthetic
+stream does not have. Alignment shares the live column by measuring the
+modal `AS` column of the live fields in the same block; `//` occupies
+columns 0-1, which the first tab stop absorbs, so commented and live fields
+land in the same columns. `//` sits at column 0, so deleting it leaves an
+executable line.
+
+Four exclusions, each load-bearing rather than cautious:
+
+- A comment must OWN its source line. A trailing comment (`[A] AS [B], // ...`)
+  shares its line with live script, and this pass rewrites whole lines.
+- The body must parse as a field, not prose, or an English note between
+  fields gets rewritten as pseudo-code.
+- The body must be paren-BALANCED. A commented-out expression can span
+  several lines, each its own `//` token; styling one line of it is
+  meaningless and its depth never returns to zero.
+- Block comments (`/* */`) can span lines and wrap live code.
+
+A commented FIRST field gets §4.5's two-space pad rather than a leading
+comma, or uncommenting it would produce `LOAD , [X]`.
+
+**Why not unwrap the comments into real tokens.** The first implementation
+did exactly that — unwrap, run passes 1-7, re-comment — which bought shared
+alias alignment for free because the commented field was genuinely a segment
+of the same LOAD block. It also put commented script into the live stream,
+and four distinct corruptions followed, every one caught by `verify.R` at
+stage 3 and none of them by the suite as it stood before:
+
+- pass 3 relocated field separators ACROSS the comment/live boundary,
+  emitting `LOAD , [X]` and merging two live fields into one;
+- pass 6's orphan-`;` rescue re-anchored a statement terminator onto a line
+  that was about to become a comment, so a LOAD lost its terminator and ran
+  on into the following `SELECT`;
+- a re-run read the styled leading comma as part of the field and added
+  another, growing one comma per run;
+- multi-line commented expressions were styled one line at a time.
+
+The lesson is not that those four were unfixable — each was fixed — but that
+the approach kept producing new instances of the same class: passes that
+reasonably assume every token they see is live. Pass 8 makes the class
+impossible instead of enumerating it. `verify.R` asserts the invariant
+directly: every non-COMMENT token identical, row count unchanged.
+
+Styling a dead field is **not** a substitute for deleting it: §6.3 (removal)
+remains open and unstarted, and is a separate endpoint.
 
 ### 4.11 Out of scope
 
@@ -715,8 +822,9 @@ Reapplying **only** alignment would be the tempting shortcut, and is wrong: it
 assumes the later phases emit output that is perfectly style-conformant except
 for widths. That assumption would have to stay true forever, in a second tool,
 with nothing checking it. Every pass is idempotent and the whole pipeline is
-1.6s on the 13,870-line fixture, so re-running all of it costs nothing and
-removes the assumption.
+3.8s end to end on the 13,870-line fixture (measured 2026-08-17: wall clock
+for the whole `Rscript run_pipeline.R` invocation, R startup and sourcing
+included), so re-running all of it costs nothing and removes the assumption.
 
 Think of it as `gofmt` after a refactor — not a step to be sequenced
 carefully, a normaliser applied unconditionally afterwards.
@@ -873,6 +981,7 @@ Implemented after `enforce_leading_commas` (it supplies the comma that
 spacing don't otherwise interact — one only rewrites `WORD` text, the other
 only touches `WS` tokens — so their relative order was free; layout and
 alignment (§6.2 onward) still come after this pass, per the original plan.
+Full constraint set across all eight passes, with evidence: §2.5.
 
 #### Finishing
 
@@ -965,6 +1074,214 @@ ability to tell intended reformatting from normaliser damage in a diff.
 
 ---
 
+### 6.5 Phase 2 usage extraction — not started
+
+Phase 2 (§5) drops loads nothing in the app uses. That verdict needs a usage
+graph — field to dimension, measure or chart. Discovery over `app-unbuilt/`
+on 2026-08-17 established that the graph is recoverable, and how.
+
+**Two app exports, two roles** (Adam, 2026-08-17). `app-unbuilt/` was picked
+as a hard case for styling: one enormous script (13,870 lines), few sheets,
+and many unused tables. `app2-unbuilt/` is an app already migrated BY HAND
+and known to work — a 25 KB script but many more sheets and charts, with
+redundant tables carried across as-is. It is far more representative of the
+apps still to migrate, and the better phase-2 fixture: 22 JSON files against
+9. The two apps load **separate data models and share nothing**, so pruning a
+table from one cannot affect the other; usage analysis is strictly per app.
+Phase 2 tooling runs against both.
+
+**app2's existing formatting is an input, never a reference.** The styling
+pipeline can and will be run over `app2-unbuilt/script.qvs` — it is a
+perfectly good styling input, and a useful one. What it is not is *evidence*:
+its layout was applied by hand and loosely, so it must never be used to
+argue for a change or an addition to the passes. §4 is signed off and
+closed. Seeing something in a fixture that our rules would format
+differently is not a finding and not a task — the same rule that already
+applies to the other fixtures, which are inputs and not specs.
+
+**That restriction is about STYLE, and only style.** Phase 2 is the opposite
+case: the app metadata is precisely what its design should be derived from,
+and working out what that metadata can tell us is the task itself. Infer
+structure, meaning and relationships from `app*-unbuilt/` freely here. The
+styling-era caution — that a fixture's appearance never justifies a rule —
+does not transfer to phase 2 and must not be applied to it.
+
+**What the app metadata holds (app-unbuilt).** Two sheets carry every visual;
+the story, `appprops`, `loadmodel` and `pinneditems` carry none.
+`measures.json` is empty, so there are no master measures and every measure
+is inline in a chart. `dimensions.json` holds 3 master dimensions (7 field
+defs), and only one `qLibraryId` is referenced anywhere. Master-item
+indirection is therefore negligible **in this app only** — app 2 does ship
+master measures, so the extractor cannot assume the indirection away.
+`variables.json` holds 94 variables.
+
+**Qlik's internal stashes can be read or skipped freely.** Of 166 `qMeasures`
+containers, 142 are empty; the 54 real ones all carry a non-empty
+`qDef$qDef`, 50 of them distinct. 52 sit in live chart definitions and 2
+inside `qUndoExclude`/`qLayoutExclude` — and both of those also appear live,
+so the stashes contribute zero unique usage. Reading them costs nothing and
+skipping them loses nothing, so the extractor need not tell them apart.
+
+**Do not enumerate keys — scan every string.** Expressions live in at least
+`qMeasures`, `qDimensions`, `qFieldDefs`, `qExpression`,
+`qAttributeExpressions`, `qCalcCondition`, `qListObjectDef`,
+`qLabelExpression` and `qSortCriterias`. Enumerating them is exactly how the
+first attempt went wrong: `qFieldDefs` alone yields 48 unique field names,
+while scanning all 408 strings in the objects yields **90** unique bracketed
+references. Half the usage was missed, in the direction that deletes a field
+a chart is using. Collecting every string leaf can only over-report, and
+over-reporting under-prunes — the safe failure.
+
+**Consequence: no JSON parser is needed.** Because the structure is never
+consulted, base R needs only a string-literal extractor over the raw text
+(quoted runs, honouring `\"`) rather than a parser and state machine. That
+keeps the base-R-only deployment constraint cheap to satisfy.
+
+**Ambiguity resolves conservatively** (Adam, 2026-08-17). A bare word in an
+expression may be a field or one of the 94 variables — the same discriminator
+§4.11 lacks. Phase 2 does not solve it: a bare word counts as USED and is
+flagged for review. Pruning targets whole loads only, so a load is droppable
+only when nothing it produces is referenced anywhere.
+
+**Double quotes mean something different here** (Adam, 2026-08-18). §1.2's
+rule — Qlik has no double-quoted string literal, so a `"..."` is always a
+field reference — was established on script text and does not hold in app
+JSON. Every `DQUOTE` in `app-unbuilt/objects` is a selection value
+(`"2022-23"`, `"Yes"`), not a field. They are still collected, because a
+wrong exclusion is the failure that deletes a live field, but they are
+recorded as their own kind so the report never asserts that `Yes` is a
+field. A rule verified in one of this project's two languages is not
+thereby verified in the other.
+
+**A LOAD is not a table** (verified against both apps, 2026-08-18). Step 3's
+first model — one LOAD produces one table — is wrong five ways, and each had
+to be handled before the produced-field list meant anything:
+
+- a **preceding chain**: stacked LOADs, one table, named by the TOP one. The
+  bottom statement supplies the data, the top one exposes the fields.
+- **JOIN / CONCATENATE**: feeds a table someone else created, so it can never
+  be judged droppable on its own.
+- **MAPPING**: consumed by `ApplyMap` and dropped; never in the data model.
+- **`LOAD ...; SELECT ...;`**: the ODBC form, where the statement below feeds
+  the load. All 24 of app-unbuilt's sourceless loads are this, none are
+  preceding chains — the two look identical until the next statement is read.
+- **a wildcard qvd path** (`FROM .../*.qvd`): Qlik loads every matching file
+  and names each resulting table after its own qvd, taking all of that qvd's
+  fields (Adam, 2026-08-18). One statement, N tables, none of them named in
+  the script.
+
+**A preceding `LOAD *` draws from the statement below, not from the source**
+(Adam, 2026-08-18). Given `LOAD *` over `LOAD [year], [quarter] FROM big.qvd`,
+the `*` yields exactly those two fields — not everything in the qvd. The
+chain's field universe is set by its bottom LOAD's own list. This is why a
+wildcard is far less often unknowable than it first appears: of app-unbuilt's
+19 apparent unknowns, 14 were `INLINE` (the header row states the fields), 2
+were `RESIDENT` (resolvable once every table is known), and only the 3
+wildcard paths are genuinely outside the script.
+
+**Variables are expression text too.** A variable expanded with `$()` can
+itself name fields, so `variables.json` is scanned as expressions, not merely
+as a list of names.
+
+**The deliverable is a document, not console output** (Adam, 2026-08-18).
+Phase 2's output is a field/table usage report submittable as part of the
+migration project. It stays in phase 2 rather than becoming a phase of its
+own: phase 3 already means retargeting (§5), the report *is* step 4 below
+rather than a new deliverable, and the review gate and the submission must be
+the same artefact — reviewing a console dump and building the document later
+from a separate path signs off something other than what is submitted.
+
+**Build order.** Each step produces separately reviewable output, and nothing
+in phase 2 deletes anything:
+
+1. JSON string-literal extractor, base R. `jsonlite` is installed on the
+   development machine and serves as a test oracle — the base-R reader must
+   return the same strings on the real files.
+2. App usage: every string through `qlik_tokenizer.R`, giving bracketed and
+   bare references, the bare ones flagged.
+3. Script side: `find_load_segments()` for what each LOAD produces.
+4. Cross-reference, in two layers:
+   - **4a, the usage table.** A structured intermediate — one row per load
+     and produced field, carrying app, script line range, table, field, how
+     the reference was spelled (`bracketed` / `quoted` / `bare`, the last two
+     qualified as below) and evidence. Its per-table and per-field categories
+     are the five defined under "What the cross-reference distinguishes".
+     Greppable and diffable on its own, which is what is wanted when a
+     category looks wrong.
+   - **4b, the renderer.** Turns 4a into the document. Base R, in a format
+     already verified here (HTML / RTF / CSV, or the base-R `.docx` writer).
+     Built once and reused for §7's debt report, which has the same shape:
+     findings, evidence, and why each matters.
+
+   Adam reviews the report before any pruning tool is written.
+
+**What the cross-reference distinguishes** (Adam, 2026-08-18). Five outcomes,
+and they are categories rather than a ranking. Phase 2 **detects and reports**;
+it prescribes nothing. Whether a removal or a `DROP` is automated here or left
+to a developer is undecided, so no category carries a recommended action — the
+value is in separating the cases at all, since a reviewer cannot see any of
+them from the script by eye.
+
+Per table:
+
+| category | condition |
+|---|---|
+| referenced | at least one of its fields appears in the app's own definition |
+| build-only, retained | no app reference; another statement reads it; no `DROP` disposes of it, so it occupies memory for the rest of the reload |
+| build-only, dropped | no app reference; another statement reads it; a `DROP` disposes of it — scaffolding behaving as intended |
+| unreferenced | loaded, then named nowhere at all: no join, no later load, no chart |
+| undetermined | a wildcard qvd path; its contents are outside the script |
+
+Per field, within a referenced table: **unreferenced field** — the field is
+loaded and appears in no expression anywhere.
+
+The three inputs are `app_used` (any field of the table appears in
+`app_usage.R`'s references, in any kind), `script_used` (a `script_refs.R`
+mention whose enclosing statement is not a `DROP`), and `dropped`.
+
+**Five encoding rules the categories depend on.** Each was a choice, and each
+moves the boundary of `unreferenced`:
+
+- **Case is folded at the join, and only there.** Steps 2 and 3 preserve it.
+  Folding over-reports usage, which under-prunes — the recoverable direction.
+- **A string that is not an expression is a field name in its entirety.**
+  `qFieldDefs` holds UNBRACKETED names, so treating every string as expression
+  text and splitting it on whitespace destroys them: `Latest Funding Financial
+  Year` became four bare words, the field was never emitted, and its table was
+  reported unreferenced. That is the one direction that deletes something
+  live. Such strings are now emitted whole, as kind `whole-string`, alongside
+  the per-word bare refs. The test is structural — no bracket, quote, paren,
+  comma or semicolon anywhere in the string. It is deliberately loose: a chart
+  title that happens to equal a field name will match, which over-reports
+  usage and under-prunes.
+- **A `quoted` match counts as app usage**, even though app JSON's double
+  quotes are literals (`"Yes"`). A field genuinely named `Yes` would be hidden
+  from the unreferenced list rather than wrongly added to it.
+- **A `bare` match counts as app usage**, per the ambiguity rule above. This
+  is the dominant effect on the result: app-unbuilt yields 1050 unique bare
+  references against 100 bracketed.
+- **The unit is a TABLE, not a load.** A table comprises its whole preceding
+  chain plus every `joins-into` load feeding it, so a finding is a set of line
+  ranges rather than one.
+- **Two things are excluded from verdicts**: `multi-table` loads entirely, and
+  field-level findings for any table whose `complete_fields` is FALSE.
+
+Position is not consulted. A table the app never references is idle from its
+last script read onward wherever that read sits, so the distinction that
+matters is whether a `DROP` exists at all, not where it is.
+
+**References carry provenance, not just names.** A set of names is enough to
+decide pruning but not enough to publish: the document must answer *why do
+you say this is unused?*, so every reference records the JSON file and the
+string it was found in, from step 2 onward. Retrofitting provenance after the
+fact means rewriting step 2.
+
+Step 3 also settles the caveat on those 90 bracketed names: a few may be
+variables or master-dimension labels rather than fields, and only the
+script's own field list distinguishes them.
+
+---
+
 ## 7. The migration debt report — not started, list not yet fleshed out
 
 The three phases deliver a **working** app, not a production-ready one. That
@@ -983,20 +1300,99 @@ from the output. This report is about migration debt, not formatting.
 
 ### 7.1 What gets flagged
 
-Not settled. The list below is a seed to be fleshed out before the pass is
-built, not a specification:
-
-- inline loads
-- direct calls to the database from the load script
-- loads from attached files
-- hardcoded values in the load script
-
 Before any entry can be implemented it needs two things: a detection rule
 expressed against the token stream, and a one-line statement of why it is
 debt — the report is read by people deciding what to fix first, so a flag
 that cannot justify itself is noise.
 
-### 7.2 The pipeline's output is the priority, not the report
+**The admission test** (Adam, 2026-08-18): *if retargeting fixes it, it is
+not report material.* A DEV connection string is fixed by pointing it
+somewhere valid, which is literally phase 3's job, so it is not flagged. A
+direct database call cannot be retargeted away — it needs rearchitecting into
+a qvd layer — so it is. Apply this before adding anything below; without it
+the report sprawls into everything anyone notices.
+
+Debt is a **separate concern from pruning**: a database call is debt whether
+or not anything references the table it builds.
+
+| flag | detection | why it is debt |
+|---|---|---|
+| direct database call | `source_kind == "select"` — the `LOAD ...; SELECT ...;` form | **Not permitted** by the Cloud build standards and will not work there by design. Blocking. 24 in app-unbuilt, 0 in app2. |
+| hardcoded record id | a GUID-shaped `SQUOTE` literal in a load expression | A patched-in record key. 2 in app2 (lines 242, 244), 0 in app-unbuilt. |
+| commented-out code | `COMMENT` tokens containing script keywords, measured in LINES | Never executed, so no runtime cost — purely what a reader must wade through. 513 of 13,869 lines in app-unbuilt; 1 in app2. |
+
+**Two things are surfaced for human judgement rather than flagged**, because
+the tool cannot call them:
+
+- **Inline loads.** Legitimate for mapping and crosstabs, not for importing
+  raw data — and Adam 2026-08-18 is explicit that a row-count threshold
+  cannot make that call: a huge block is a red flag but a small one gets no
+  automatic pass. Content decides. The report shows every inline load's
+  header, row count and **first ten rows** — enough to judge, where embedding
+  1113 rows would be actively counterproductive in a document meant to be
+  skimmed.
+- **Duplicate table labels.** 9 in app-unbuilt, clustered as tab pairs
+  (`Fleet`/`OLDFleet`). Whether that is intentional concatenation or an
+  accident is not determinable from the script, and this repo has not
+  verified Qlik's behaviour for a repeated explicit label — see STATE.md.
+
+**Hardcoded values in general are NOT detected**, deliberately (Adam,
+2026-08-18). `IF([Status] <> 'Completed')` is fine and far commoner than
+`IF([Organisation] = 'ABC Tour Guides')`; hardcoded dates are legitimate as
+often as not. A detector whose false positives outnumber its true ones
+teaches the reader to skim the section. Only the GUID sub-case is claimed,
+and the report says plainly that the general case is not covered.
+
+Remaining seed entries, each still owing both halves above:
+
+- loads from attached files
+
+### 7.2 What the report is for
+
+It answers one question — **how much of a mess is this app?** (Adam,
+2026-08-18). That is a judgement a developer makes, not a metric the tool
+computes, so the report's job is to let them see, grasp and weigh the major
+issues fast. Three consequences settled the layout:
+
+- **Count things to investigate, never percentages of the script.** "12
+  tables to look at" is a work estimate; "2% of lines" could be one cascading
+  monster or twelve trivia. The one exception is commented-out code, where
+  lines genuinely are the unit of the problem.
+- **No aggregate field totals either.** "12 tables, 187 fields" hides whether
+  that is one gargantuan table and eleven negligible ones. Per-table counts
+  live in the drill-down instead.
+- **Every finding names its `///$tab`.** A line number does not help someone
+  opening the script in Qlik; the tab is how they navigate.
+
+**The report design is NOT settled. Two drafts have been rejected** (Adam,
+2026-08-18): the first as a data dump with headings, the second — the
+tab-grouped rewrite described below — as no better. What follows is a record
+of what has been tried and why, not a specification to build against. The
+detection layers underneath it (steps 1-4a) are unaffected and stand.
+STATE.md carries the live item.
+
+**The unit is the tab, not the finding.** A first draft gave every detector a
+section and every section its whole table; Adam rejected it as information
+overload, and the diagnosis was that the unit was wrong. Findings cluster
+hard: 12 of app-unbuilt's 24 database calls are in one tab, and 15 of its 40
+unused tables sit in 10 tabs where nothing is used at all. Listed flat, both
+facts are invisible. Grouped by tab — which is how a developer navigates and
+works through a Qlik script — the second becomes "10 tabs look deletable
+outright", one cheap decision instead of 15 investigations.
+
+So the layout is: a verdict naming the concentration, three figures, the
+wholly-dead tabs, then tabs grouped as blocking / judgement / cleanup-only,
+each closed. The long cleanup tail sits behind a single expander. Unused
+fields are a deliberately quiet footnote — the migration carries apps across
+as they are, so field-level tidying is noted, not urged, and it is the least
+certain output produced here.
+
+**Major and minor breaches are never the same figure.** A database call
+blocks migration outright; a hardcoded record id keeps the app in `dev`
+status and must go before production sign-off. Combining them told app2 it
+had "2 blocking items" when nothing blocks it at all.
+
+### 7.3 The pipeline's output is the priority, not the report
 
 The report itself is a rendering job and can wait; base R can produce HTML,
 RTF or even a valid `.docx` with no packages at all. What cannot wait is
@@ -1015,7 +1411,7 @@ The pass is **read-only**: it never modifies the script. That keeps it
 clear of the §3.4 structural helpers and means it cannot affect
 verification.
 
-### 7.3 Run the detection at both ends
+### 7.4 Run the detection at both ends
 
 Because the pass is read-only and idempotent, running it on both the
 incoming script and the final output costs almost nothing — and the
@@ -1034,13 +1430,13 @@ measures it. A handover that lists only what is still wrong understates the
 work that was done.
 
 **The baseline must be captured once, not recomputed.** Once the pipeline can
-be re-run over a partly hand-fixed script (§7.4), "the input" stops being a
+be re-run over a partly hand-fixed script (§7.5), "the input" stops being a
 fixed thing. If the before figure is recomputed on each run it converges
 silently on the after figure and the improvement record erases itself.
 Capture the original on-prem script's findings once, store them alongside the
 run, and compare every later run against that stored baseline.
 
-### 7.4 The pipeline must be re-runnable over a hand-fixed script
+### 7.5 The pipeline must be re-runnable over a hand-fixed script
 
 Some warts will not be resolvable automatically. The expected workflow is
 therefore: run the pipeline, hand the report to whoever owns the app, let

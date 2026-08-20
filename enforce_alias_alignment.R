@@ -79,9 +79,11 @@
 }
 
 #' Index of the WS token whose text immediately precedes token idx, skipping
-#' VOID leftovers - same convention as enforce_vertical_layout.R's
-#' .preceding_ws_idx, duplicated locally rather than shared across files
-#' (both are a few lines; not worth a new shared-scanner entry for).
+#' VOID leftovers. No longer the twin of enforce_vertical_layout.R's helper:
+#' that one became .preceding_ws_run() on 2026-08-20 and returns the whole WS
+#' run, because a gap can arrive split as WS/VOID/WS. This pass has the same
+#' latent bug but no observed case - its gaps are intra-line and pass 6 has
+#' already renormalised them by the time this runs.
 .eaa_preceding_ws_idx <- function(type, idx) {
   j <- idx - 1L
   while (j >= 1L && type[j] == "VOID") j <- j - 1L

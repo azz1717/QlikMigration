@@ -1,0 +1,251 @@
+{
+  "qProperty": {
+    "qInfo": {
+      "qId": "bc0de52d-2ee2-4314-9a78-d362d7fa1f61",
+      "qType": "sheet"
+    },
+    "qMetaDef": {
+      "title": "Introduction",
+      "description": ""
+    },
+    "rank": 0,
+    "thumbnail": {
+      "qStaticContentUrlDef": {
+        "qUrl": "/api/v1/apps/7862b8ac-75fd-40a5-86b4-e91124882e67/media/files/Accounting BW.jpg"
+      }
+    },
+    "columns": 24,
+    "rows": 23,
+    "cells": [
+      {
+        "name": "EgUvMa",
+        "type": "text-image",
+        "col": 0,
+        "row": 22,
+        "colspan": 24,
+        "rowspan": 1,
+        "bounds": {
+          "x": 0,
+          "y": 95.65217391304347,
+          "width": 100,
+          "height": 4.347826086956521
+        }
+      },
+      {
+        "name": "jrkJfWT",
+        "type": "text-image",
+        "col": 0,
+        "row": 0,
+        "colspan": 24,
+        "rowspan": 22,
+        "bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 95.65217391304347
+        }
+      }
+    ],
+    "qChildListDef": {
+      "qData": {
+        "title": "/title"
+      }
+    },
+    "gridResolution": "small",
+    "layoutOptions": {
+      "extendable": true,
+      "sheetMode": "RESPONSIVE"
+    },
+    "height": 192,
+    "pxHeight": 1024,
+    "pxWidth": 1280
+  },
+  "qChildren": [
+    {
+      "qProperty": {
+        "qInfo": {
+          "qId": "EgUvMa",
+          "qType": "text-image"
+        },
+        "qMetaDef": {},
+        "qHyperCubeDef": {
+          "qDimensions": [],
+          "qMeasures": [
+            {
+              "qDef": {
+                "qTags": [],
+                "qGrouping": "N",
+                "qDef": "[Siebel Cut Off Date Time]\r\n",
+                "qNumFormat": {
+                  "qType": "U",
+                  "qnDec": 10,
+                  "qUseThou": 0
+                },
+                "qAccumulate": 0,
+                "qActiveExpression": 0,
+                "qExpressions": [],
+                "autoSort": true,
+                "cId": "nupFZY",
+                "numFormatFromTemplate": true
+              },
+              "qSortBy": {
+                "qSortByNumeric": -1,
+                "qSortByLoadOrder": 1,
+                "qExpression": {}
+              },
+              "qAttributeExpressions": [],
+              "qAttributeDimensions": [],
+              "qCalcCond": {},
+              "qCalcCondition": {
+                "qCond": {},
+                "qMsg": {}
+              },
+              "qTrendLines": [],
+              "qMiniChartDef": {
+                "qSortBy": {
+                  "qExpression": {}
+                },
+                "qOtherTotalSpec": {
+                  "qOtherMode": "OTHER_OFF",
+                  "qOtherCounted": {},
+                  "qOtherLimit": {},
+                  "qOtherLimitMode": "OTHER_GT_LIMIT",
+                  "qForceBadValueKeeping": true,
+                  "qApplyEvenWhenPossiblyWrongResult": true,
+                  "qOtherSortMode": "OTHER_SORT_DESCENDING",
+                  "qTotalMode": "TOTAL_OFF",
+                  "qReferencedExpression": {}
+                },
+                "qMaxNumberPoints": -1,
+                "qAttributeExpressions": []
+              }
+            }
+          ],
+          "qInterColumnSortOrder": [
+            0
+          ],
+          "qInitialDataFetch": [],
+          "qReductionMode": "N",
+          "qMode": "S",
+          "qPseudoDimPos": -1,
+          "qNoOfLeftDims": -1,
+          "qMaxStackedCells": 5000,
+          "qCalcCond": {},
+          "qTitle": {},
+          "qCalcCondition": {
+            "qCond": {},
+            "qMsg": {}
+          },
+          "qColumnOrder": [],
+          "qExpansionState": [],
+          "qDynamicScript": [],
+          "qLayoutExclude": {
+            "qHyperCubeDef": {
+              "qDimensions": [],
+              "qMeasures": [],
+              "qInterColumnSortOrder": [],
+              "qInitialDataFetch": [],
+              "qReductionMode": "N",
+              "qMode": "S",
+              "qPseudoDimPos": -1,
+              "qNoOfLeftDims": -1,
+              "qMaxStackedCells": 5000,
+              "qCalcCond": {},
+              "qTitle": {},
+              "qCalcCondition": {
+                "qCond": {},
+                "qMsg": {}
+              },
+              "qColumnOrder": [],
+              "qExpansionState": [],
+              "qDynamicScript": []
+            }
+          }
+        },
+        "showTitles": false,
+        "title": "",
+        "subtitle": "",
+        "footnote": "",
+        "showDetails": false,
+        "responsive": "all",
+        "markdown": "GPS Load date: =[](nupFZY)  ^[\n](inherit)",
+        "images": [],
+        "background": {
+          "isUsed": false,
+          "size": "auto",
+          "position": "topLeft",
+          "url": {}
+        },
+        "visualization": "text-image"
+      },
+      "qChildren": []
+    },
+    {
+      "qProperty": {
+        "qInfo": {
+          "qId": "jrkJfWT",
+          "qType": "text-image"
+        },
+        "qMetaDef": {},
+        "qHyperCubeDef": {
+          "qDimensions": [],
+          "qMeasures": [],
+          "qInterColumnSortOrder": [],
+          "qInitialDataFetch": [],
+          "qReductionMode": "N",
+          "qMode": "S",
+          "qPseudoDimPos": -1,
+          "qNoOfLeftDims": -1,
+          "qMaxStackedCells": 5000,
+          "qCalcCond": {},
+          "qTitle": {},
+          "qCalcCondition": {
+            "qCond": {},
+            "qMsg": {}
+          },
+          "qColumnOrder": [],
+          "qExpansionState": [],
+          "qDynamicScript": [],
+          "qLayoutExclude": {
+            "qHyperCubeDef": {
+              "qDimensions": [],
+              "qMeasures": [],
+              "qInterColumnSortOrder": [],
+              "qInitialDataFetch": [],
+              "qReductionMode": "N",
+              "qMode": "S",
+              "qPseudoDimPos": -1,
+              "qNoOfLeftDims": -1,
+              "qMaxStackedCells": 5000,
+              "qCalcCond": {},
+              "qTitle": {},
+              "qCalcCondition": {
+                "qCond": {},
+                "qMsg": {}
+              },
+              "qColumnOrder": [],
+              "qExpansionState": [],
+              "qDynamicScript": []
+            }
+          }
+        },
+        "showTitles": false,
+        "title": "",
+        "subtitle": "",
+        "footnote": "",
+        "showDetails": false,
+        "responsive": "text",
+        "markdown": "^[\n](inherit)The pages in the Grant Acquittals Report   are briefly outlined below:^[\n**~The Acquittal Overview page~**: \n^[Has the following table showing the below totals:\n1.       **Complete:**The Completed Acquittals by both number and dollar value. This includes all Completed Acquittal Reviews from 2016\\-17 onwards \\(including Complete Pending Activities\\).\n2.       **Due: **How many outstanding acquittals there are by both number and dollar value. This includes any Activity with a current Acquittal Review that is not Complete or Complete Pending Activities, where the due date has already passed. This does **~not~** include future acquittals that already have Acquittal Reviews.\n3.       **Future**: Any Future Acquittals by both number and dollar value. This includes any Activity with a current Acquittal Review that is not Complete or Complete Pending Activities, where the due date is in the future.\nHas the following two summaries:\n1.       **Average Days: **The Average Days it takes an Acquittal to be completed from the Acquittal Due Date.\n2.       **Completed this Month:** The number of Acquittals completed in the current month. This includes any Acquittal Review that has been changed to Complete or Complete Pending Activities in the current month. Also has a figure for this Financial Year.\nHas the following two graphs:\n1.       **Overdue Acquittals by Financial Year:** This bar graph shows the Outstanding Acquittal Reviews by both number \\(red lines\\) and dollar value \\(blue bars\\) from 2016\\-17 onwards, split into Financial Years. This does **~not~** include Acquittal Reviews where the due date is in the future,only those that are currently due. \n2.       **Overdue by Group:** This bar graph shows all overdue Acquittals by Group/Region, by both the outstanding overdue Milestones \\(in blue\\) and outstanding overdue Acquittal Reviews \\(in red\\). \n](inherit)^[\n](inherit)^[**~The Summary of Outstanding Acquittals page~**:\nHas the following two tables:\n1. **Outstanding Acquittals by Financial Year:** This table shows outstanding Acquittal Reviews by both acquittal financial year and GMU Group. It shows both the number outstanding and the dollar value outstanding. \n2**. Acquittals Completed this Financial Year: **This table shows all Acquittal Reviews that have been completed in the current year by both acquittal financial year and GMU Group.It shows both the number completed and the dollar value completed\n](inherit)^[\n](inherit)^[**~The Open Acquittals by Group page~**:\nHas the following table:\n1.       **Open Acquittals by Week:** This table shows the number and dollar value of outstanding Acquittal Reviews on a week by week basis, for a trending view of what is currently outstanding in a particular week. This does **~not~** include Acquittal Reviews where the due date is in the future, only those that are currently due. If a cell is red, there has been an increase from the previous week; if it is green, there has been a decrease from the previous week; and if it is white, there has been no change for the week. \nHas the following graphs:\n1.       **Acquittal Numbers and Amounts by Date:** This line graph shows the total number and dollar value of outstanding acquittals for each week from 2016\\-17 onwards. \n2.       **Acquittals by Group:** This line graph shows the total Outstanding Acquittal Reviews by Group for each week from 2016\\-17 onwards. \n**~\n~**](inherit)^[**~The Acquittal Details page~**:\nHas the following two tables:\n1.       **Number of Acquittals:** This table shows all of the Acquittal Reviews, including those that are complete, those that are still due and those that are due in the future. ](inherit)^[ **~not~** include cancelled Acquittal Reviews. \n2.       **Question Responses:** This table shows all of the answers to the Review Items Questions in each Acquittal Review. There is a line for each question, so there will be multiple lines of each Activity Id and Review Id. \n**~\n~**](inherit)^[**~The Acquittal Summary page~**:\nHas the following table:\n1.       **Acquittal Summary:** This table shows the number and dollar value of all Acquittal Reviews,sorted into Complete, Due and Future Acquittals, for each of the GMU Groups. \nHas the following two graphs:](inherit)^[1.       **Total Acquittals by Financial Year:** This bar graph shows the number and dollar value for all of the Acquittal Reviews. This can be shown by either ](inherit)^[ or Group.\n2.       **Amount to be Acquitted:** This bar graph shows the dollar amount to be acquitted split into Complete, Due and Future Status. \n**~\n~**](inherit)^[**~The Milestone Details page~**:\nHas the following table:\n1.       **Milestone Details:** This table shows all of the Acquittal Milestones \\(Milestones with a Financial Acquittal Report or Acquittal type\\). This does **~not~** include Milestones with the type Performance Report,Payment, Other Report or Report. \n**~\n~**](inherit)^[**~The Data Quality page:~**\nHas the following table:\n1.       **Review Amount and Amount to be Acquitted:** This table shows user errors in GPS. \nHas the following graph:\n1.       **Errors:** This bar graph shows the Errors:\nHas the following two Summaries:\n1.       **Percentage of Errors:** This shows the percentage of Activities with errors.\n2.       **Total Amount to be Acquitted:** This shows to total dollar amount to be acquitted for all years combined from 2016\\-17 onwards.\n\n](inherit)^[**Please Note: **Making a selection on any of the pages will affect all of the other pages until it is removed.\n\n](inherit)^[If you have any **questions** in regards to Grant Acquittals please email;  @[#[Help\\-GrantAcquittals](3)](mailto:Help\\-GrantAcquittals@niaa.gov.au)\n](inherit)^[^[\n](inherit)](inherit)](inherit)",
+        "images": [],
+        "background": {
+          "isUsed": false,
+          "size": "auto",
+          "position": "topLeft",
+          "url": {}
+        },
+        "visualization": "text-image"
+      },
+      "qChildren": []
+    }
+  ]
+}

@@ -39,6 +39,26 @@ entry current in the same commit that changes its function.
 - `next_non_trivia_idx(type) -> integer/NA per position` — next non-WS/COMMENT/VOID index. Symmetric
   with the above. The call-position test (`t_type[next_non_trivia_idx(t_type)] == "LPAREN"`) is
   shared by casing and bracket references — promoted here 2026-08-17 when a second pass needed it.
+- `undelimit(text, type) -> character` — strips a reference token's delimiters and unescapes a
+  doubled quote char (`""` -> `"`, `''` -> `'`); BRACKET has no escape so its body is taken as-is.
+  A NON-delimited token (WORD, NUMBER...) comes back unchanged; length-0 input gives `character(0)`.
+  `type` may be length 1 (recycled) or the same length as `text`; any other length is an ERROR.
+  GOTCHA: that recycling is load-bearing, not a convenience. `ifelse()` returns a value shaped
+  like its TEST, so passing a scalar `type` with an N-token `text` used to yield ONE name and no
+  complaint — it silently dropped 2 of app2's 2 GUID findings and reported 0 (caught 2026-08-20 by
+  an output baseline, not by any test). A length mismatch now stops instead of truncating.
+  ELEMENTWISE — N tokens in, N names out. Promoted 2026-08-20 from three drifted private twins in
+  `app_usage.R` / `script_refs.R` / `script_loads.R`, all of which already sourced this file.
+  GOTCHA: the N-tokens-to-ONE-name FOLD is deliberately NOT here. `script_loads.R` wraps this in
+  `paste(collapse = "")` as its own `.sl_name()` at the two sites that need it — folding inside
+  `undelimit()` would make the return LENGTH depend on the caller, which is the confusion the
+  promotion removed. Its four single-token callers use `undelimit()` directly.
+  Pass 2 uses it too (2026-08-20, Adam: no twins anywhere), passing the token's own type — its
+  guard admits only DQUOTE/SQUOTE, which is the same mapping this function applies internally.
+  **This is the ONLY delimiter-stripping code in the pipeline and in phase 2 tooling. A new copy
+  anywhere in either is a bug.** The single exception is `verify.R`'s `.unquote()`, which is a
+  DELIBERATE independent re-derivation (Adam 2026-08-20) — a check must be able to fail
+  independently of the code it checks. Documented at both ends; do not merge it.
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
   segment: start, end, content_idx, has_as, as_idx, alias_content_idx, line, load_tok_idx — all
   integer except has_as (logical). Skips SELECT.
@@ -116,7 +136,7 @@ entry current in the same commit that changes its function.
   in `app-unbuilt/script.qvs`'s chunking loop.
 - `verify.R`'s `canonical_stream` mirrors this exact scope+rule to fold a bare field and its
   bracketed form to the same canonical entry — see its comment block before changing either side.
-- Private: `.unescape_bracketable` (strip quotes, collapse doubled quote chars).
+- No private helpers. Delimiter stripping is the shared `undelimit()`.
 
 ## enforce_leading_commas.R — pass 3
 
@@ -206,6 +226,16 @@ entry current in the same commit that changes its function.
 - GOTCHA: other than the `;`-relocation above, this pass only rewrites the leading-whitespace GAP
   for each line — it never inserts a new line break where the source didn't already have one, and
   never touches anything after a line's first token.
+- GOTCHA (bug, fixed 2026-08-20): a line's leading gap is not always ONE token. Earlier passes
+  void in place rather than deleting rows, so a gap can arrive as `WS VOID WS` (pass 4 blanking
+  something mid-gap). `.preceding_ws_run()` returns EVERY WS row of that run; callers read `before`
+  as its concatenation, write the target into the LAST row and blank the rest (voided in one call
+  after the loop). Taking only the WS nearest the line start — what this helper did before the
+  fix — stranded the earlier fragment along with any trailing space or extra newline it carried,
+  and miscounted `.qvl_count_newlines(before)` for the preserve-blanks branch. That was the whole
+  of the pipeline's non-idempotence: 11 lines drifted on a second run over
+  `[Grant Managing Region].txt` (DESIGN §7.5). Not a CRLF problem — `readLines()` strips CR, so no
+  CR ever reaches the token stream.
 - GOTCHA: line 1 usually has no preceding WS token at all (true of both fixtures). That insertion
   is deferred until AFTER the main loop finishes — doing it mid-loop shifts every later original
   token index by one and silently corrupts the rest of the file (caught before commit, 2026-08-17).
@@ -251,17 +281,375 @@ entry current in the same commit that changes its function.
   field) instead of crashing. Pass 4's gap that made this reachable is now fixed too (same day —
   see its entry above), so this exclusion path is defensive rather than live, but stays in place.
 - Private: `.eaa_tab_width`, `.eaa_max_field_width`, `.eaa_tab_col` (tab-aware column expansion),
-  `.eaa_preceding_ws_idx` (local duplicate of enforce_vertical_layout.R's helper — both a few
-  lines, not worth a shared-scanner entry).
+  `.eaa_preceding_ws_idx` (nearest preceding WS row, skipping VOIDs). It is NO LONGER the twin of
+  enforce_vertical_layout.R's helper: that one became `.preceding_ws_run()` on 2026-08-20 and
+  returns the whole WS run. This pass has the same latent multi-row-gap bug (see pass 6's GOTCHA)
+  but no observed case — its gaps are intra-line and it runs after pass 6 has already
+  renormalised them. Promote to a shared scanner if a case ever shows up.
+
+## enforce_commented_field_style.R — pass 8
+
+- `enforce_commented_field_style(tokens)` — applies the §4 rules to commented-out LOAD fields.
+  `$changes`: line, before, after. DESIGN §4.10 (Adam 2026-08-20). Runs LAST, after alignment.
+- **THE INVARIANT: it rewrites the text of COMMENT tokens and nothing else.** No live token is
+  added, removed, moved or altered; the row count cannot change. verify.R asserts this directly
+  (`no live token is touched at all`), which is the whole safety story in one check.
+- Styling is not reimplemented: it builds a synthetic one-field `LOAD`, runs the REAL passes 1,
+  2, 4 and 5 over it, and reads the field back (`.scf_style_fragment`). Passes 3, 6 and 7 are
+  deliberately excluded — comma placement, indentation and the alignment column depend on the
+  comment's context, which the synthetic stream does not have, so this pass supplies them.
+- Alignment shares the live column: it measures the modal `AS` column of the live fields in the
+  same LOAD block (pass 7 aligns a block to one column and excludes outliers, so the mode is the
+  block's column; the max would chase an outlier). `//` occupies columns 0-1, which the first tab
+  stop absorbs, so commented and live fields land in the same columns.
+- **Eligibility — four independent refusals, each load-bearing.** The comment must sit inside a
+  LOAD field list AND own its source line (a trailing comment shares its line with live code, and
+  this pass rewrites whole lines); `///$tab` and block comments are skipped; the body must parse
+  as a field rather than prose; and the body must be paren-BALANCED, which excludes one line of a
+  multi-line commented expression.
+- A commented FIRST field gets §4.5's two-space pad, not a leading comma — otherwise
+  uncommenting it yields `LOAD , [X]`.
+- GOTCHA: the WS token carrying a line break also carries the NEXT line's indentation (the layout
+  pass rewrites that one gap per line). Treating the token after the break as the line start drops
+  the indent and measures every alias column two tabs short. `.scf_line_text_before()` exists for
+  exactly this.
+- "Never grow a token's `$text` to inject syntax" is about syntax LATER passes must recognise by
+  type. This pass runs last and its output stays inside a comment, where nothing will read it as
+  syntax — rewriting text is correct precisely here.
+- HISTORY worth keeping: the first implementation unwrapped commented fields into real tokens,
+  ran passes 1-7, and re-commented. It bought shared alignment for free and cost four corruptions,
+  all caught by verify.R at stage 3 — pass 3 moving separators across the comment/live boundary
+  (`LOAD , [X]`, and two live fields merged into one), pass 6 re-anchoring a statement terminator
+  onto a doomed line (a LOAD lost its `;` and ran into the following SELECT), a comma added per
+  re-run, and multi-line expressions styled half at a time. See git history before changing shape.
+- Private: `.scf_statement_words`, `.scf_field_words`, `.SCF_TAB`, `.scf_col`,
+  `.scf_body_is_field`, `.scf_style_fragment`, `.scf_line_text_before`.
+
+## json_strings.R — phase 2 step 1, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5).
+- `json_string_literals(text) -> data.frame(text, is_key)` — every string literal in one JSON
+  document, in document order, unescaped and with surrounding quotes removed. `is_key` marks a
+  string that names a member rather than carrying a value.
+- `read_json_strings(path) -> ` same, from a file. Line numbers are deliberately not tracked —
+  phase 2 reports usage per file, not per line.
+- **Deliberately NOT a JSON parser.** Phase 2 never consults document structure (DESIGN §6.5), so
+  only the strings are needed — which is what makes the base-R-only constraint cheap. One regex,
+  no state machine.
+- Byte mode (`useBytes = TRUE`, then re-mark UTF-8), for the same reason `tokenize_qlik()` uses it
+  — DESIGN §3.1. The whole file is one string, so one non-ASCII character anywhere would otherwise
+  make offset conversion quadratic over every match.
+- Key vs value uses the one structural fact that needs no nesting state: in JSON a string followed
+  by `:` is a key, and a value never is (a value is followed by `,`, `}` or `]`). The optional
+  trailing `[ \t\r\n]*:` is part of the match pattern itself.
+- GOTCHA (bug, fixed 2026-08-17): that pattern consumes trailing whitespace for VALUES too, not
+  only keys, so the strip must be `ws*:?` — stripping only `ws*:` left every value in a
+  pretty-printed file carrying its own closing quote (`appprops"` for `appprops`). All 14 compact
+  hand-built cases passed while all 9 real files were wrong, because compact JSON ends the match at
+  the quote. Pretty-printed cases are now in the test set. README's "test input must carry the
+  property being tested", third instance.
+- `\uXXXX` is decoded, including surrogate PAIRS (a character outside the BMP is two escapes;
+  decoding each half alone yields an invalid character). Escapes are resolved in ONE left-to-right
+  scan, so a literal `\\` is consumed whole and cannot be misread as starting the next escape —
+  the classic failure of chaining `gsub()` calls.
+- Private: `.json_string_pattern`, `.json_escape_char()`, `.json_unescape_one()`, `.json_unescape()`.
+- Verified against `jsonlite` as an oracle on all 9 real `app-unbuilt` JSON files — exact set
+  equality for keys and for values, separately. 738 KB parses in 0.04s.
+- That cross-check is now a script: `oracle_json_strings.R`, below.
+
+## app_usage.R — phase 2 step 2, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+- `expression_references(text) -> data.frame(ref, kind)` — one string's field references, one row
+  per occurrence, in order. `kind` is `"bracketed"`, `"quoted"`, `"bare"` or `"whole-string"`.
+- `"whole-string"`: a string containing no bracket, quote, paren, comma or semicolon is emitted
+  ENTIRE as one reference, as well as word by word. `qFieldDefs` holds unbracketed names, and
+  splitting `Latest Funding Financial Year` into four bare words meant its field was never emitted
+  and `LatestFinYear` was reported unreferenced — a live table marked deletable. Do not remove
+  this without re-running the raw-JSON false-negative check (see usage_report.R).
+- `file_references(path, label) -> data.frame(source_file, ref, kind, n)` — one JSON file,
+  aggregated per reference. `read_json_strings()` supplies the strings.
+- `app_references(dir) -> data.frame(app, source_file, ref, kind, n)` — one app export,
+  `source_file` relative to `dir`. Apps are NEVER merged (DESIGN §6.5: separate data models).
+- `Rscript app_usage.R [dir ...] [--csv <path>]` — per-app summary; `--csv` writes the full table.
+  Current: app-unbuilt 9 files / 9697 refs / 1393 unique (100 bracketed, 8 quoted, 1050 bare,
+  662 whole-string); app2-unbuilt 22 files / 6387 / 978 (56 / 0 / 750 / 559).
+- Values only — JSON KEY strings are skipped (Adam 2026-08-18). A member name is structure, never
+  expression text. This is NOT the mistake DESIGN §6.5 warns about: that one is privileging certain
+  keys' VALUES, and every value is still scanned here whatever names it.
+- Bare words reuse the two guards from `enforce_bracket_references.R` — not a `QLIK_KEYWORDS`
+  member, not in call position (`next_non_trivia_idx` is `LPAREN`) — for the same reason: a field
+  can share a function's name.
+- Case is NEVER folded. Whether Qlik matches field names case-insensitively is step 4's problem,
+  and folding here would destroy the evidence it needs.
+- GOTCHA: `expression_references()` must tolerate a length-0 input — `file_references()` seeds its
+  `rbind` with one to keep the columns when a file yields nothing.
+- DQUOTE is its own kind, `"quoted"` (Adam 2026-08-18). DESIGN §1.2 — no double-quoted string
+  literal — holds for SCRIPT text but NOT for app JSON: all 8 in `app-unbuilt/objects` are
+  selection values (`"2022-23"`, `"Yes"`). Still collected, since a wrong exclusion deletes a live
+  field; kept separate, so the report never claims `Yes` is a field. Do not re-fold into
+  `"bracketed"`; step 4 decides what to do with them.
+- `asset_usage(dir, script_path = NULL) -> data.frame(kind, id, name, used)` — the DECLARED
+  assets (variables, master dimensions, master measures) and whether anything references them.
+  `script_path` defaults to the export's own copy. A separate question from field usage above,
+  answered differently per kind.
+- A master item is matched by its **qId**, never its title: the object that uses one carries
+  `qLibraryId`, which holds the id. A variable is matched by NAME, in the app objects AND in the
+  script, since either may reference it.
+- The token right of `SET`/`LET` is a variable's own definition and does not count as a use —
+  without that guard every variable is used by virtue of existing. Everything else counts,
+  comments included: over-inclusive on the phase 2 principle that a false 'used' leaves dead
+  weight while a false 'unused' deletes something live.
+- Current: app-unbuilt 32/94 variables unused, 2/3 master dimensions, 0 measures declared.
+  app2-unbuilt 8/15 variables, 4/13 dimensions, 4/5 measures. Spot-checked against the raw
+  files: `vTrip`, `vPopWeight`, `vNTAdmin` each appear once in the script (their own SET) and
+  nowhere in objects/.
+- Private: `.au_declared()`, `.au_object_blob()`, `.au_word_hit()`,
+  `.au_var_in_script()`.
+
+## script_loads.R — phase 2 step 3, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+- `script_loads(tokens) -> list(loads, fields, warnings)`; `read_script_loads(path)` from a file.
+  `Rscript script_loads.R <script> [--csv <stem>]` prints a summary and optionally writes
+  `<stem>-loads.csv` / `<stem>-fields.csv`.
+- `loads`: load_id, table, producer_kind, prefix, source_kind, source, line_start, line_end,
+  chain_of, n_declared, inline_rows, complete_fields, tab.
+  `fields`: load_id, table, field, line, aliased, via (`declared` / `wildcard`).
+  `inlines`: load_id, table, tab, n_rows, header, sample, line_start, line_end — `sample` is the
+  first TEN data rows only (DESIGN §7.1: a developer judges an inline load from its header and a
+  glimpse; embedding 1113 rows in a skimmable document is counterproductive).
+- `tab` comes from the `///$tab Name` markers and is on every load. It is how a developer
+  navigates a Qlik script — a line number alone does not locate anything in the Qlik editor.
+  55 tabs in app-unbuilt, 6 in app2, every load mapped.
+  `load_id` is positional 1..n, the join key, stable only within one parse of one file.
+- **A LOAD is not a table** — `producer_kind` is the whole point of this script:
+  `table` / `preceding` (stacked LOADs, one table, named by the TOP one) / `joins-into`
+  (JOIN or CONCATENATE, feeds a table someone else made) / `mapping` (ApplyMap fodder, never in
+  the data model) / `multi-table` (a wildcard qvd PATH, see below).
+- `source_kind`: from / resident / inline / autogenerate / select / sql-select / none.
+  `select` is the ODBC `LOAD ...; SELECT ...;` form — 24 in app-unbuilt, 0 in app2.
+  `sql-select` is a BARE `SQL SELECT` under a label, with no LOAD at all — 4 in app-unbuilt.
+  Kept as its own kind, not folded into `select` (Adam 2026-08-18): a database call is the
+  most expensive thing to carry to Cloud, so the report must be able to count this form
+  separately rather than have it disappear into a total.
+- Wildcard resolution: a `LOAD *` takes the fields of whatever feeds it. Preceding -> the
+  statement BELOW (NOT the underlying qvd — DESIGN §6.5); RESIDENT -> that table, in a second
+  pass once every table is known; INLINE -> the block's header row. `complete_fields` goes FALSE
+  only when none of those apply.
+- Expects STYLED input; raw parses but every un-aliased field is warned about, since there the
+  produced name was inferred rather than read.
+- GOTCHA: never bound a lookahead in TOKEN counts. The `LOAD;SELECT` probe was a 40-token window
+  and styling inserts whitespace tokens freely — the same statement resolved on raw input and
+  silently did not on styled. `.sl_next_solid()` is unbounded for exactly this reason.
+- GOTCHA: the head scan (label + prefix) must NOT stop at the previous `;`. Control flow does not
+  end in one, so `END IF` / `NEXT chunkText` above a LOAD displaced the label and the table went
+  unnamed (6 in app-unbuilt). It also takes a parenthesised group WHOLE — stopping at the comma
+  in `CrossTable(Category, Result, 3)` left the head as a lone `)` and lost both prefix and label
+  (CrossTab, PMCrossTab). Prefix ARGUMENTS are arbitrary names and are exempt from the
+  known-prefix warning.
+- GOTCHA: `QLIK_KEYWORDS` is stored **lowercase**. Every pass compares `tolower(text) %in%
+  QLIK_KEYWORDS`; a `toupper()` comparison matches nothing at all and the filter becomes a silent
+  no-op. That is exactly what happened here — `LOAD DISTINCT *` went undetected as a wildcard and
+  the apparent cause (`DISTINCT` missing from the vocabulary) was wrong; it is present, and the
+  casing pass does uppercase a lowercase `distinct`. `.SL_QUALIFIERS` survives only for the
+  un-aliased-name strip, where removing the whole keyword vocabulary would mangle an expression.
+- Bare `SQL SELECT` is modelled by `.sl_bare_selects()`, appended after the LOAD-derived rows
+  so the chain logic never sees them. `find_load_segments()` is built on LOAD field lists and
+  cannot find one. The label is the `[Name]:` above the SELECT and the fields are its column
+  list, up to the depth-0 FROM. app-unbuilt: 4 loads, 3 distinct tables (`ClosestAssociations`
+  twice), 21 fields; 167 -> 171 loads and 118 -> 121 tables. app2 unchanged at 42/26.
+- Current (STYLED input): app2 42 loads -> 26 tables, 0 warnings. app-unbuilt 171 -> 121 tables,
+  7 warnings, all informational (3 wildcard paths, 4 un-aliased `DISTINCT [Field]`). On RAW input
+  every un-aliased field warns as well, which is thousands — not a regression, see the note above.
+- Private: `.sl_bare_selects()`, `.sl_bare_select_idx()`, `.sl_bare_label()`,
+  `.sl_bare_fields()`, `.sl_prev_solid_idx()`, `.sl_name()` (shared `undelimit()` + the
+  collapse-to-one-name fold), `.sl_next_solid()`, `.sl_solid()`, `.sl_head()`, `.sl_label()`,
+  `.sl_stmt_end()`, `.sl_source()`, `.sl_is_wildcard()`, `.sl_inline()`, `.sl_autoname()`,
+  `.sl_paren_target()`, `.sl_wild_rows()`, `.sl_empty_loads()`, `.sl_empty_fields()`,
+  `.SL_PREFIXES`, `.SL_QUALIFIERS`.
+
+## render_report.R — phase 2 step 4b, the submittable document. NOT in the pipeline
+
+- `render_report(dir, script_path = NULL, out = NULL) -> path`. `Rscript render_report.R
+  <app-dir> [--script <p>] [--out <p>]`. `script_path` defaults to the export's own copy, `out`
+  to `<dir>-report.html`. Self-contained HTML: no external stylesheet, script, font or image,
+  and NO interaction of any kind — the page is printed, filed and read (Adam 2026-08-18).
+- HTML not .docx: the report must be reviewable on the machine it is written on, and .docx is
+  not openable there. The 4a/4b split means any other format is a second renderer over the same
+  table, not a rewrite.
+- **THE REPORT SUPPLIES QUANTITY AND NATURE; THE READER SUPPLIES THE VERDICT.** This is the
+  whole information design and three drafts died for want of it (DESIGN §7.2). Severity,
+  priority, effort and risk are the reader's judgement — an experienced developer sizes an app
+  in moments from facts, and any label this file invents ("blocking", "safe to delete", "needs
+  a decision") is that judgement taken away. No severity buckets, no ordering by importance, no
+  recommendations, no effort language, no expanders hiding the detail.
+- Nature is carried by NAMING, not adjectives: `21 tables loaded from AZDB-ZEA-PRD-NIAADL01`
+  tells a developer what the job is; `24 database calls block migration` tells them nothing
+  they can act on.
+- One A4 page, fixed 178mm body so screen and print wrap identically, `break-inside: avoid` on
+  every section and row and `break-after: avoid` on headings. Six sections, each a three-column
+  table: figure, what it is, grey qualifier.
+- **Section structure is STATIC across apps** (Adam 2026-08-18): a section with nothing in it
+  still renders its zero rows rather than being dropped. Comparing two reports is easier when
+  the reader never has to get their bearings, and a `0` is cheaper to ignore than a missing
+  section is to notice. app2 renders `0 tables loaded from a database`.
+- The wildcard asterisk marks BOTH the figure and its denominator — they are different unknowns
+  (an unresolved `LOAD *` hides both how many fields are unused and how many exist), and
+  flagging only one implies the other is known. Rendered only when unresolved wildcards exist,
+  with the footnote it links to.
+- `.rr_connector_label()` names the connector PRODUCT, derived not hardcoded: `Closest` and
+  `TravelAreas` name an operation and neither identifies itself to a reader. All calls mapping
+  to one known product give `GeoAnalytics connector calls`; a mixed or unrecognised set falls
+  back to plain `connector calls` with the function names carrying the nature. Extend
+  `.RR_CONNECTOR_PRODUCT` rather than widening a pattern. GeoAnalytics being deprecated is NOT
+  stated on the page — naming the connector is enough (Adam 2026-08-18).
+- The title is `qTitle` from `app-properties.json`, falling back to the directory name: the
+  directory is an artefact of unpacking an export, not the app's name. The date is `Sys.Date()`,
+  so a regenerated report re-dates itself.
+- `report_mock.html` in the repo root is the signed-off reference this file reproduces. Output
+  matches it row for row except `duplicate table labels`, which reads 10 rather than the mock's
+  9 — `ClosestAssociations` is built twice by bare `SQL SELECT`s, which the mock predates.
+- Private: `.h()` (HTML escape), `.num()`, `.plural()`, `.rr_title()`, `.rr_ext()`, `.rr_row()`,
+  `.rr_section()`, `.rr_connector_label()`, `.RR_STAR`, `.RR_CONNECTOR_PRODUCT`, `.rr_css`.
+
+## script_debt.R — the report's debt signals. NOT in the pipeline
+
+- `guid_literals(tokens, tabs)`, `commented_out_code(tokens, tabs)`, `duplicate_labels(loads)`,
+  `sql_targets(tokens, tabs)`. `Rscript script_debt.R <script>` prints all four plus the
+  direct-database-call count.
+- The admission test for anything here (DESIGN §7.1): **if retargeting fixes it, it is not
+  report material.** DEV connection strings are therefore NOT flagged — that is phase 3's job.
+- `guid_literals` is the WHOLE of hardcoded-value detection, deliberately. A general rule would
+  flag `IF([Status] <> 'Completed')`, which is fine and far commoner than the real thing. A GUID
+  in a load expression is always a patched record id. Precision measured: 2 hits in app2 (both
+  genuine), 0 false positives across app-unbuilt's 13,869 lines.
+- `commented_out_code` counts LINES, not blocks — legibility is the cost. **2,869 of 13,869 in
+  app-unbuilt (20.7%), 5 of 632 in app2**, leaving 51 lines of genuine commentary in the first.
+- Two tests plus contiguity, and the reason is that a `//` comment is one token PER LINE.
+  Keyword-only scoring reported 513 lines and called the other 2,407 prose; a 25-line sample
+  of that prose held 24 lines of commented-out field lists, inline data rows and expressions
+  (Adam predicted exactly this). Contiguity — adjacent comment lines are one block, and a
+  block any part of which looks like script is disabled entire — recovered 938. `.SD_CODESHAPE`
+  then catches the single commented-out FIELD sitting inside a LIVE load, which has no
+  neighbouring comment to group with: a trailing comma, a leading bracket or quote, or a
+  paren/`=`. That recovered 1,911 of the remaining 1,978 blocks; a 20-line sample of the 67
+  left behind is genuine commentary. Prose carrying a bracket counts as code, which is the
+  tolerable direction — the metric is how much disabled script a reader must wade through.
+- `duplicate_labels` is an OBSERVATION, not a severity: whether a repeated label is intentional
+  concatenation or an accident is not determinable from the script, and this repo has not
+  verified Qlik's behaviour here. 9 in app-unbuilt, clustered as tab pairs (`Fleet`/`OLDFleet`).
+- `sql_targets` -> data.frame(line, tab, kind, server, schema, object, target). `kind` splits
+  `object` (a qualified `"SERVER".schema."Object"`) from `connector` (a connector function
+  call such as `Closest(...)`): an object needs a Cloud data connection, a connector call
+  needs the connector to exist on Cloud at all, and they are not the same job.
+- Token-based for the reason the whole file is: a raw grep of app-unbuilt finds 25 qualified
+  FROM targets, one of which is inside a comment. A commented-out SELECT is one COMMENT
+  token, so its FROM never becomes a token and cannot be miscounted.
+- Current app-unbuilt: 24 object references, 24 distinct, across 2 servers (21 in
+  `AZDB-ZEA-PRD-NIAADL01.abs`), plus 4 connector calls (`Closest` 3, `TravelAreas` 1).
+  app2: all zero.
+- The 28 targets against 24 `select` loads is NOT a discrepancy, and the split is the point:
+  the 24 OBJECT references map one-to-one onto the 24 `LOAD ...; SELECT ...;` loads (verified:
+  24 distinct owning loads, no duplicates). The 4 CONNECTOR calls are a different statement
+  form entirely — a bare `SQL SELECT ... FROM Closest(...)` under an explicit table label, with
+  no LOAD above it. `script_loads()` models LOAD statements, so it never sees them.
+- Private: `.SD_GUID`, `.SD_CODEISH`, `.SD_CODESHAPE`, `.sd_comment_body()`,
+  `.sd_split_qualified()` (splits a qualified name from
+  the RIGHT, so a bare `Trip` is an object, not a server).
+
+## usage_report.R — phase 2 step 4a, the cross-reference. NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+  Joins `app_usage.R` + `script_loads.R` + `script_refs.R`. Deletes nothing, prescribes nothing.
+- `usage_report(app_dir, script_path) -> list(tables, fields, undetermined, stores, warnings)`.
+  `script_path` defaults to the export's own copy; pass the STYLED script where you have it.
+- `Rscript usage_report.R <app-dir> [--script <path>] [--csv <stem>]`.
+- Categories are DESIGN §6.5's five. Current results:
+  app2-unbuilt 26 tables — 15 referenced, 9 build-only dropped, 2 unreferenced, 68 unreferenced
+  fields. app-unbuilt 118 tables — 48 referenced, 16 build-only dropped, 14 build-only retained,
+  40 unreferenced, 1440 unreferenced fields, 3 undetermined.
+- GOTCHA: `dropped` is tested BEFORE `app_used` and beats it. A dropped table is not in the final
+  data model, so an app match can only be its field NAMES coinciding with the successor table's —
+  exactly what a `_Temp` looks like. Testing app_used first put 7 of app2's 9 dropped tables in
+  `referenced`. For a table that is NOT dropped the same name-matching is correct rather than
+  coincidental: Qlik's model is associative, so two live tables sharing a field name share the
+  field.
+- Field-level findings are withheld where `complete_fields` is FALSE — an unresolved `*` means an
+  absent name proves nothing.
+- **Validation worth repeating after any change to matching**: for every field of every
+  `unreferenced` table, plain-substring search the raw JSON bytes, bypassing both the tokenizer
+  and `json_strings.R`. app2 returns 0 hits. app-unbuilt returns 8, all confirmed substring
+  collisions (`ILOC Code` inside the real field `ILOC Code 2021`; `Make` inside `MakeDate(`).
+  This check is what caught the `whole-string` false negative.
+- Private: `.ur_fold()`, `.ur_show()`.
+
+## script_refs.R — phase 2 step 4a, NOT a pass and NOT in the pipeline
+
+- Nothing in `run_pipeline.R` sources this; it is phase 2 tooling (DESIGN §6.5). Base R only.
+- `script_table_refs(tokens, table_names, own) -> data.frame(table, line, lead, kind)` with
+  `kind` = `use` / `drop` / `store` / `self`. `lead` is the enclosing statement's first word,
+  which is what separates a use (`RESIDENT Temp`) from a disposal (`DROP TABLE Temp`).
+- `script_disposals(tokens, table_names) -> list(drops, stores)`. STORE is scanned separately
+  because its TARGET matters: qvd generation inside a user-facing app violates the Cloud build
+  standards whether or not the table is otherwise used (DESIGN §7.1).
+- Exists because an app-only cross-reference marks every intermediate table unreferenced. A
+  `_Temp` read by a later RESIDENT load, or a mapping table consumed by ApplyMap, is used.
+- Deliberately over-inclusive: any token whose undelimited text equals a table name counts,
+  wherever it sits. A false `use` keeps a table that could have gone; a false `unused` deletes a
+  live one, and only the first is recoverable.
+- GOTCHA: match TYPED TOKENS, never raw text. A raw-text scan reports 18 STOREs in app-unbuilt
+  and 20 in app2; the real count in both is **ZERO** — every hit is the substring "Store" in the
+  connection path `lib://Curated Data Store:DataFiles/...`, which is one BRACKET token. Same trap
+  the tokenizer records for `for` (1242 raw, ~28 real). Raw `applymap` counts mislead the same
+  way: 11 in app-unbuilt, 0 real.
+- Current: app2 26 tables, 13 read elsewhere, 9 dropped, 0 stored. app-unbuilt 118 tables, 40
+  read elsewhere, 16 dropped, 0 stored.
+- Private: `.sr_statements()`. Undelimiting is the shared `undelimit()`.
+
+## oracle_json_strings.R — development-machine cross-check, not shipped tooling
+
+- `Rscript oracle_json_strings.R [dir-or-file ...]` — compares `read_json_strings()` against
+  `jsonlite::fromJSON()` on every `.json` under `app*-unbuilt/` by default. Exits 1 on any
+  mismatch. Current status: 32 files checked, 0 failed.
+- Nothing sources it — not `run_pipeline.R`, not `verify.R`, not phase 2 tooling — so its
+  `jsonlite` dependency cannot reach an environment that lacks it. Keep it that way; phase 2's
+  own scripts must stay base-R with no reference to this file.
+- Compares strings in DOCUMENT ORDER, not as sets, and checks the key/value flag on each. Order
+  is the stricter test and the one that catches a dropped or duplicated match.
+- `fromJSON(simplifyVector = FALSE)` is required: with simplification on, a string array collapses
+  to a character vector and an object to a data.frame, both of which lose position.
+- Mismatch output truncates the offending string to 60 characters — a difference inside a
+  2,600-line chart definition should print a hint, not the chart.
+- Private: `.oracle_strings()`, `.oracle_read()`, `.brief()`, `check_file()`, `main()`.
 
 ## run_pipeline.R — the current full pipeline, not a snapshot
 
-- Script, not a function. `setwd("C:/Rtools")`, sources everything, runs all seven passes in
-  order, prints warnings, writes output. Add new passes here.
-- Takes optional positional args: `Rscript run_pipeline.R <input_path> <output_path>`. Defaults
-  (no args) are `"[Grant Managing Region].txt"` -> `script_out.txt`, unchanged from before this
-  became parameterized (2026-08-17, for the staged testing methodology in CLAUDE.md — one script
-  now serves all three test-stage files instead of ad hoc copies).
+- Script, not a function. `setwd(PROJECT_DIR)` (= `C:/Rtools`, existence-checked), sources
+  everything, runs all eight passes in order, prints warnings, writes output. Add new passes here.
+- EIGHT passes now (pass 8 is `enforce_commented_field_style`, added 2026-08-20). `PASS_LABELS`
+  has eight entries and the eight `source("...")` lines are still the machine-read list.
+- Takes optional positional args: `Rscript run_pipeline.R [options] <input_path> <output_path>`.
+  Defaults (no args) are `"[Grant Managing Region].txt"` -> `script_out.txt`, unchanged from before
+  this became parameterized (2026-08-17, for the staged testing methodology in CLAUDE.md — one
+  script now serves all three test-stage files instead of ad hoc copies). Falling back to those
+  defaults now prints which files it chose (Adam 2026-08-17) — silence made a novice think they
+  had reformatted their own file.
+- Flags: `--help`/`-h` prints usage and exits 0; `--changes` writes one CSV per pass
+  (`<output_dir>/changes/<n>-<label>.csv`) so the `$changes` tables survive an Rscript run. An
+  unrecognised flag, a third positional (an unquoted path with spaces), a missing input, a missing
+  output folder, or input == output each stop with one sentence before any work is done.
+- Runs stay QUIET per pass (Adam 2026-08-17 — no progress lines); output is warnings, the written
+  path, and the `--changes` table if asked.
+- Script-local only, deliberately undocumented by name: `PASS_LABELS` (the seven pass names, so the
+  error message and the `--changes` file names share one spelling) and a thin wrapper that names
+  the failing pass instead of letting a bare stack trace through. `verify_docs.R` excludes
+  `run_pipeline.R` from the INTERFACES cross-check in BOTH directions, so naming a helper here in
+  call form would be reported as stale — this file documents no function surface for the script.
+- **GOTCHA: the seven `source("ensure_|enforce_...")` lines are machine-read.**
+  `verify_docs.R`'s `check_pass_lists` matches them anchored at column 0 in the literal
+  `source("name.R")` form. Indenting them, or folding them into a vector plus a loop, silently
+  breaks the pass-list agreement check. A comment in the file says so at the point of temptation.
 
 ## verify.R — standing verification suite; gates on exit status
 
@@ -271,12 +659,44 @@ entry current in the same commit that changes its function.
   the point of action. Interactive sourcing is unaffected.
 - `canonical_stream(tokens) -> list(canon, line)` — reduces a stream to meaning-carrying
   entries, normalising away exactly what the passes are ALLOWED to change.
+  GOTCHA: it DROPS COMMENT tokens. Until 2026-08-20 that meant nothing in verify.R asserted
+  anything at all about comment content — the whole suite passed on a run that mangled every
+  comment in the file. Harmless while comments were exempt from formatting; not harmless now.
+- `commented_field_bodies(tokens) -> character` — canonical form of every `//` comment body,
+  which is what closes that blind spot. Each body is wrapped in a synthetic `LOAD ... ;` so it is
+  normalised by the SAME rules live fields get; separator commas are dropped, because pass 3
+  migrates them across the comment/live boundary in both directions by design.
 - `check_equivalent(before, after, max_report=3) -> TRUE | character` — the important check.
   Detects a single insertion/deletion and says so instead of reporting the whole cascade.
 - `verify_file(path)`, `verify_detects_corruption()`, `ok(label, passed, detail)`, `section(...)`.
 - Each normalisation in `canonical_stream` is an assumption about Qlik recorded in DESIGN §1 —
   adding a pass that makes a NEW kind of legitimate change means adding one there too.
-- Private: `.unquote`, `.short`, `.window`, `.tail` (display/comparison helpers).
+- Private: `.unquote`, `.short`, `.window`, `.tail` (display/comparison helpers). `.unquote`
+  duplicates `undelimit()` ON PURPOSE — see that entry; a check must fail independently of what
+  it checks. It is the one sanctioned copy.
+
+## console_ui.R — crude console menu over run_pipeline.R / render_report.R
+
+- Script; run it (`Rscript console_ui.R`), don't source it. Not a pass, not phase 2 tooling —
+  a launcher on top of both. `main()` loops: pick formatting or report, pick an app, run it,
+  repeat until quit.
+- Shells out to `run_pipeline.R` / `render_report.R` via `system2(RSCRIPT, ...)`, one process per
+  run, rather than sourcing either — `run_pipeline.R` is documented as "a script, not a function"
+  and executes on source.
+- Apps are any subfolder (recursive, from the current working directory) containing
+  `app-properties.json`. Display name is `qTitle` from that file, falling back to the folder name
+  — same rule `render_report.R`'s `.rr_title()` uses, so a name on screen matches the report title.
+- Formatting always runs on `<app-dir>/script.qvs`, output always `<app-dir>/script_out.txt` —
+  no path prompts. Report output path is `render_report.R`'s own default
+  (`<basename(app-dir)>-report.html` in the current working directory).
+- GOTCHA (verified 2026-08-19, corrects the assumption in the console-input trap note below):
+  `readLines("stdin", n = 1)` called repeatedly, each time as a fresh `"stdin"` string, reopens a
+  new anonymous connection — the first call gets data, every call after it silently returns
+  `character(0)`, no error. Fix: open ONE connection (`file("stdin")`) at the top of the script
+  and reuse it for every prompt. `.cui_read_line()` is the only place input is read, for exactly
+  this reason — don't add a second `readLines("stdin", ...)` call elsewhere.
+- Private: `.cui_read_line()`, `.cui_find_apps()`, `.cui_pick_app()`, `.cui_run_formatting()`,
+  `.cui_run_report()`.
 
 ## verify_docs.R — documentation consistency; gates on exit status, no fixtures
 

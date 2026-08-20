@@ -24,3 +24,8 @@ chunk_timings.rds
 
 # Claude Code settings that are local to this machine
 .claude/settings.local.json
+
+# Generated migration reports - regenerate with render_report.R. The signed-off
+# reference report_mock.html is TRACKED and deliberately not matched here.
+report_app*.html
+*-report.html

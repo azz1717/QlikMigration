@@ -108,14 +108,26 @@
 #' being left untouched rather than normalised (DESIGN §4.8).
 .qvl_count_newlines <- function(s) nchar(gsub("[^\n]", "", s))
 
-#' Index of the WS token whose newline+indent immediately precedes a line
-#' start, skipping over any VOID leftovers from an earlier pass - or NA if
-#' there is none (only possible for the very first line of the file, if it
-#' has no leading blank lines/whitespace at all).
-.preceding_ws_idx <- function(type, idx) {
+#' Indices of EVERY WS token in the whitespace run immediately preceding a
+#' line start - increasing order, integer(0) if there is none (only possible
+#' for the very first line of the file, if it has no leading blank
+#' lines/whitespace at all).
+#'
+#' The run, not just its last token. An earlier pass voids tokens IN PLACE
+#' rather than deleting rows (INTERFACES.md), so one physical gap can arrive
+#' here as WS/VOID/WS - e.g. `WS(" ") VOID WS("\n\t\t")` after pass 4 blanks
+#' something mid-gap. Rewriting only the WS nearest the line start left the
+#' earlier fragment stranded, and with it any trailing space or extra
+#' newline it carried: that was this pass's idempotence bug (2026-08-20), the
+#' whole of the 11-line drift on a second run over [Grant Managing Region].txt.
+#' Callers must therefore read `before` as the CONCATENATION of the run and
+#' blank every fragment but the last when they write.
+.preceding_ws_run <- function(type, idx) {
   j <- idx - 1L
-  while (j >= 1L && type[j] == "VOID") j <- j - 1L
-  if (j >= 1L && type[j] == "WS") j else NA_integer_
+  while (j >= 1L && (type[j] == "VOID" || type[j] == "WS")) j <- j - 1L
+  run <- seq_len(idx - 1L)
+  run <- run[run > j]
+  run[type[run] == "WS"]
 }
 
 #' @param tokens a token stream data.frame (see tokenize_qlik / read_qlik_script).
@@ -163,6 +175,11 @@ enforce_vertical_layout <- function(tokens) {
   ch_before <- character(nlines); ch_after <- character(nlines)
   nch <- 0L
 
+  # Fragments of a multi-row gap that this pass emptied - see
+  # .preceding_ws_run(). Blanked in t_text as we go, then voided in ONE call
+  # after the loop (INTERFACES.md: never delete a row, batch the edit).
+  stranded <- integer(0)
+
   # Line 1 is handled separately, AFTER this loop: if it needs a leading
   # indent and has no WS token at all to rewrite (true of both fixtures - a
   # real file typically starts directly with content), inserting one would
@@ -187,14 +204,16 @@ enforce_vertical_layout <- function(tokens) {
       prev_idx <- L$idx[i - 1L]
       if (t_type[L$idx[i]] == "LPAREN" && t_type[prev_idx] == "WORD" &&
           tolower(t_text[prev_idx]) == "from") {
-        ws_idx <- .preceding_ws_idx(t_type, L$idx[i])
-        if (!is.na(ws_idx)) {
-          before <- t_text[ws_idx]
+        run <- .preceding_ws_run(t_type, L$idx[i])
+        if (length(run) > 0L) {
+          before <- paste0(t_text[run], collapse = "")
           if (!identical(before, " ")) {
             nch <- nch + 1L
             ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
             ch_before[nch] <- before; ch_after[nch] <- " "
-            t_text[ws_idx] <- " "
+            t_text[run] <- ""
+            t_text[run[length(run)]] <- " "
+            stranded <- c(stranded, run[-length(run)])
           }
         }
         next
@@ -208,14 +227,15 @@ enforce_vertical_layout <- function(tokens) {
     # runs, so every case reaching here is exactly "SEMI immediately after
     # one WS token."
     if (i > 1L && t_type[L$idx[i]] == "SEMI") {
-      ws_idx <- .preceding_ws_idx(t_type, L$idx[i])
-      if (!is.na(ws_idx)) {
-        before <- t_text[ws_idx]
+      run <- .preceding_ws_run(t_type, L$idx[i])
+      if (length(run) > 0L) {
+        before <- paste0(t_text[run], collapse = "")
         if (!identical(before, "")) {
           nch <- nch + 1L
           ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
           ch_before[nch] <- before; ch_after[nch] <- ""
-          t_text[ws_idx] <- ""
+          t_text[run] <- ""
+          stranded <- c(stranded, run[-length(run)])
         }
       }
       next
@@ -224,15 +244,15 @@ enforce_vertical_layout <- function(tokens) {
     indent <- .qvl_indent[[kind_i]]
     if (kind_i == "field" && isTRUE(L$first_field[i])) indent <- paste0(indent, "  ")
 
-    ws_idx <- .preceding_ws_idx(t_type, L$idx[i])
+    run <- .preceding_ws_run(t_type, L$idx[i])
 
-    if (is.na(ws_idx)) {
+    if (length(run) == 0L) {
       # Only possible for line 1 with no leading whitespace at all.
       if (nchar(indent) > 0L) need_line1_indent <- indent
       next
     }
 
-    before <- t_text[ws_idx]
+    before <- paste0(t_text[run], collapse = "")
 
     # Blank-line COUNT is left exactly as authored - indentation is still
     # fixed - on either side of a directive (SET/LET) and immediately after
@@ -258,10 +278,13 @@ enforce_vertical_layout <- function(tokens) {
     nch <- nch + 1L
     ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
     ch_before[nch] <- before; ch_after[nch] <- target
-    t_text[ws_idx] <- target
+    t_text[run] <- ""
+    t_text[run[length(run)]] <- target
+    stranded <- c(stranded, run[-length(run)])
   }
 
   tokens$text <- t_text
+  if (length(stranded) > 0L) tokens <- void_token(tokens, stranded)
 
   if (!is.na(need_line1_indent)) {
     tokens <- rbind(

@@ -46,11 +46,6 @@
 # Operates on a token stream (see qlik_tokenizer.R - source that first).
 # Vanilla base R only.
 
-.unescape_bracketable <- function(raw, quote_char) {
-  inner <- substr(raw, 2, nchar(raw) - 1)
-  gsub(paste0(quote_char, quote_char), quote_char, inner, fixed = TRUE)
-}
-
 #' @param tokens a token stream data.frame (see tokenize_qlik / read_qlik_script).
 #' @return a list with:
 #'   $tokens   - the token stream with quoted references converted to brackets
@@ -100,8 +95,9 @@ enforce_bracket_references <- function(tokens) {
     convert <- (ty == "DQUOTE") || (ty == "SQUOTE" && is_alias_sq[i])
     if (!convert) next
 
-    quote_char <- if (ty == "DQUOTE") "\"" else "'"
-    inner <- .unescape_bracketable(t_text[i], quote_char)
+    # `ty` is DQUOTE or SQUOTE by the guard above, which is exactly the
+    # mapping undelimit() (qlik_tokenizer.R) applies internally.
+    inner <- undelimit(t_text[i], ty)
 
     if (grepl("]", inner, fixed = TRUE)) {
       warn <- c(warn, sprintf(
