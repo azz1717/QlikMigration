@@ -1282,6 +1282,128 @@ script's own field list distinguishes them.
 
 ---
 
+### 6.6 Phase 2 retargeting — not started
+
+Pruning decides what to keep. Retargeting repoints what is kept at the Cloud
+data store. Two edits, both mechanical once the target is known:
+
+- **The path.** `FROM [lib://AppDataProd/AzureDataLake/FUSION/PMC Region.qvd]`
+  becomes `FROM [lib://Curated data Store:DataFiles/10 Landing Area/<VIEW_SCHEMA>/<VIEW_NAME>.qvd]`.
+- **The field names.** On-prem field names carry the source table as a prefix
+  — `[Grant Activity Funding.Financial Year Id]`. The Cloud qvds do not:
+  `[Financial Year Id]`.
+
+**`views.csv` is the oracle** (Adam, 2026-08-20). A list of database views
+filtered to the schemas imported into Cloud as qvds: 10,640 rows over
+`VIEW_SCHEMA, VIEW_NAME, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME`, resolving to
+**516 distinct schema/view pairs**. One view becomes one qvd, and the qvd's
+field names are that view's `COLUMN_NAME`s. This is the only authority on
+what a Cloud qvd contains; nothing is inferred from the old script alone.
+
+#### The stage ordering, and why (Adam, 2026-08-20)
+
+Retargeting is **not a pipeline pass**. It is a stage in a longer sequence,
+each stage producing a separate saved script version:
+
+1. Raw qvd imported into the new environment — unstyled, untargeted.
+2. **Styling pass** — functionally unchanged.
+3. **Pruning scan** — identify unused tables. Reports; edits nothing.
+4. **Remapping pass** — attempt to retarget everything.
+5. **Dev decision** on anything unresolved — rebuild the qvd and update the
+   mapping records, or remove the table.
+6. **Dead code clean-up.**
+7. **Final styling pass.**
+
+The ordering is driven by how **Qlik Cloud keeps script history in the
+editor**. Each stage is a version a developer can walk backwards through, and
+the sequence above makes that history legible: a cleanly styled retargeted
+script → a styled retargeted script with dead code still in place → a styled
+untargeted script with dead code in place → the original unstyled untargeted
+script. Every step changes one dimension at a time, so any diff a developer
+opens has a single explanation.
+
+**Pruning precedes retargeting so that failure is cheap.** An unresolvable
+path whose table is *unused* is deleted without further thought — the common
+case, and free. Only *used*-and-unresolvable costs a qvd rebuild. Running the
+scan first is what sorts one from the other.
+
+**Styling runs twice**, at stages 2 and 7, so it must be safe over
+already-styled input. It is: the pass 6 non-idempotence fix landed in `main`
+before this section was written.
+
+**Stage 6 re-runs the scan rather than carrying stage 3's report forward.**
+Stage 5 may have removed tables, so the stage 3 verdicts are stale by then.
+
+#### Matching an old path to a view
+
+Extract the qvd name from the old path and try, in order:
+
+1. **Name against `VIEW_NAME`.** Unique match, and the field check below
+   passes → resolved.
+2. **Schema from the old path** where the collision needs breaking. Old paths
+   often carry the schema as a directory (`.../AzureDataLake/FUSION/...`),
+   but not always.
+3. **Field check, always.** Compare the load's field names — table prefix
+   stripped — against the view's `COLUMN_NAME` set. This is what gauges
+   whether the qvd is really the same structure, and it runs even on a unique
+   name match.
+
+Three facts from `views.csv` shape this (measured 2026-08-20):
+
+- **14 `VIEW_NAME`s exist in two different schemas** — `Grant Activity`,
+  `Funding Decision`, `Grant Application` and others. A name match alone is
+  therefore never sufficient.
+- **243 of 516 views draw from more than one underlying `TABLE_NAME`.** The
+  old field prefix and the view's `TABLE_NAME` are not the same thing and
+  must never be conflated; matching is against the view's whole column set.
+- **The `%` prefix is not a convention that was dropped.** 28 views contain
+  `%`-prefixed columns and **all 28 mix** `%` and non-`%` columns; **zero**
+  column base-names appear both with and without `%` anywhere in the 10,640
+  rows. Every survivor is a `%Dim_*_Key`. So `%` is part of a column's actual
+  name, not a transformation to apply or skip. Field renaming is a **lookup
+  against the resolved view's column list**, never a rule.
+
+**A cross-schema tie is never resolved automatically** (Adam, 2026-08-20).
+Where the qvd name matches views in more than one schema and the old path
+carries no usable schema hint, the pass flags it for manual review even if
+one field-overlap score leads. Guessing a schema silently points a load at
+the wrong data.
+
+#### Two lookup tables, and a resolve/rewrite split
+
+Resolution is recorded in checked-in, hand-editable tables — **shared across
+apps, not per app**. Resolving `PMC Region.qvd` once serves every app that
+loads it; app-unbuilt alone holds 96 distinct `lib://` paths against app2's
+15, and the overlap is the point.
+
+- **A path table**: old path → view schema, view name, new path, status
+  (`resolved` / `ambiguous` / `unmatched`), the field-overlap evidence, and
+  who decided it (`auto` / `adam`).
+- **A field table**: old field name → new field name, scoped to fields
+  actually loaded. Pairs, not rules — this is what the `%` finding forces,
+  and it keeps the rewrite step free of `views.csv`.
+
+**The resolver never overwrites a row marked `adam`.** This is what makes
+stage 5 a one-time cost rather than a recurring flag: a developer resolves a
+path by hand, writes it into the table, and every later run of every app
+honours it. It is also what "update the path mapping records" in stage 5
+means concretely.
+
+**Working it out and doing it are separate tools.** The resolver consumes
+`script_loads()` output plus `views.csv` and writes the tables; it never
+edits a script. The rewriter reads the tables and substitutes; it holds no
+matching logic, no scoring and no `views.csv` dependency. Matching is
+guesswork and belongs in a reviewable diff; substitution should be dumb,
+deterministic and re-runnable.
+
+**Unresolved paths are left untouched and flagged as debt** (§7), never
+rewritten with a best guess. The path table's key is the path alone —
+normalised without the `(qvd)` format spec that §4.9 joins onto the FROM
+line, matched case-insensitively, stored verbatim. The 3 known wildcard
+paths cannot key a one-to-one map and are `unmatched` by construction.
+
+---
+
 ## 7. The migration debt report — not started, list not yet fleshed out
 
 The three phases deliver a **working** app, not a production-ready one. That
