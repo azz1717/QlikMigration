@@ -251,7 +251,7 @@ source("qlik_reserved_words.R")
 #'   loads:  data.frame(load_id, table, producer_kind, prefix, source_kind,
 #'                      source, line_start, line_end, chain_of, n_declared,
 #'                      complete_fields)
-#'   fields: data.frame(load_id, table, field, line, aliased, via)
+#'   fields: data.frame(load_id, table, field, source_field, line, aliased, via)
 #'
 #' `load_id` is positional, 1..n in script order — the join key between the two
 #' frames, stable only within one parse of one file. `chain_of` names the
@@ -405,7 +405,8 @@ script_loads <- function(tokens) {
   declared <- vector("list", n)
   wild     <- vector("list", n)
   for (i in seq_len(n)) {
-    nm <- character(0); ln <- integer(0); al <- logical(0); w <- FALSE
+    nm <- character(0); sn <- character(0)
+    ln <- integer(0); al <- logical(0); w <- FALSE
     for (k in rec[[i]]$seg) {
       x <- s[[k]]
       if (.sl_is_wildcard(tokens, x$content_idx[1L],
@@ -419,14 +420,27 @@ script_loads <- function(tokens) {
       if (!x$has_as && length(j) > 1L)
         j <- j[!(tokens$type[j] == "WORD" &
                  toupper(tokens$text[j]) %in% .SL_QUALIFIERS)]
+      # The SOURCE side — left of any `AS` — is the name the qvd actually
+      # holds, and the only one a retarget may rewrite (DESIGN §6.6): the
+      # alias is the app's internal name and renaming it breaks every chart.
+      # GOTCHA: `content_idx` spans the WHOLE segment, both sides of the `AS`
+      # — taking it whole yields `Grant Activity IdASGrant Activity Id%`.
+      # Split on `as_idx`, mirroring how `alias_content_idx` is derived.
+      # The qualifier strip applies here whether or not an alias follows,
+      # since the qualifier always rides on the CONTENT of the first field.
+      sj <- if (x$has_as) x$content_idx[x$content_idx < x$as_idx] else x$content_idx
+      if (length(sj) > 1L)
+        sj <- sj[!(tokens$type[sj] == "WORD" &
+                   toupper(tokens$text[sj]) %in% .SL_QUALIFIERS)]
       if (!x$has_as)
         warn <- c(warn, sprintf("line %d: field with no AS; produced name inferred from `%s`",
                                 x$line, paste(tokens$text[j], collapse = "")))
       nm <- c(nm, .sl_name(tokens$text[j], tokens$type[j]))
+      sn <- c(sn, .sl_name(tokens$text[sj], tokens$type[sj]))
       ln <- c(ln, x$line); al <- c(al, x$has_as)
     }
-    declared[[i]] <- data.frame(field = nm, line = ln, aliased = al,
-                                stringsAsFactors = FALSE)
+    declared[[i]] <- data.frame(field = nm, source_field = sn, line = ln,
+                                aliased = al, stringsAsFactors = FALSE)
     wild[[i]] <- w
   }
 
@@ -637,7 +651,10 @@ script_loads <- function(tokens) {
            inline_rows = NA_integer_, complete_fields = fl$complete,
            tab = .sl_tab_at(tabs, tokens$line[i]), stringsAsFactors = FALSE),
          field = if (length(fl$fields))
+           # A bare `SQL SELECT` column list is read straight from the
+           # database object, so source and produced name coincide.
            data.frame(load_id = id, table = lab, field = fl$fields,
+                      source_field = fl$fields,
                       line = tokens$line[i], aliased = FALSE, via = "declared",
                       stringsAsFactors = FALSE) else NULL)
   })
@@ -662,11 +679,13 @@ script_loads <- function(tokens) {
 # `field` into an error rather than an empty frame.
 .sl_wild_rows <- function(field, line) {
   if (length(field) == 0L)
-    return(data.frame(field = character(0), line = integer(0),
-                      aliased = logical(0), via = character(0),
-                      stringsAsFactors = FALSE))
-  data.frame(field = field, line = line, aliased = NA, via = "wildcard",
-             stringsAsFactors = FALSE)
+    return(data.frame(field = character(0), source_field = character(0),
+                      line = integer(0), aliased = logical(0),
+                      via = character(0), stringsAsFactors = FALSE))
+  # A `*` reads whatever feeds it under its own name, so source and produced
+  # name coincide — there is no `AS` to separate them.
+  data.frame(field = field, source_field = field, line = line,
+             aliased = NA, via = "wildcard", stringsAsFactors = FALSE)
 }
 
 .sl_empty_loads <- function()
@@ -686,6 +705,7 @@ script_loads <- function(tokens) {
 
 .sl_empty_fields <- function()
   data.frame(load_id = integer(0), table = character(0), field = character(0),
+             source_field = character(0),
              line = integer(0), aliased = logical(0), via = character(0),
              stringsAsFactors = FALSE)
 

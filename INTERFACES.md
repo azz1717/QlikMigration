@@ -415,7 +415,7 @@ entry current in the same commit that changes its function.
   `<stem>-loads.csv` / `<stem>-fields.csv`.
 - `loads`: load_id, table, producer_kind, prefix, source_kind, source, line_start, line_end,
   chain_of, n_declared, inline_rows, complete_fields, tab.
-  `fields`: load_id, table, field, line, aliased, via (`declared` / `wildcard`).
+  `fields`: load_id, table, field, source_field, line, aliased, via (`declared` / `wildcard`).
   `inlines`: load_id, table, tab, n_rows, header, sample, line_start, line_end — `sample` is the
   first TEN data rows only (DESIGN §7.1: a developer judges an inline load from its header and a
   glimpse; embedding 1113 rows in a skimmable document is counterproductive).
@@ -437,6 +437,19 @@ entry current in the same commit that changes its function.
   statement BELOW (NOT the underlying qvd — DESIGN §6.5); RESIDENT -> that table, in a second
   pass once every table is known; INLINE -> the block's header row. `complete_fields` goes FALSE
   only when none of those apply.
+- `field` is the PRODUCED name (right of `AS`); `source_field` is what is READ (left of it), and
+  they are equal wherever there is no alias. Retargeting rewrites the source side only — the
+  produced name is what every chart references (DESIGN §6.6). app2 125 of 306 rows differ,
+  app-unbuilt 800 of 2741, `[Grant Managing Region]` 197 of 340.
+- GOTCHA: `find_load_segments()`'s `content_idx` spans the WHOLE segment, BOTH sides of the `AS` —
+  it is not the left side. Taking it whole yields `Grant Activity IdASGrant Activity Id%`, which
+  is what the first cut of `source_field` did. Split it on `as_idx`, exactly as the segment's own
+  `alias_content_idx` is derived. The `.SL_QUALIFIERS` strip applies to the source side whether or
+  not an alias follows, since the qualifier rides on the first field's content either way.
+- `source_field` is NOT always a field name: an aliased expression yields the whole collapsed
+  expression (`IF(LEN(PMC Region.PMC Region Code)>1,1,0)`). A retarget must tell a plain
+  reference from an expression before rewriting, and must reach references NESTED inside an
+  expression, which this column gives it whole rather than parsed.
 - Expects STYLED input; raw parses but every un-aliased field is warned about, since there the
   produced name was inferred rather than read.
 - GOTCHA: never bound a lookahead in TOKEN counts. The `LOAD;SELECT` probe was a 40-token window
