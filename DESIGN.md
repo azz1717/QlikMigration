@@ -1303,7 +1303,25 @@ leave the alias exactly as it is — renaming it breaks the app.
 **This is why styling runs first** (stage 2 below). §4.3
 `ensure_explicit_aliases` guarantees every field has an explicit `AS` before
 retargeting begins, so the rewriter only ever edits a left side and never has
-to invent an alias to protect a bare read like `"Grant Activity Id%",`.
+to invent an alias to protect a bare read like `"Grant Activity Id%",`. That
+dependency is load-bearing: run the rewriter on an unstyled script and every
+un-aliased field silently changes the name it exposes.
+
+**REQUIRED GUARD — exposed names must be byte-identical** (Adam, 2026-08-20).
+The migration's whole safety argument is that a retargeted script *reads* from
+different names but *exposes* the same ones, so nothing downstream can tell
+the difference. That is not an intention to be documented, it is a
+precondition to be enforced: the rewriter collects the produced names — the
+`field` column, not `source_field` — before and after its own edit, and
+**refuses to write the file** unless the two are identical as multisets.
+Same contract as `verify.R` has for styling, and for the same reason: the
+failure it catches is invisible on inspection and only surfaces as a broken
+chart after reload, in an app nobody is looking at any more.
+
+Compare as MULTISETS, not sets. A duplicate produced name collapsing to one,
+or one name appearing twice where it appeared once, are both real corruptions
+that set comparison would pass. Order is not part of the contract — passes
+below may reorder fields — but count is.
 
 **`views.csv` is the oracle** (Adam, 2026-08-20). A list of database views
 filtered to the schemas imported into Cloud as qvds: 10,640 rows over
