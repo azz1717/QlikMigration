@@ -1401,6 +1401,34 @@ loads it; app-unbuilt alone holds 96 distinct `lib://` paths against app2's
   resolver and confirmed against the view's real column list, which keeps the
   rewrite step free of `views.csv` and free of positional `%` logic.
 
+#### What the rewriter has to touch (measured 2026-08-20, STYLED input)
+
+Measured on pipeline output, not raw source, because retargeting is stage 4
+and styling is stage 2. In `app-unbuilt`, over `from` loads only:
+
+- **620 rewrites sit in a plain field slot** — one bracketed reference, the
+  easy case.
+- **118 are NESTED inside an expression**, across 78 expression segments:
+  `IF(LEN([PMC Region.PMC Region Code])>1, ...)`. They break exactly as
+  surely as one in a field slot, so the rewriter cannot treat a segment as
+  opaque merely because it is not a lone reference. 16% of the work.
+
+**Only `from` loads are rewritten.** A `RESIDENT` read names the app's own
+in-memory field, which legitimately keeps its `%` and its prefix — those are
+the produced names an earlier load created. `app-unbuilt` has 9 plain and 2
+nested such references, and `app2` has 9. **`app2` proves the rule**: already
+migrated and working, it needs **zero** rewrites in `from` loads and has 9 in
+`resident` ones. Rewriting those would break an app that currently runs.
+`select`, `sql-select` and `inline` are likewise untouched — a database call
+and a literal block have no qvd to retarget.
+
+**Styling first is what makes this tractable, and the size of the effect is
+the argument.** On RAW input `app-unbuilt` shows 1787 expression segments and
+1770 bare words; after the pipeline, 179 and 75 (4 distinct). §4.2 bracketing
+converts most apparent expressions into plain references and removes ~96% of
+the bare-word ambiguity that §4.11 and phase 2 both stall on. Retargeting a
+raw script would face that ambiguity in full.
+
 **GAP, must be closed before the resolver is written** (2026-08-20):
 `script_loads()` reports the **produced** field name — the right side of the
 `AS` — because `.sl_name()` folds a field to one name. Retargeting needs the
