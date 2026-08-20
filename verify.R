@@ -38,7 +38,19 @@
 # nothing changed outside the permitted set - not that Qlik agrees the two
 # scripts behave identically.
 
-setwd(tryCatch(dirname(sys.frame(1)$ofile), error = function(e) "C:/Rtools"))
+# sys.frame(1)$ofile only resolves when this script is source()d, NOT under
+# plain `Rscript verify.R` invocation (verified experimentally: it errors
+# "not that many frames on the stack" there) - so it was never actually
+# self-locating when run the normal way; commandArgs()'s --file= entry is
+# the method that works under Rscript. C:/Rtools kept as a last-resort
+# fallback for the source()d case.
+.file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+setwd(if (length(.file_arg)) {
+  tryCatch(dirname(normalizePath(sub("^--file=", "", .file_arg[1]))),
+           error = function(e) "C:/Rtools")
+} else {
+  tryCatch(dirname(sys.frame(1)$ofile), error = function(e) "C:/Rtools")
+})
 
 source("qlik_tokenizer.R")
 source("qlik_reserved_words.R")

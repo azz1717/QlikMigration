@@ -47,12 +47,24 @@
 # --- where the project lives ---------------------------------------------
 # Every source() below, and both default file names, are relative to this
 # folder, so the script sets it explicitly instead of depending on where it
-# was launched from. The check exists so a moved repo produces one plain
-# sentence rather than seven confusing "cannot open file" errors.
-PROJECT_DIR <- "C:/Rtools"
-if (!dir.exists(PROJECT_DIR)) {
-  stop("project folder not found: ", PROJECT_DIR,
-       "\n  Edit PROJECT_DIR at the top of run_pipeline.R if the repo moved.",
+# was launched from. Self-located from the running script's own file path
+# so the repo can live anywhere - no per-clone edit needed. Uses
+# commandArgs()'s --file= entry: sys.frame(1)$ofile only resolves when a
+# script is source()d, NOT under plain `Rscript file.R` invocation, so it
+# is not a usable fallback here (verified experimentally - it errors
+# "not that many frames on the stack" under Rscript). The check exists so
+# a detection failure produces one plain sentence rather than seven
+# confusing "cannot open file" errors.
+.file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+PROJECT_DIR <- if (length(.file_arg)) {
+  tryCatch(dirname(normalizePath(sub("^--file=", "", .file_arg[1]))),
+           error = function(e) NA)
+} else NA
+if (is.na(PROJECT_DIR) || !dir.exists(PROJECT_DIR)) {
+  stop("could not determine the project folder from the running script's ",
+       "path. Run this via 'Rscript run_pipeline.R' (not pasted into an ",
+       "interactive session), or hardcode PROJECT_DIR at the top of ",
+       "run_pipeline.R as a fallback.",
        call. = FALSE)
 }
 setwd(PROJECT_DIR)
