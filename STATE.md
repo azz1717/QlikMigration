@@ -1,8 +1,8 @@
 # STATE — read this first; update before any commit that starts/finishes a task
 
-**Position: §4.1-§4.10 CLOSED** (Adam, 2026-08-20; 275ca86, stage3 119/0).
-`undelimit()` promoted to qlik_tokenizer.R; all 4 twins gone, incl. pass 2.
-Styling output byte-identical on both fixtures — stage 3 NOT yet run (Adam's).
+**Position: §4.1-§4.10 CLOSED.** `undelimit()` is the repo's one delimiter strip
+— 4 twins folded in, incl. signed-off pass 2; verify.R's `.unquote` stays separate
+ON PURPOSE. Stage 3 GREEN 39870c9: 119/0, both fixtures byte-identical.
 
 **Next task:** phase 2, DESIGN §6.5 + §7.1/§7.2. Tooling COMPLETE — next is USE.
 
