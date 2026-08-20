@@ -55,7 +55,10 @@ entry current in the same commit that changes its function.
   promotion removed. Its four single-token callers use `undelimit()` directly.
   Pass 2 uses it too (2026-08-20, Adam: no twins anywhere), passing the token's own type — its
   guard admits only DQUOTE/SQUOTE, which is the same mapping this function applies internally.
-  **This is now the ONLY delimiter-stripping code in the repo. A fifth copy is a bug.**
+  **This is the ONLY delimiter-stripping code in the pipeline and in phase 2 tooling. A new copy
+  anywhere in either is a bug.** The single exception is `verify.R`'s `.unquote()`, which is a
+  DELIBERATE independent re-derivation (Adam 2026-08-20) — a check must be able to fail
+  independently of the code it checks. Documented at both ends; do not merge it.
 - `find_load_segments(tokens) -> list(segments, warnings)` — per-field segments of every LOAD list;
   segment: start, end, content_idx, has_as, as_idx, alias_content_idx, line, load_tok_idx — all
   integer except has_as (logical). Skips SELECT.
@@ -668,7 +671,9 @@ entry current in the same commit that changes its function.
 - `verify_file(path)`, `verify_detects_corruption()`, `ok(label, passed, detail)`, `section(...)`.
 - Each normalisation in `canonical_stream` is an assumption about Qlik recorded in DESIGN §1 —
   adding a pass that makes a NEW kind of legitimate change means adding one there too.
-- Private: `.unquote`, `.short`, `.window`, `.tail` (display/comparison helpers).
+- Private: `.unquote`, `.short`, `.window`, `.tail` (display/comparison helpers). `.unquote`
+  duplicates `undelimit()` ON PURPOSE — see that entry; a check must fail independently of what
+  it checks. It is the one sanctioned copy.
 
 ## console_ui.R — crude console menu over run_pipeline.R / render_report.R
 

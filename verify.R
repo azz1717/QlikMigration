@@ -105,6 +105,15 @@ section <- function(...) { cat("\n== ", ..., " ==\n", sep = ""); flush(stdout())
 # verification status - notably §1.5, that LOAD X and LOAD X AS X load
 # identically, which is what licenses collapsing X AS X here.
 
+# DELIBERATELY NOT qlik_tokenizer.R's undelimit(), though it computes the
+# same thing. Adam 2026-08-20, when every other copy in the repo was folded
+# into that one: this file is the check, and a check that shares its
+# implementation with the code under test cannot fail independently of it.
+# undelimit() is what the PASSES use to decide what a reference is called;
+# .unquote is this suite's own separate statement of the same DESIGN §1
+# assumption, so a bug in one is still visible to the other.
+#
+# So: this is not an oversight and not a leftover twin. Do not merge it.
 .unquote <- function(s, q) {
   inner <- substr(s, 2, nchar(s) - 1)
   gsub(paste0(q, q), q, inner, fixed = TRUE)
