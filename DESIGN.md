@@ -1289,9 +1289,21 @@ data store. Two edits, both mechanical once the target is known:
 
 - **The path.** `FROM [lib://AppDataProd/AzureDataLake/FUSION/PMC Region.qvd]`
   becomes `FROM [lib://Curated data Store:DataFiles/10 Landing Area/<VIEW_SCHEMA>/<VIEW_NAME>.qvd]`.
-- **The field names.** On-prem field names carry the source table as a prefix
-  — `[Grant Activity Funding.Financial Year Id]`. The Cloud qvds do not:
-  `[Financial Year Id]`.
+- **The field names.** On-prem qvd field names carry two things the Cloud
+  qvds drop: the source table as a prefix, and a `%` **appended** to GUID id
+  fields. `"PMC Region.PMC Region Id%"` is read from Cloud as
+  `[PMC Region Id]`.
+
+**Only the LEFT side of an `AS` is rewritten** (Adam, 2026-08-20). The
+construct is `"PMC Region.PMC Region Id%" AS [PMC Region Id%]`: the left is
+the qvd's field name, the right is the app's internal name that every chart,
+dimension and measure references. Retargeting changes what is *read* and must
+leave the alias exactly as it is — renaming it breaks the app.
+
+**This is why styling runs first** (stage 2 below). §4.3
+`ensure_explicit_aliases` guarantees every field has an explicit `AS` before
+retargeting begins, so the rewriter only ever edits a left side and never has
+to invent an alias to protect a bare read like `"Grant Activity Id%",`.
 
 **`views.csv` is the oracle** (Adam, 2026-08-20). A list of database views
 filtered to the schemas imported into Cloud as qvds: 10,640 rows over
@@ -1356,12 +1368,17 @@ Three facts from `views.csv` shape this (measured 2026-08-20):
 - **243 of 516 views draw from more than one underlying `TABLE_NAME`.** The
   old field prefix and the view's `TABLE_NAME` are not the same thing and
   must never be conflated; matching is against the view's whole column set.
-- **The `%` prefix is not a convention that was dropped.** 28 views contain
-  `%`-prefixed columns and **all 28 mix** `%` and non-`%` columns; **zero**
-  column base-names appear both with and without `%` anywhere in the 10,640
-  rows. Every survivor is a `%Dim_*_Key`. So `%` is part of a column's actual
-  name, not a transformation to apply or skip. Field renaming is a **lookup
-  against the resolved view's column list**, never a rule.
+- **The trailing `%` is always dropped.** Of the 17 distinct `Id%` fields in
+  `[Grant Managing Region].txt`, **zero** survive as a view column with the
+  `%` still on. The convention is uniform, so it needs no per-path flag: strip
+  the `TableName.` prefix, strip a trailing `%`, then confirm the result
+  against the resolved view's column list. Both strips can apply to one name
+  — `"Grant Activity.Source System Id%"`.
+- **Leading `%` is an unrelated naming family and must not be confused with
+  it.** 28 views hold `%Dim_*_Key` columns, and those keep the `%`. No script
+  reads one: `[Grant Managing Region].txt`, `app-unbuilt` and `app2` contain
+  **zero** leading-`%` fields between them, against 40, 54 and 41 trailing-`%`
+  ones. Never write a rule that strips `%` positionally.
 
 **A cross-schema tie is never resolved automatically** (Adam, 2026-08-20).
 Where the qvd name matches views in more than one schema and the old path
@@ -1380,8 +1397,15 @@ loads it; app-unbuilt alone holds 96 distinct `lib://` paths against app2's
   (`resolved` / `ambiguous` / `unmatched`), the field-overlap evidence, and
   who decided it (`auto` / `adam`).
 - **A field table**: old field name → new field name, scoped to fields
-  actually loaded. Pairs, not rules — this is what the `%` finding forces,
-  and it keeps the rewrite step free of `views.csv`.
+  actually loaded. Pairs, not rules — the strip is derived once by the
+  resolver and confirmed against the view's real column list, which keeps the
+  rewrite step free of `views.csv` and free of positional `%` logic.
+
+**GAP, must be closed before the resolver is written** (2026-08-20):
+`script_loads()` reports the **produced** field name — the right side of the
+`AS` — because `.sl_name()` folds a field to one name. Retargeting needs the
+**left** side, which is not currently in the `fields` frame. Either the frame
+gains a source-side column or the resolver reads the left side itself.
 
 **The resolver never overwrites a row marked `adam`.** This is what makes
 stage 5 a one-time cost rather than a recurring flag: a developer resolves a
@@ -1401,6 +1425,49 @@ rewritten with a best guess. The path table's key is the path alone —
 normalised without the `(qvd)` format spec that §4.9 joins onto the FROM
 line, matched case-insensitively, stored verbatim. The 3 known wildcard
 paths cannot key a one-to-one map and are `unmatched` by construction.
+
+#### What the old paths actually look like (measured 2026-08-20)
+
+`app-unbuilt` holds **76 distinct** source paths over 83 `from` loads. Four
+facts about their shape, none of them assumptions:
+
+- **Separators are mixed.** One path is
+  `lib://AppData\PROD\AzureDataLake\GPS\...` — backslashes. Normalise both.
+- **Five different old connections**, not one: `AppData`, `AppDataProd`,
+  `Curated Data Store:DataFiles`, and two DEV connections (`Curated Data
+  Store - DEV`, `Data Preparation - DEV`).
+- **Depth varies** — `AppData/PROD/AzureDataLake/<schema>/` against
+  `AppDataProd/AzureDataLake/<schema>/`. The schema hint is the **second-to-
+  last segment**, never a fixed index.
+- **Schema case differs** from `views.csv`, which holds `abs` and `pmc`
+  lowercase where paths have `ABS`. Match schemas case-insensitively too.
+
+The new connection is `lib://Curated Data Store:DataFiles/10 Landing Area/`
+— capital D, as in the hand-migrated `app2` (Adam, 2026-08-20).
+
+**Coverage is 43%, and the shortfall is scope rather than failure.** Only 33
+of the 76 names match a view at all; 29 match on schema *and* name, 9 tie
+across schemas, and 4 match a name while sitting in a directory that is not a
+schema. The other **43 are not view-sourced qvds** — the largest directory in
+the app is `Geospatial` (32 paths), and `AEDC`, `NACCHO`, `ORIC`, `Economic
+Indicators` and `Grant Management` are likewise absent from `views.csv`.
+These are file-share qvds — reference data, spreadsheets, geospatial extracts
+— that no database view can supply.
+
+**They get their own status, `not-view-sourced`, distinct from `unmatched`**
+(Adam, 2026-08-20), so a developer sees at a glance that these were never
+candidates rather than matcher failures. They go straight to the stage 5
+decision, and pruning having run first means many will simply be deleted.
+
+**A contradicting schema hint is evidence against a match, not an absent
+hint.** Four `Geospatial/` paths match a view name exactly. Retargeting those
+on name alone would point a file-share extract at an unrelated database view
+that merely shares a name. A hint that names a directory which is not a known
+schema must *block* the match, not fall through to the no-hint path.
+
+**`app2` is the answer key.** It was migrated by hand and works (§6.5), and
+its 20 `from` paths are already in the target format. The resolver must
+reproduce them; it is the only ground truth available before a Cloud reload.
 
 ---
 
