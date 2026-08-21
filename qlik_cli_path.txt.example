@@ -1,0 +1,9 @@
+# Copy this file to qlik_cli_path.txt and put YOUR machine's path on one line.
+# qlik_cli_path.txt is gitignored, so each VM keeps its own path and pulling a
+# fresh snapshot never overwrites it.
+#
+# Blank lines and # comments are ignored; the first real line wins. Surrounding
+# double quotes are stripped, so pasting straight from Explorer's
+# "Copy as path" works as-is.
+
+D:\installed software\qlik-cli\qlik.exe

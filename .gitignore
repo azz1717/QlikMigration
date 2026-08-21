@@ -25,6 +25,11 @@ chunk_timings.rds
 # Claude Code settings that are local to this machine
 .claude/settings.local.json
 
+# Per-machine qlik-cli location and probe output. The path differs on every VM,
+# so it is never tracked - qlik_cli_path.txt.example IS tracked as the template.
+qlik_cli_path.txt
+qlik_probe_out/
+
 # Generated migration reports - regenerate with render_report.R. The signed-off
 # reference report_mock.html is TRACKED and deliberately not matched here.
 report_app*.html
