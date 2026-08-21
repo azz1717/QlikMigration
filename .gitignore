@@ -30,7 +30,32 @@ chunk_timings.rds
 qlik_cli_path.txt
 qlik_probe_out/
 
-# Generated migration reports - regenerate with render_report.R. The signed-off
-# reference report_mock.html is TRACKED and deliberately not matched here.
+# Generated migration reports - regenerate with render_report.R.
 report_app*.html
 *-report.html
+
+# Repo tidy-up (Adam 2026-08-21): this is a solo-dev repo, git is used purely
+# as a delivery mechanism to get scripts onto VMs that never commit or push.
+# Dev/test-only files stay on disk and stay usable here - they are just no
+# longer tracked, so a VM operator browsing GitHub isn't wading through them.
+# [Grant Managing Region].txt stays TRACKED on purpose - kept version
+# controlled and available for VM-side troubleshooting even though unlikely
+# to be needed.
+
+# Example report output.
+report_mock.html
+
+# Example app folders.
+app-unbuilt/
+app2-unbuilt/
+
+# Dev-only pipeline gate - never run on a VM, only before a push here.
+verify.R
+
+# Workflow docs other than README.md.
+CLAUDE.md
+DESIGN.md
+INTERFACES.md
+STATE.md
+PLAN-comment-substream.md
+dlmf-log.md
