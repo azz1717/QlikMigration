@@ -1709,3 +1709,66 @@ behaviour that would stop people re-running the tool.
 It follows that the detector must not consume phase 3's retargeting lists,
 however tempting the reuse looks. Those lists are necessarily incomplete about
 the future. The detector must not be.
+
+## 8. Reaching the tenant — qlik-cli from R
+
+Phases 1-3 all end with a script that has to get back into Qlik Cloud, and the
+deployment machine is a locked-down VM: base R, no package installs, no PATH
+changes, no AI. The only tenant access is qlik-cli. So before any of that is
+designed, one question has to be answered empirically — **can R drive
+qlik-cli on that machine at all?**
+
+Answered YES on the VM, 2026-08-21, by `qlik_cli_probe.R` (9/9). The findings
+below are measurements from that run, not assumptions.
+
+### 8.1 What was verified
+
+- R invokes qlik-cli 3.2.0 via `system2()`, command UNQUOTED and arguments
+  individually `shQuote()`d — the pairing `console_ui.R` already used. The
+  installed path contains a space (`D:\software-installed\qlik-cli\`), so
+  that hazard is covered rather than merely assumed.
+- **The saved qlik context is inherited by a child process of R.** This was
+  the real unknown: authentication is a context created once by hand
+  (`qlik context use`), living in the user profile, and nothing guaranteed a
+  subprocess would see it. It does, so no credential ever needs to reach this
+  repo — and none may.
+- A named space is reachable and its apps list.
+
+### 8.2 The published reference does not match the installed CLI
+
+`space filter --names <name> --quiet` is documented on qlik.dev and returns
+`Error: unknown flag: --names` on 3.2.0. **Check any qlik-cli flag against the
+installed build, not only the docs** — the reference describes some other
+version. Guessing flags cost a full round-trip here once already.
+
+### 8.3 Listings paginate; always pass `--limit`
+
+Without `--limit`, qlik-cli returns the API's own default page (20 on some
+endpoints). The tenant's space listing is 690 lines, so a substring search
+over an unpaged listing reported a present, reachable space as missing. Every
+`ls` this project issues passes `--limit`.
+
+### 8.4 Derived facts must be verified against the tenant, not trusted
+
+The probe locates a space id positionally — the `"id"` nearest-preceding the
+matched name — which is correct only because this tenant emits `id` before
+`name` within each object. That is a property of one payload, not a guarantee.
+It is safe **only** because the next step asks `space get <id>` and requires
+the reply to name the space: heuristic proposes, tenant disposes. Any future
+extraction that infers structure from qlik-cli output owes the same
+round-trip check, and must label the raw inference as unverified until it has
+one.
+
+### 8.5 The return channel is a photograph
+
+Files cannot practically leave the VM (~30 minutes each, no zip). The cheap
+channel back is a photo of the screen, which inverts the usual bias toward
+writing rich output to disk: **screen space is the scarce resource.** Any tool
+built to run there must fit one screen — hard-capped at 72 columns and about
+20 lines, ASCII only, since a Windows console codepage mangles Unicode and
+non-ASCII in R source risks a parse error under an unknown locale.
+
+The consequence worth generalising: prefer a **digest over raw data**. The
+probe prints the JSON *key names* of each listing rather than the documents,
+because key names are what writing a parser actually needs. That one line
+replaced a file transfer.

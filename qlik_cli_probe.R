@@ -1,7 +1,11 @@
 # qlik_cli_probe.R - can R invoke qlik-cli, and can it reach a named space?
-# SPIKE, not shipped tooling. Not a pass, not sourced by run_pipeline.R, no
-# INTERFACES.md entry yet by design (Adam 2026-08-21: "spike now, promote if
-# it works"). Promote only once it has run green on a real VM.
+# Not a pass, not sourced by run_pipeline.R, nothing depends on it. Contract in
+# INTERFACES.md; the findings it established are DESIGN §8. Ran green on the VM
+# 2026-08-21 (9/9) and was promoted from spike to documented tooling then.
+#
+# It stays useful after answering its original question: it is the thing to run
+# FIRST on any new VM, because it distinguishes "the environment is wrong" from
+# "our code is wrong" before anything else is debugged.
 #
 # THE RETURN PATH DICTATES THE DESIGN. Adam 2026-08-21: getting files OFF the
 # VM takes ~30 minutes per file, no zip, and is worse for several. The one

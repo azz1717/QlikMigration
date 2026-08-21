@@ -725,3 +725,44 @@ entry current in the same commit that changes its function.
   them in prose trips the check that forbids them. Widened 2026-08-17 after
   the first version matched one literal phrase and missed a stale verify.R
   label that used different words.
+
+## qlik_cli_probe.R — tenant reachability check, not shipped tooling
+
+- Script; run it (`Rscript qlik_cli_probe.R`, or double-click `qlik_probe.bat`),
+  don't source it. Not a pass, not phase 2 tooling, nothing sources it. Nine
+  rungs, each reporting PASS/FAIL independently. Exit 1 only when it cannot get
+  far enough to report (no config file, or qlik.exe absent/unrunnable).
+- Locates qlik.exe from `qlik_cli_path.txt` ONLY — one line, the full path.
+  That file is gitignored so each VM carries its own; `qlik_cli_path.txt.example`
+  is the tracked template. Deliberately no PATH lookup and no argument override:
+  PATH cannot be modified on the target VMs, so both are dead code (DESIGN §8).
+- Invokes via `system2(qlik, shQuote(args), stdout=TRUE, stderr=TRUE, timeout=)`
+  — command UNQUOTED, args individually quoted, same pairing as `console_ui.R`.
+  GOTCHA: do NOT `shQuote()` the command as well; on Windows that double-quotes
+  it and it stops resolving. `timeout` is not optional — it is the only guard
+  against qlik prompting and hanging the session with no way out.
+- GOTCHA: `stderr = TRUE` merges stderr into stdout, so a command that SUCCEEDS
+  while printing a warning hands that warning back as its first output line. Any
+  value read out of `$out` must be shape-checked before it is believed —
+  `.looks_like_id()` exists because an unchecked read once reported the text
+  "not a command" as a space id and passed it to `app ls --spaceId`.
+- Every `ls` passes `--limit 1000`. Unpaged, qlik-cli returns the API's default
+  page and the tenant's 690-line space listing gets silently truncated
+  (DESIGN §8.3).
+- Output is hard-capped at 72 columns and ~23 lines because it is read off a
+  PHOTOGRAPH of the VM screen (DESIGN §8.5). `.say()` truncates every line to
+  that width; ASCII only. Raw per-rung output is written to `qlik_probe_out/`
+  (gitignored, cleared each run so it can only ever describe one run) — but
+  nothing may ever be ASKED for as a file; the screen must be sufficient.
+- `SPACE_NAME` at the top is the space it looks for. Change that constant to
+  probe a different one.
+
+## qlik_probe.bat — double-click launcher for the above
+
+- Mirrors `launch_console_ui.bat`: `cd /d "%~dp0"`, run Rscript, `pause`. The
+  `pause` is load-bearing — without it the window closes before it can be
+  photographed.
+- Pins `R-4.3.1`, which is the VM's version, and checks that path exists first
+  so a wrong version prints which path it wanted instead of cmd's bare "cannot
+  find the path specified". NOTE: `launch_console_ui.bat` still pins 4.5.2; if
+  both must run on one machine that inconsistency needs settling.

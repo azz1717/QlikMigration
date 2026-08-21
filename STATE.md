@@ -9,8 +9,8 @@ stage 3 GREEN 119/0. Retargeting design written up: DESIGN §6.6 — stage order
 **Open items:**
 - §4.10 scope: commented-out TABLES and multi-line commented expressions
   stay unstyled. Adam's call whether to extend.
-- qlik-cli from R: VERIFIED on VM 2026-08-21, 9/9. R invokes qlik-cli 3.2.0,
-  saved context inherits, "On Prem Apps" reached and its 2 apps listed.
+- qlik-cli reachability CLOSED (DESIGN §8, verified on VM 2026-08-21). Open:
+  can qlik-cli fetch/put an app's load script? Untested, and phase 3 needs it.
 - Parked, Adam's: before/after pruning report; explicit+unique table names;
   comment-styling sub-stream, PLAN-comment-substream.md (§4.10 scope, above).
 - What can the work machine run? Decides whether jsonlite can be the oracle
