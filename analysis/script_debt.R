@@ -16,7 +16,7 @@
 # teaches the reader to skim past the section. Only the one sub-case that can
 # be called with confidence is detected — see below.
 
-source("qlik_tokenizer.R")
+source("shared/qlik_tokenizer.R")
 
 # A GUID in a load expression is never business logic; it is a patched record
 # id (app2 lines 242 and 244, both inside IF()). This is the whole of the
@@ -202,7 +202,7 @@ sql_targets <- function(tokens, tabs = NULL) {
 
 main <- function(args) {
   if (!length(args)) stop("usage: Rscript script_debt.R <script>")
-  source("script_loads.R")
+  source("analysis/script_loads.R")
   tok  <- read_qlik_script(args[1L])
   tabs <- .sl_tabs(tok)
   l    <- script_loads(tok)$loads

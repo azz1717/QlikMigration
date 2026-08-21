@@ -1,0 +1,3 @@
+Phase 2 retargeting has no code yet as of 2026-08-21 - see STATE.md for the
+current task. This folder exists so the reorg has a place for it to land
+without another restructure later.

@@ -1,17 +1,19 @@
 # run_pipeline.R — reformat a Qlik load script to the house style guide.
 #
-# HOW TO RUN IT (from a terminal, not from inside R). Rscript is not on the
-# PATH on this machine, so the full path is needed:
+# HOW TO RUN IT (from a terminal, not from inside R). If Rscript is not on
+# PATH, use its full install path instead, or find_rscript.bat's lookup:
 #
-#   & "C:\Program Files\R\R-4.5.2\bin\Rscript.exe" run_pipeline.R in.qvs out.qvs
+#   Rscript run_pipeline.R in.qvs out.qvs
 #
 # Add --help for the usage text, or --changes to also get a CSV per pass
-# listing every edit it made. With no arguments at all it falls back to the
-# built-in test fixture and says so before it starts.
+# listing every edit it made. Both file names are REQUIRED — no default
+# input (2026-08-21: it used to fall back to a built-in fixture with no
+# arguments, which on a real app silently styles the WRONG script; see the
+# comment above the positional-args check below).
 #
 # WHAT IT DOES: reads the script once into a TOKEN STREAM — a data.frame
 # where every keyword, name, comment and run of spaces is one row — then
-# hands that stream to seven passes in turn and writes the result back out.
+# hands that stream to eight passes in turn and writes the result back out.
 # No pass ever edits the file as text; they edit tokens. That is what keeps
 # cosmetic reformatting from changing what the script means.
 #
@@ -76,16 +78,16 @@ setwd(PROJECT_DIR)
 # them into a loop. verify_docs.R reads this file as text and matches them at
 # the start of a line to confirm the pass list still agrees with verify.R and
 # README. Rewriting them breaks that check silently.
-source("qlik_tokenizer.R")
-source("qlik_reserved_words.R")
-source("ensure_explicit_aliases.R")
-source("enforce_bracket_references.R")
-source("enforce_leading_commas.R")
-source("enforce_intraline_spacing.R")
-source("enforce_reserved_word_case.R")
-source("enforce_vertical_layout.R")
-source("enforce_alias_alignment.R")
-source("enforce_commented_field_style.R")
+source("shared/qlik_tokenizer.R")
+source("shared/qlik_reserved_words.R")
+source("styling/ensure_explicit_aliases.R")
+source("styling/enforce_bracket_references.R")
+source("styling/enforce_leading_commas.R")
+source("styling/enforce_intraline_spacing.R")
+source("styling/enforce_reserved_word_case.R")
+source("styling/enforce_vertical_layout.R")
+source("styling/enforce_alias_alignment.R")
+source("styling/enforce_commented_field_style.R")
 
 # Used for error messages and for --changes file names, so the wording of a
 # pass name lives in exactly one place.

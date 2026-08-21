@@ -12,7 +12,7 @@
 # regex reader is genuinely equivalent on real input: same strings, same order,
 # same key/value split, same escape handling.
 
-source("json_strings.R")
+source("analysis/json_strings.R")
 
 # Every string in a parsed document, in document order, as the reader would
 # report it. Keys come out before the value they name, which is the order they

@@ -22,7 +22,31 @@ touch anything:
 See DESIGN §5.
 
 See [DESIGN.md](DESIGN.md) for architecture, decisions, the roadmap, verified
-Qlik behaviours, and the migration debt report (§7).
+Qlik behaviours, and the migration debt report (§7). (Dev-only, not part of
+this tracked repo — see "Repo layout" below.)
+
+## Repo layout
+
+Reorganised 2026-08-21 so a VM operator sees only what they need — the repo
+root is entry points, everything else is engine room:
+
+| Where | What |
+|---|---|
+| *(repo root)* | Entry points: `launch_console_ui.bat`, `qlik_probe.bat`, `run_pipeline.R`, `console_ui.R`, `render_report.R`, `qlik_cli_probe.R` |
+| `input-apps/` | Put the app you want processed here (its own subfolder) |
+| `outputs/` | Styled scripts and reports land here, named after the app |
+| `shared/` | Tokenizer and reserved-word lists — used by everything below |
+| `styling/` | The eight style passes `run_pipeline.R` wires together |
+| `analysis/` | Phase 2 usage/review/pruning scripts, and the migration debt report |
+| `retargeting/` | Phase 3 — not started yet (DESIGN §6.6) |
+| `fixtures/` | The three dev fixtures kept version-controlled for troubleshooting |
+
+Development-only material (`DESIGN.md`, `CLAUDE.md`, `INTERFACES.md`,
+`STATE.md`, example apps, `verify.R`) is **not tracked** — this is a solo-dev
+repo where git exists purely to deliver scripts to VMs that never commit or
+push, so keeping dev clutter out of what gets pushed was the whole point of
+this reorg. Those files still exist on the development machine; they are
+simply not part of what a VM operator downloads.
 
 ## Requirements
 
@@ -32,25 +56,27 @@ Developed against R 4.5.2.
 
 ## Running it
 
-Edit `input_path` / `output_path` at the top of `run_pipeline.R`, then:
+Both file names are required — no default input (2026-08-21: a missed
+argument used to silently style a built-in fixture instead of your script):
 
 ```bash
-Rscript run_pipeline.R
+Rscript run_pipeline.R myscript.qvs myscript_out.txt
 ```
 
-Or interactively, which is usually more useful because you keep every stage:
+Or interactively, which is usually more useful because you keep every stage
+(paths below are relative to the repo root — see "Repo layout"):
 
 ```r
-setwd("C:/Rtools")
-source("qlik_tokenizer.R")
-source("qlik_reserved_words.R")
-source("ensure_explicit_aliases.R")
-source("enforce_bracket_references.R")
-source("enforce_leading_commas.R")
-source("enforce_intraline_spacing.R")
-source("enforce_reserved_word_case.R")
-source("enforce_vertical_layout.R")
-source("enforce_alias_alignment.R")
+setwd("C:/Rtools")   # or wherever this repo was cloned
+source("shared/qlik_tokenizer.R")
+source("shared/qlik_reserved_words.R")
+source("styling/ensure_explicit_aliases.R")
+source("styling/enforce_bracket_references.R")
+source("styling/enforce_leading_commas.R")
+source("styling/enforce_intraline_spacing.R")
+source("styling/enforce_reserved_word_case.R")
+source("styling/enforce_vertical_layout.R")
+source("styling/enforce_alias_alignment.R")
 
 tokens <- read_qlik_script("myscript.qvs")
 
@@ -166,7 +192,9 @@ snapshot.
 
 ## Verifying a change
 
-Run the suite. It exits non-zero on failure, so it can gate a commit:
+Dev-only, not part of the tracked repo (see "Repo layout") — this gates a
+commit on the development machine, a VM never needs it. Run the suite; it
+exits non-zero on failure:
 
 ```bash
 Rscript verify.R

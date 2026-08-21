@@ -16,9 +16,9 @@
 # a submittable document and has to answer "why do you say this is unused?",
 # which means naming the file a reference was found in, not just the name.
 
-source("qlik_tokenizer.R")
-source("qlik_reserved_words.R")
-source("json_strings.R")
+source("shared/qlik_tokenizer.R")
+source("shared/qlik_reserved_words.R")
+source("analysis/json_strings.R")
 
 #' Field references in one piece of expression text.
 #'

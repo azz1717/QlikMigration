@@ -12,9 +12,9 @@
 # removal or a DROP is automated or left to a developer is undecided
 # (DESIGN §6.5, Adam 2026-08-18).
 
-source("app_usage.R")
-source("script_loads.R")
-source("script_refs.R")
+source("analysis/app_usage.R")
+source("analysis/script_loads.R")
+source("analysis/script_refs.R")
 
 # Every encoding choice here widens or narrows the `unreferenced` list, so each
 # is spelled out in DESIGN §6.5 rather than left in the code:

@@ -15,7 +15,7 @@
 # `lib://Curated Data Store:DataFiles/...`, which lives in a BRACKET token.
 # Same trap the tokenizer notes for `for` (1242 raw, ~28 real).
 
-source("qlik_tokenizer.R")
+source("shared/qlik_tokenizer.R")
 
 # Statement id per token, and the first solid WORD of each statement. The
 # leading word is what says whether a mention is a use (`RESIDENT Temp`) or a
@@ -119,7 +119,7 @@ script_disposals <- function(tokens, table_names) {
 
 main <- function(args) {
   if (length(args) == 0L) stop("usage: Rscript script_refs.R <script>")
-  source("script_loads.R")
+  source("analysis/script_loads.R")
   tok <- read_qlik_script(args[1L])
   l   <- script_loads(tok)$loads
   own <- unique(l[!is.na(l$table), c("table", "line_start", "line_end")])

@@ -61,21 +61,31 @@ open(.cui_stdin, "r")
 	}
 }
 
+# Both outputs land in outputs/ (2026-08-21 reorg), not beside their app and
+# not at bare repo root - so results are always in one obvious place instead
+# of scattered across however many app folders were processed. Prefixed with
+# the app's own folder name so two apps never collide on script_out.txt.
+.cui_output_dir <- function() {
+	if (!dir.exists("outputs")) dir.create("outputs")
+	"outputs"
+}
+
 .cui_run_formatting <- function(app) {
 	input <- file.path(app$dir, "script.qvs")
 	if (!file.exists(input)) {
 		cat("No script.qvs in", app$dir, "\n")
 		return(invisible())
 	}
-	output <- file.path(app$dir, "script_out.txt")
+	output <- file.path(.cui_output_dir(), paste0(basename(app$dir), "-script_out.txt"))
 	cat("Formatting", input, "->", output, "\n")
 	status <- system2(RSCRIPT, c(shQuote("run_pipeline.R"), shQuote(input), shQuote(output)))
 	if (status != 0) cat("run_pipeline.R exited with status", status, "\n") else cat("Done.\n")
 }
 
 .cui_run_report <- function(app) {
-	cat("Rendering report for", app$title, "\n")
-	status <- system2(RSCRIPT, c(shQuote("render_report.R"), shQuote(app$dir)))
+	output <- file.path(.cui_output_dir(), paste0(basename(app$dir), "-report.html"))
+	cat("Rendering report for", app$title, "->", output, "\n")
+	status <- system2(RSCRIPT, c(shQuote("render_report.R"), shQuote(app$dir), "--out", shQuote(output)))
 	if (status != 0) cat("render_report.R exited with status", status, "\n") else cat("Done.\n")
 }
 

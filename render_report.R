@@ -21,8 +21,8 @@
 # AZDB-ZEA-PRD-NIAADL01" tells a developer what the job is; "24 database
 # calls block migration" tells them nothing they can act on.
 
-source("usage_report.R")
-source("script_debt.R")
+source("analysis/usage_report.R")
+source("analysis/script_debt.R")
 
 .h <- function(x) {
   x <- as.character(x); x[is.na(x)] <- ""

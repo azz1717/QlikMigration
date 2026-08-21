@@ -43,7 +43,11 @@ ok <- function(label, passed, detail = NULL) {
 read_utf8 <- function(f) readLines(f, encoding = "UTF-8", warn = FALSE)
 
 doc_files <- c("README.md", "DESIGN.md", "STATE.md", "INTERFACES.md", "CLAUDE.md")
-r_files   <- list.files(".", pattern = "\\.R$")
+# recursive = TRUE since the 2026-08-21 reorg (shared/, styling/, analysis/):
+# this used to be a flat top-level glob, which after the move would have
+# silently stopped scanning ~15 of the .R files for citations and function
+# coverage - not a loud failure, just a check that quietly checked far less.
+r_files   <- list.files(".", pattern = "\\.R$", recursive = TRUE)
 scan_files <- c(doc_files[file.exists(doc_files)], r_files)
 
 # --- 1. section citations resolve --------------------------------------
@@ -73,8 +77,10 @@ check_citations <- function() {
 # --- 2. the three pass lists agree --------------------------------------
 check_pass_lists <- function() {
   rp <- read_utf8("run_pipeline.R")
-  rp <- sub('^source\\("(.*)\\.R"\\).*$', "\\1",
-            grep('^source\\("(ensure_|enforce_)', rp, value = TRUE))
+  # "styling/" prefix (2026-08-21 repo reorg) stripped so rp stays bare pass
+  # names, comparable to verify.R's PASSES list and README's table below.
+  rp <- sub('^source\\("styling/(.*)\\.R"\\).*$', "\\1",
+            grep('^source\\("styling/(ensure_|enforce_)', rp, value = TRUE))
 
   vf <- read_utf8("verify.R")
   a  <- grep("^PASSES <- list\\(", vf)

@@ -1,0 +1,6 @@
+Put the app you want processed in its own subfolder here.
+
+console_ui.R (via launch_console_ui.bat) recursively scans for any subfolder
+containing app-properties.json and lists it by name - that includes anything
+placed here, but also anywhere else under the repo, so this location is a
+convention for tidiness, not a hard requirement.

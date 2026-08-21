@@ -19,8 +19,8 @@
 #   * a JOIN/CONCATENATE load, which feeds a table someone else created;
 #   * a MAPPING load, which never enters the data model at all.
 
-source("qlik_tokenizer.R")
-source("qlik_reserved_words.R")
+source("shared/qlik_tokenizer.R")
+source("shared/qlik_reserved_words.R")
 
 # Words that may sit between a table label and its LOAD. Not a correctness
 # guard — the head scan takes whatever it finds — but an unrecognised word

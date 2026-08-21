@@ -59,3 +59,14 @@ INTERFACES.md
 STATE.md
 PLAN-comment-substream.md
 dlmf-log.md
+
+# 2026-08-21 folder reorg: console_ui.R writes results here, regenerated from
+# the input app each run. The placeholder note IS tracked (explicit name, not
+# matched by the wildcards) so the folder exists and explains itself on a
+# fresh clone.
+outputs/*
+!outputs/RESULTS_LAND_HERE.txt
+
+# input-apps/ has no generated content to ignore - only its placeholder note
+# is tracked; whatever a user drops in there is theirs to manage, not ignored
+# by this repo (they know what they put there).
