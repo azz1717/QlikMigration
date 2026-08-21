@@ -256,22 +256,20 @@ if (!.found) {
 	}
 }
 
-# --- rungs 7-8: the space id, then the apps in it ------------------------
-# PRIMARY: `space filter --names <name> --quiet` returns just the id, one
-# line, no parsing. From the documented reference (qlik.dev, checked
-# 2026-08-21), not inferred. An earlier version of this rung guessed the id
-# positionally from `space ls` output without checking the docs at all; Adam
-# called that out and he was right to.
+# --- rungs 7-9: the space id, verified, then the apps in it --------------
+# `space filter --names <name> --quiet` is what qlik.dev documents, and it is
+# NOT AVAILABLE on this tenant: qlik-cli 3.2.0 answers
+#   Error: unknown flag: --names
+# (measured on the VM 2026-08-21). The published reference describes some
+# other version. The call is gone rather than kept as a disabled branch -
+# it cost a subprocess and a confusing screen line to tell us nothing.
 #
-# FALLBACK: that positional heuristic is kept, and still labelled a guess on
-# screen, for one specific reason - `space filter` is documented as
-# EXPERIMENTAL and may change between releases. If it has changed on the
-# tenant's CLI build, the fallback still produces an answer rather than
-# costing a whole round-trip.
+# So the id comes from the positional heuristic below, which is SAFE ONLY
+# BECAUSE rung 8 verifies it against the tenant. Heuristic proposes, `space
+# get` disposes: if the guess were ever wrong, rung 8 fails loudly instead of
+# quietly listing the apps of some other space.
 SPACE_ID <- NA
 .id_how  <- ""
-rf <- .run_qlik(QLIK, c("space", "filter", "--names", SPACE_NAME, "--quiet"),
-                "05b-space-filter")
 
 # An id must LOOK like one before it is believed. .run_qlik merges stderr into
 # stdout (stderr = TRUE), so a command that succeeds while printing a warning
@@ -282,12 +280,7 @@ rf <- .run_qlik(QLIK, c("space", "filter", "--names", SPACE_NAME, "--quiet"),
 # the one outcome worth spending code to prevent.
 .looks_like_id <- function(s) grepl("^[A-Za-z0-9_-]{8,}$", s)
 
-if (rf$status == 0) {
-	.cand <- trimws(rf$out)
-	.cand <- .cand[nzchar(.cand) & .looks_like_id(.cand)]
-	if (length(.cand)) { SPACE_ID <- .cand[1]; .id_how <- " (filter)" }
-}
-if (is.na(SPACE_ID) && .found) {
+if (.found) {
 	flat <- paste(.haystack, collapse = "\n")
 	at <- regexpr(SPACE_NAME, flat, fixed = TRUE)
 	if (at > 0) {
@@ -299,24 +292,15 @@ if (is.na(SPACE_ID) && .found) {
 			.hit <- sub('.*"([^"]+)"$', "\\1", frag)
 			# Same believability test as the filter path above - the heuristic
 			# has more ways to go wrong, not fewer.
-			if (.looks_like_id(.hit)) { SPACE_ID <- .hit; .id_how <- " (guess)" }
+			if (.looks_like_id(.hit)) { SPACE_ID <- .hit; .id_how <- " (unverified)" }
 		}
 	}
 }
 apps <- NULL
 if (is.na(SPACE_ID)) {
-	.record(7, "space id", FALSE,
-	        paste0("filter exit ", rf$status, ", fallback found none"))
+	.record(7, "space id", FALSE, "no id found near that name")
 } else {
 	.record(7, "space id", TRUE, paste0(SPACE_ID, .id_how))
-	# On the real VM (2026-08-21) this printed "(guess)": `space filter` did
-	# not produce an id and the fallback did. WHY it failed never reached the
-	# screen, so it stayed a mystery for a whole cycle. Now it does - one line,
-	# only when the fallback was actually needed.
-	if (.id_how == " (guess)") {
-		.say("     filter exit ", rf$status, ": ",
-		     .trunc(if (length(rf$out)) rf$out[1] else "(no output)", 34))
-	}
 
 	# --- rung 8: is that id actually the right space? --------------------
 	# The heuristic takes the id nearest-PRECEDING the name, which is correct
