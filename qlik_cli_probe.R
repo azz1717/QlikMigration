@@ -143,10 +143,15 @@ if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR)
 cat("\n"); .rule()
 .say(" qlik probe                        ", format(Sys.time(), "%Y-%m-%d %H:%M"))
 
+# CONFIG FILE ONLY. Adam has no permission to modify PATH on these VMs, so a
+# PATH lookup is dead code that only invents ways to be wrong - an earlier
+# version added one and built a "no setup needed" story on top of it that was
+# never true here. The file is created once per VM by pasting one line into
+# Notepad; it is gitignored, so pulling a fresh snapshot never clobbers it.
 if (!file.exists(CONFIG_FILE)) {
 	.rule()
-	.say(" NO ", CONFIG_FILE, " - create it in ", PROJECT_DIR)
-	.say(" containing one line, the full path to qlik.exe, e.g.")
+	.say(" NO ", CONFIG_FILE, " in ", PROJECT_DIR)
+	.say(" Create it (Notepad) containing one line, the path to qlik.exe:")
 	.say("     D:\\installed software\\qlik-cli\\qlik.exe")
 	.rule(); quit(status = 1)
 }
