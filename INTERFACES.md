@@ -757,12 +757,26 @@ entry current in the same commit that changes its function.
 - `SPACE_NAME` at the top is the space it looks for. Change that constant to
   probe a different one.
 
-## qlik_probe.bat — double-click launcher for the above
+## find_rscript.bat — shared Rscript.exe lookup for every launcher
 
-- Mirrors `launch_console_ui.bat`: `cd /d "%~dp0"`, run Rscript, `pause`. The
-  `pause` is load-bearing — without it the window closes before it can be
-  photographed.
-- Pins `R-4.3.1`, which is the VM's version, and checks that path exists first
-  so a wrong version prints which path it wanted instead of cmd's bare "cannot
-  find the path specified". NOTE: `launch_console_ui.bat` still pins 4.5.2; if
-  both must run on one machine that inconsistency needs settling.
+- `call find_rscript.bat`, then use `%RS%`. Exits 1 with `RS` empty if nothing
+  is found. Has NO `setlocal` — that is deliberate, since leaving `RS` set in
+  the caller's scope is the entire point. Both `.bat` launchers call it; a
+  third must too rather than growing a second copy of the lookup.
+- Scans `R-*` subfolders under `%ProgramFiles%\R`, `%ProgramFiles(x86)%\R`,
+  `C:\R`, `D:\R` in ascending name order, last match winning, so the newest
+  installed version is preferred. PATH is consulted only afterwards and only as
+  a courtesy — the target VMs have no R on PATH and the account cannot add one.
+- GOTCHA: `%ProgramFiles(x86)%` is copied to `PF86` before use and never
+  referenced inline. The parentheses in its NAME break cmd's parser inside a
+  parenthesised block.
+- WHY IT EXISTS: the VM has only R-4.3.1 and this dev machine has 4.5.2, so any
+  pinned path is wrong on one of them. Pinning forced a hand edit to
+  `launch_console_ui.bat` on the VM which every `git pull` then reverted.
+
+## qlik_probe.bat / launch_console_ui.bat — double-click launchers
+
+- `cd /d "%~dp0"`, `call find_rscript.bat`, run the script, `pause`. Neither
+  pins an R version; both print where they looked if the lookup fails.
+- The `pause` in `qlik_probe.bat` is load-bearing — without it the window
+  closes before the result can be photographed (DESIGN §8.5).

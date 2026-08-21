@@ -98,7 +98,7 @@ VERBOSE     <- "--verbose" %in% commandArgs(trailingOnly = TRUE)
 # Invocation follows console_ui.R:72 exactly - command passed UNQUOTED,
 # arguments individually shQuote()d. That pairing is already proven against a
 # path containing a space ("C:\Program Files\R\..."), the same hazard as
-# "D:\installed software\qlik-cli\". Do not "fix" this by shQuote()ing the
+# "D:\software-installed\qlik-cli\". Do not "fix" this by shQuote()ing the
 # command too; on Windows that double-quotes it and it stops resolving.
 #
 # timeout guards the console-input trap: if qlik ever prompts (expired
@@ -156,7 +156,7 @@ if (!file.exists(CONFIG_FILE)) {
 	.rule()
 	.say(" NO ", CONFIG_FILE, " in ", PROJECT_DIR)
 	.say(" Create it (Notepad) containing one line, the path to qlik.exe:")
-	.say("     D:\\installed software\\qlik-cli\\qlik.exe")
+	.say("     D:\\software-installed\\qlik-cli\\qlik.exe")
 	.rule(); quit(status = 1)
 }
 .cfg <- trimws(readLines(CONFIG_FILE, warn = FALSE))
