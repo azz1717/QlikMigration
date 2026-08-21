@@ -309,14 +309,47 @@ if (is.na(SPACE_ID)) {
 	        paste0("filter exit ", rf$status, ", fallback found none"))
 } else {
 	.record(7, "space id", TRUE, paste0(SPACE_ID, .id_how))
-	r8 <- .run_qlik(QLIK, c("app", "ls", "--spaceId", SPACE_ID), "06-apps")
-	if (r8$status != 0) {
-		.record(8, "Q app ls", FALSE, paste0("exit ", r8$status))
-		.explain(r8); .capture_help(QLIK, "app", "06-app-help")
+	# On the real VM (2026-08-21) this printed "(guess)": `space filter` did
+	# not produce an id and the fallback did. WHY it failed never reached the
+	# screen, so it stayed a mystery for a whole cycle. Now it does - one line,
+	# only when the fallback was actually needed.
+	if (.id_how == " (guess)") {
+		.say("     filter exit ", rf$status, ": ",
+		     .trunc(if (length(rf$out)) rf$out[1] else "(no output)", 34))
+	}
+
+	# --- rung 8: is that id actually the right space? --------------------
+	# The heuristic takes the id nearest-PRECEDING the name, which is correct
+	# only if id comes before name inside each object. On this tenant it does
+	# (keys: id,type,ownerId,tenantId,name,...), so the guess is probably
+	# right - but "probably" is not a foundation to build a migration on.
+	# `space get <id>` (documented, qlik.dev) closes the loop: ask the tenant
+	# what that id IS, and check the answer says "On Prem Apps".
+	rv <- .run_qlik(QLIK, c("space", "get", SPACE_ID), "07-space-get")
+	.vok <- rv$status == 0 && any(grepl(SPACE_NAME, rv$out, fixed = TRUE))
+	.record(8, "verify id", .vok,
+	        if (.vok) "space get returns that name"
+	        else paste0("exit ", rv$status, ", name NOT in reply"))
+	if (!.vok) .explain(rv)
+
+	# --- rung 9: the apps in it ------------------------------------------
+	# --limit for the same pagination reason as the space listing. The plain
+	# listing is printed verbatim because it came back as 3 lines of TEXT, and
+	# "3 lines, text" told us nothing about whether those were apps, a warning,
+	# or an empty result. Small enough to just show.
+	r9 <- .run_qlik(QLIK, c("app", "ls", "--spaceId", SPACE_ID,
+	                        "--limit", "1000"), "08-apps")
+	if (r9$status != 0) {
+		.record(9, "Q app ls", FALSE, paste0("exit ", r9$status))
+		.explain(r9); .capture_help(QLIK, "app", "08-app-help")
 	} else {
-		apps <- r8$out
-		.record(8, "Q app ls", TRUE,
-		        paste0(length(r8$out), " lines, ", .shape_of(r8$out)))
+		.record(9, "Q app ls", TRUE,
+		        paste0(length(r9$out), " lines, ", .shape_of(r9$out)))
+		for (ln in utils::head(r9$out, 5L)) .say("     | ", ln)
+		if (length(r9$out) > 5L) .say("     | ... ", length(r9$out) - 5L, " more")
+		# Separate --json call purely for the key digest; not printed.
+		apps <- .run_qlik(QLIK, c("app", "ls", "--spaceId", SPACE_ID,
+		                          "--limit", "1000", "--json"), "08-apps-json")$out
 	}
 }
 
