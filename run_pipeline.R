@@ -96,11 +96,11 @@ PASS_LABELS <- c("explicit aliases", "bracket references", "leading commas",
 USAGE <- paste(
   "Reformat a Qlik load script to the house style guide.",
   "",
-  "  Rscript run_pipeline.R [options] [input-file] [output-file]",
+  "  Rscript run_pipeline.R [options] input-file output-file",
   "",
-  "Arguments — both optional, and positional (order matters):",
-  "  input-file    script to read.   Default: [Grant Managing Region].txt",
-  "  output-file   file to write.    Default: script_out.txt",
+  "Arguments — BOTH required, positional (order matters). No default input:",
+  "  input-file    script to read",
+  "  output-file   file to write",
   "",
   "Options:",
   "  --help, -h    show this text and exit",
@@ -139,15 +139,25 @@ if (length(positional) > 2) {
        "\n  A path containing spaces must be quoted.", call. = FALSE)
 }
 
-input_path  <- if (length(positional) >= 1) positional[1] else "[Grant Managing Region].txt"
-output_path <- if (length(positional) >= 2) positional[2] else "script_out.txt"
-
+# No silent default input. This used to fall back to the dev fixture
+# ([Grant Managing Region].txt) when called with no arguments - fine here,
+# but on a VM someone runs this because they have a real app to process, not
+# to develop against a fixture. A missed argument would have silently styled
+# the WRONG script and handed back a plausible-looking result: a real Qlik
+# load file, correctly formatted, that simply is not their app. Confusing
+# output is worse than none (Adam 2026-08-21). Requiring both names always
+# means the failure mode for a missed argument is "here is the usage text",
+# not "here is someone else's script, styled".
 if (length(positional) == 0) {
-  cat("No file names given — falling back to the built-in test fixture.\n")
-  cat("  input:  ", input_path,  "\n", sep = "")
-  cat("  output: ", output_path, "\n", sep = "")
-  cat("Run with --help to see how to pass your own.\n\n")
+  cat(USAGE, "\n", sep = "")
+  quit(save = "no", status = 1)
 }
+if (length(positional) == 1) {
+  stop("an output file name is required alongside the input file.\n",
+       "  Run with --help to see the usage.", call. = FALSE)
+}
+input_path  <- positional[1]
+output_path <- positional[2]
 
 # --- check the paths before doing any work -------------------------------
 if (!file.exists(input_path)) {
