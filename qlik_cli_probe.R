@@ -205,7 +205,14 @@ if (r3$status != 0) {
 # --- rungs 4-5: list spaces ----------------------------------------------
 # Captured both default and --json because I have never seen which one this
 # build emits; whichever is structured becomes what the promoted version uses.
-r4 <- .run_qlik(QLIK, c("space", "ls"), "04-space-ls")
+# --limit is NOT optional here. qlik-cli paginates: without it the API's own
+# default page size applies (20 on some endpoints), so a tenant with more
+# spaces than that silently returns a partial list - and a substring test
+# against a partial list reports "NOT in listing" for a space that is present
+# and reachable. That is exactly what rung 6 did on Adam's first real run
+# (2026-08-21). The listing was short, not the tenant.
+SPACE_LS <- c("space", "ls", "--limit", "1000")
+r4 <- .run_qlik(QLIK, SPACE_LS, "04-space-ls")
 if (r4$status != 0) {
 	.record(4, "Q space ls", FALSE, paste0("exit ", r4$status))
 	.explain(r4); .capture_help(QLIK, "space", "04-space-help")
@@ -213,7 +220,7 @@ if (r4$status != 0) {
 	.record(4, "Q space ls", TRUE,
 	        paste0(length(r4$out), " lines, ", .shape_of(r4$out)))
 }
-r4j <- .run_qlik(QLIK, c("space", "ls", "--json"), "05-space-json")
+r4j <- .run_qlik(QLIK, c(SPACE_LS, "--json"), "05-space-json")
 if (r4j$status != 0) {
 	.record(5, "  + --json", FALSE, paste0("exit ", r4j$status, ", flag may not exist"))
 } else {
@@ -227,7 +234,27 @@ if (r4j$status != 0) {
 # whole design avoids.
 .haystack <- c(r4$out, r4j$out)
 .found <- any(grepl(SPACE_NAME, .haystack, fixed = TRUE))
-.record(6, SPACE_NAME, .found, if (.found) "found" else "NOT in listing")
+.record(6, SPACE_NAME, .found,
+        if (.found) "found" else paste0("not in ", length(.haystack), " lines"))
+
+# When it is NOT found, the names that WERE returned are the whole diagnosis,
+# and they separate the only two explanations without another round-trip:
+# a SHORT list means pagination truncated it (see --limit above), while a full
+# list containing something like "On-Prem Apps" means the name in SPACE_NAME
+# is simply wrong. Printing the count alongside is what makes those two
+# distinguishable. Capped at two lines so the screen still fits a photo.
+if (!.found) {
+	.nm <- regmatches(paste(.haystack, collapse = " "),
+	                  gregexpr('"name"[[:space:]]*:[[:space:]]*"([^"]+)"',
+	                           paste(.haystack, collapse = " ")))[[1]]
+	.nm <- unique(sub('.*"([^"]+)"$', "\\1", .nm))
+	if (length(.nm)) {
+		.say("   ", length(.nm), " space name(s) returned:")
+		.say("   ", .trunc(paste(.nm, collapse = ", "), SCREEN_W - 6))
+	} else {
+		.say("   no \"name\" keys found - listing may not be JSON")
+	}
+}
 
 # --- rungs 7-8: the space id, then the apps in it ------------------------
 # PRIMARY: `space filter --names <name> --quiet` returns just the id, one
