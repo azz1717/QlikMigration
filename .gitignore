@@ -49,8 +49,11 @@ report_mock.html
 app-unbuilt/
 app2-unbuilt/
 
-# Dev-only pipeline gate - never run on a VM, only before a push here.
+# Dev-only pipeline gates - never run on a VM, only before a push here.
+# Bare names (no leading /) match at any depth, so this still covers
+# verify.R now that it lives at styling/verify.R (2026-08-21 reorg).
 verify.R
+verify_docs.R
 
 # Workflow docs other than README.md.
 CLAUDE.md

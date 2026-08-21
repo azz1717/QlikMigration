@@ -38,9 +38,16 @@
 # Same commandArgs() self-location as run_pipeline.R and verify.R: --file= is
 # the only method that resolves under plain `Rscript file.R` (sys.frame()$ofile
 # does not - verified 2026-08-21). Deliberately the same idiom, not a variant.
+#
+# EXTRA dirname() (2026-08-21 reorg): lives one folder below repo root
+# (diagnostics/) now, but CONFIG_FILE and OUT_DIR below are meant to be
+# repo-root-relative (qlik_cli_path.txt is created at root, paired with the
+# tracked .example there) - landing PROJECT_DIR on diagnostics/ instead would
+# silently look for the config one level away from where it is documented
+# to live.
 .file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 PROJECT_DIR <- if (length(.file_arg)) {
-	tryCatch(dirname(normalizePath(sub("^--file=", "", .file_arg[1]))),
+	tryCatch(dirname(dirname(normalizePath(sub("^--file=", "", .file_arg[1])))),
 	         error = function(e) NA)
 } else NA
 if (is.na(PROJECT_DIR) || !dir.exists(PROJECT_DIR)) {

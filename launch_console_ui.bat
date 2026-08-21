@@ -8,5 +8,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-"%RS%" console_ui.R
+"%RS%" ui/console_ui.R
 pause

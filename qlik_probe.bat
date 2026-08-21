@@ -8,6 +8,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-"%RS%" qlik_cli_probe.R %*
+"%RS%" diagnostics\qlik_cli_probe.R %*
 rem pause is load-bearing: the window must stay open to be photographed.
 pause

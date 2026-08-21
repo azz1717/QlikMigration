@@ -78,14 +78,14 @@ open(.cui_stdin, "r")
 	}
 	output <- file.path(.cui_output_dir(), paste0(basename(app$dir), "-script_out.txt"))
 	cat("Formatting", input, "->", output, "\n")
-	status <- system2(RSCRIPT, c(shQuote("run_pipeline.R"), shQuote(input), shQuote(output)))
+	status <- system2(RSCRIPT, c(shQuote("styling/run_pipeline.R"), shQuote(input), shQuote(output)))
 	if (status != 0) cat("run_pipeline.R exited with status", status, "\n") else cat("Done.\n")
 }
 
 .cui_run_report <- function(app) {
 	output <- file.path(.cui_output_dir(), paste0(basename(app$dir), "-report.html"))
 	cat("Rendering report for", app$title, "->", output, "\n")
-	status <- system2(RSCRIPT, c(shQuote("render_report.R"), shQuote(app$dir), "--out", shQuote(output)))
+	status <- system2(RSCRIPT, c(shQuote("analysis/render_report.R"), shQuote(app$dir), "--out", shQuote(output)))
 	if (status != 0) cat("render_report.R exited with status", status, "\n") else cat("Done.\n")
 }
 

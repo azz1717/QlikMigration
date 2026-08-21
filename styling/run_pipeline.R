@@ -57,9 +57,19 @@
 # "not that many frames on the stack" under Rscript). The check exists so
 # a detection failure produces one plain sentence rather than seven
 # confusing "cannot open file" errors.
+#
+# EXTRA dirname() (2026-08-21 reorg): this script now lives one folder
+# below repo root (styling/), but PROJECT_DIR must still resolve to the
+# TRUE root, not to styling/ - every source() call below and every
+# user-supplied relative input/output path is resolved against whatever
+# this ends up being. Landing on styling/ instead would silently break
+# both: source() calls would need rewriting to be styling/-relative, and a
+# user typing a path relative to the repo root (as README shows) would
+# have it misresolved one level down with no error, just a wrong or
+# missing file.
 .file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 PROJECT_DIR <- if (length(.file_arg)) {
-  tryCatch(dirname(normalizePath(sub("^--file=", "", .file_arg[1]))),
+  tryCatch(dirname(dirname(normalizePath(sub("^--file=", "", .file_arg[1])))),
            error = function(e) NA)
 } else NA
 if (is.na(PROJECT_DIR) || !dir.exists(PROJECT_DIR)) {
@@ -246,7 +256,9 @@ if (want_changes) {
 
 }
 
-# To poke at the results by hand instead, open R in this folder and run
-#   source("run_pipeline.R")
+# To poke at the results by hand instead, open R at the REPO ROOT (not this
+# folder - PROJECT_DIR above only self-locates under `Rscript file.R`, not
+# source(), so this file's own guard would otherwise stop it) and run
+#   source("styling/run_pipeline.R")
 # then inspect r1$changes ... r7$changes directly (head(r4$changes), and so
 # on). Sourcing keeps the objects alive; running via Rscript does not.
