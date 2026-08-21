@@ -10,7 +10,7 @@ stage 3 GREEN 119/0. Retargeting design written up: DESIGN §6.6 — stage order
 - §4.10 scope: commented-out TABLES and multi-line commented expressions
   stay unstyled. Adam's call whether to extend.
 - qlik-cli from R: `qlik_cli_probe.R` written 2026-08-21, NOT yet run on a
-  VM. Rung 7's space-id extraction is a LABELLED heuristic, not a parser.
+  VM. Space id via documented `space filter --names -q`; heuristic is fallback.
 - Parked, Adam's: before/after pruning report; explicit+unique table names;
   comment-styling sub-stream, PLAN-comment-substream.md (§4.10 scope, above).
 - What can the work machine run? Decides whether jsonlite can be the oracle

@@ -1,28 +1,39 @@
-# qlik_cli_probe.R — can R invoke qlik-cli, and can it reach a named space?
+# qlik_cli_probe.R - can R invoke qlik-cli, and can it reach a named space?
 # SPIKE, not shipped tooling. Not a pass, not sourced by run_pipeline.R, no
 # INTERFACES.md entry yet by design (Adam 2026-08-21: "spike now, promote if
 # it works"). Promote only once it has run green on a real VM.
 #
-# WHY IT IS SHAPED LIKE THIS. It is written to be run somewhere I cannot see,
-# on a machine I cannot reach, where one round-trip costs a push/pull cycle.
-# So every rung reports independently, nothing stops at the first failure that
-# later rungs can still survive, and a failed subcommand automatically captures
-# its own --help. The point is that ONE run produces enough evidence to fix the
-# next thing, instead of three runs producing three guesses.
+# THE RETURN PATH DICTATES THE DESIGN. Adam 2026-08-21: getting files OFF the
+# VM takes ~30 minutes per file, no zip, and is worse for several. The one
+# cheap channel back is a PHOTOGRAPH OF THE SCREEN. So the entire output is
+# built to survive being read off a photo:
+#   - never wider than SCREEN_W, because a wrapped line doubles the height and
+#     a wide one forces a font too small to read;
+#   - one line per rung, whole run on one screen;
+#   - the qlik path printed ONCE as "Q" instead of on every hint line (that
+#     alone was pushing lines to 190 characters);
+#   - NOTHING is ever asked for as a file.
+# The first version of this script failed all four and ended by asking him to
+# send the output folder - the one thing he cannot do.
 #
-# THE ACTUAL QUESTION is narrower than "does qlik work" — Adam has already
-# confirmed qlik-cli runs and connects to the tenant by hand. What is unproven
-# is whether it still works when R is the one invoking it: PATH, quoting of a
-# path containing spaces, and whether the saved qlik context is visible to a
-# child process of R. So every rung prints the equivalent hand-runnable command
-# (HINT lines). If a rung fails from R but that same line works when pasted
-# into a shell, the fault is in the R invocation, which is the whole subject of
-# the test. That distinction is the deliverable.
+# HOW A PARSER GETS WRITTEN FROM A PHOTO. I cannot see this output's real
+# shape, and json_strings.R cannot help (it extracts string literals and
+# discards structure by design - INTERFACES.md - so it cannot map a name to
+# an id). What a parser actually needs is the KEY NAMES, not the data. So the
+# probe prints a one-line key digest per listing. One photo of that is enough
+# to write the real thing; the raw dumps stay on disk purely as a fallback.
+#
+# THE NARROW QUESTION. Adam has already confirmed qlik-cli runs and reaches
+# the tenant by hand, so this is not "does qlik work". It is whether it still
+# works with R as the caller: quoting of a path containing spaces, and whether
+# the saved qlik context is visible to a child process of R. A failed rung
+# prints its command as "Q <args>" - if that works pasted into a shell but
+# fails here, the fault is R's invocation, and THAT is the finding.
 
 # --- where the project lives ---------------------------------------------
 # Same commandArgs() self-location as run_pipeline.R and verify.R: --file= is
 # the only method that resolves under plain `Rscript file.R` (sys.frame()$ofile
-# does not — verified 2026-08-21). Deliberately the same idiom, not a variant.
+# does not - verified 2026-08-21). Deliberately the same idiom, not a variant.
 .file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 PROJECT_DIR <- if (length(.file_arg)) {
 	tryCatch(dirname(normalizePath(sub("^--file=", "", .file_arg[1]))),
@@ -38,177 +49,213 @@ CONFIG_FILE <- "qlik_cli_path.txt"
 OUT_DIR     <- "qlik_probe_out"
 SPACE_NAME  <- "On Prem Apps"
 TIMEOUT_S   <- 60
+SCREEN_W    <- 72      # hard ceiling; nothing printed may exceed this
+VERBOSE     <- "--verbose" %in% commandArgs(trailingOnly = TRUE)
 
-# --- rung bookkeeping -----------------------------------------------------
-# Results accumulate into one frame so the run ends with a summary that fits
-# on a screen. Adam relays that summary back; the raw files back it up.
+# --- narrow output helpers ------------------------------------------------
+.trunc <- function(s, n) {
+	s <- gsub("[\r\n\t]+", " ", paste(s, collapse = " "))
+	# ASCII "..." not a Unicode ellipsis: this is read off a photo of a Windows
+	# console, whose codepage may not be UTF-8, and a mojibake character in the
+	# middle of truncated output is exactly the noise that costs a re-shoot.
+	if (nchar(s) > n) paste0(substr(s, 1, n - 3), "...") else s
+}
+.rule <- function() cat(strrep("-", SCREEN_W), "\n", sep = "")
+.say  <- function(...) cat(.trunc(paste0(...), SCREEN_W), "\n", sep = "")
+
 .results <- list()
 .record <- function(rung, label, ok, detail) {
-	.results[[length(.results) + 1L]] <<-
-		list(rung = rung, label = label, ok = ok, detail = detail)
-	cat(sprintf("  [%s] %d. %s%s\n",
-	            if (ok) "PASS" else "FAIL", rung, label,
-	            if (nzchar(detail)) paste0(" — ", detail) else ""))
+	.results[[length(.results) + 1L]] <<- list(ok = ok)
+	# Fixed columns so the eye can run down the PASS/FAIL stripe in a photo
+	# without reading the labels at all.
+	cat(sprintf(" %d %-14s %-4s %s\n", rung, .trunc(label, 14),
+	            if (ok) "PASS" else "FAIL",
+	            .trunc(detail, SCREEN_W - 23)))
+}
+
+# What a parser needs from output I have never seen: the key names. Distinct,
+# in first-seen order, one line. This is the whole point of the redesign - it
+# replaces "send me the JSON file" with something photographable.
+.keys_of <- function(lines) {
+	m <- gregexpr('"([A-Za-z_][A-Za-z0-9_]*)"[[:space:]]*:', paste(lines, collapse = " "))
+	hits <- regmatches(paste(lines, collapse = " "), m)[[1]]
+	if (!length(hits)) return(NA_character_)
+	paste(unique(sub('^"([^"]+)".*$', "\\1", hits)), collapse = ",")
+}
+
+# Whether we are even looking at JSON decides which of the two space listings
+# the promoted version should use, so it is worth one word on screen.
+.shape_of <- function(lines) {
+	txt <- paste(lines, collapse = "")
+	if (grepl("[{\\[]", txt) && grepl('"[^"]+"[[:space:]]*:', txt)) "json" else "text"
 }
 
 # --- running qlik ---------------------------------------------------------
-# Invocation follows console_ui.R:72 exactly — command passed UNQUOTED,
-# arguments individually shQuote()d. That pairing is already proven on a path
-# containing a space ("C:\Program Files\R\..."), which is the same hazard as
-# "D:\installed software\qlik-cli\". Do not "fix" this by wrapping the command
-# in shQuote() too; on Windows that double-quotes it and it stops resolving.
+# Invocation follows console_ui.R:72 exactly - command passed UNQUOTED,
+# arguments individually shQuote()d. That pairing is already proven against a
+# path containing a space ("C:\Program Files\R\..."), the same hazard as
+# "D:\installed software\qlik-cli\". Do not "fix" this by shQuote()ing the
+# command too; on Windows that double-quotes it and it stops resolving.
 #
-# timeout is the guard against the console-input trap: if qlik ever decides to
-# prompt (expired context, confirmation), an un-timed system2() hangs the whole
-# session with no way out. R kills it at TIMEOUT_S and reports status 124.
-.qlik_hint <- function(qlik, args) {
-	paste(c(shQuote(qlik), args), collapse = " ")
-}
-
+# timeout guards the console-input trap: if qlik ever prompts (expired
+# context, a confirmation), an un-timed system2() hangs the session with no
+# way out. R kills it at TIMEOUT_S, which surfaces as status 124.
 .run_qlik <- function(qlik, args, slug) {
-	hint <- .qlik_hint(qlik, args)
-	cat("      HINT (run by hand if this rung fails): ", hint, "\n", sep = "")
 	out <- tryCatch(
 		suppressWarnings(system2(qlik, shQuote(args),
 		                         stdout = TRUE, stderr = TRUE,
 		                         timeout = TIMEOUT_S)),
-		error = function(e) structure(paste("R could not start the process:",
+		error = function(e) structure(paste("could not start process:",
 		                                    conditionMessage(e)),
 		                              status = -1L))
 	status <- attr(out, "status")
 	if (is.null(status)) status <- 0L
 	if (!is.null(slug)) {
-		writeLines(c(paste("$", hint), paste("# exit status:", status), "", out),
+		writeLines(c(paste("$ Q", paste(args, collapse = " ")),
+		             paste("# exit:", status), "", out),
 		           file.path(OUT_DIR, paste0(slug, ".txt")))
 	}
-	list(out = out, status = status, hint = hint)
+	list(out = out, status = status, args = paste(args, collapse = " "))
 }
 
-# A failed subcommand captures its own --help, so the log Adam sends back
-# already contains the correct usage. Costs one extra call on the failure
-# path and can save an entire round-trip when a guessed flag was wrong.
+# On failure the command and a couple of lines of its output are the whole
+# diagnosis, so they print - but capped, or several failures overflow the
+# screen and cost the photo.
+.explain <- function(r) {
+	.say("     $ Q ", r$args)
+	for (ln in utils::head(r$out, if (VERBOSE) 20L else 2L)) .say("     > ", ln)
+}
+
+# A failed subcommand captures its --help TO DISK only. It is usually long,
+# so it must never reach the screen uninvited; if a guessed flag was wrong I
+# ask for one targeted photo of that file rather than burning this one.
 .capture_help <- function(qlik, subcommand, slug) {
-	cat("      (capturing '", paste(subcommand, collapse = " "),
-	    " --help' so the correct usage comes back with this log)\n", sep = "")
-	.run_qlik(qlik, c(subcommand, "--help"), slug)
+	invisible(.run_qlik(qlik, c(subcommand, "--help"), slug))
 }
 
-cat("\nqlik-cli reachability probe\n")
-cat("Project: ", PROJECT_DIR, "\n", sep = "")
-cat(strrep("-", 68), "\n", sep = "")
-
-# Cleared, not merely created. A rung that does not run this time leaves its
-# file from LAST time sitting there, and that file is evidence I will read as
-# if it were current — a stale 06-apps-in-space.txt after a failed run says
-# the apps listed fine when it never ran at all. Caught 2026-08-21 doing
-# exactly that during stub testing. Every run starts empty so the folder can
-# only ever describe one run.
+# --- rung 1: locate qlik.exe ---------------------------------------------
+# One-line config file (Adam's call). Gitignored, so each VM carries its own
+# path and a pulled snapshot never overwrites it - which also means a fresh
+# VM has none, hence a failure message that states exactly what to create.
 if (dir.exists(OUT_DIR)) unlink(file.path(OUT_DIR, "*.txt"))
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR)
 
-# --- rung 1: locate qlik.exe ---------------------------------------------
-# One-line config file (Adam's call 2026-08-21). It is gitignored, so each VM
-# carries its own path and a pulled snapshot never overwrites it. That also
-# means a fresh VM has no config at all, which is why the failure message
-# spells out the exact file and content to create rather than just complaining.
-QLIK <- NA
-if (!file.exists(CONFIG_FILE)) {
-	.record(1, "locate qlik.exe", FALSE,
-	        paste0("no ", CONFIG_FILE))
-	cat("\n", strrep("-", 68), "\n", sep = "")
-	cat("Create ", CONFIG_FILE, " in ", PROJECT_DIR, " containing one line:\n\n",
-	    "    D:\\installed software\\qlik-cli\\qlik.exe\n\n",
-	    "(see ", CONFIG_FILE, ".example). Then run this again.\n", sep = "")
-	quit(status = 1)
-}
+cat("\n"); .rule()
+.say(" qlik probe                        ", format(Sys.time(), "%Y-%m-%d %H:%M"))
 
-.cfg <- readLines(CONFIG_FILE, warn = FALSE)
-.cfg <- trimws(.cfg)
+if (!file.exists(CONFIG_FILE)) {
+	.rule()
+	.say(" NO ", CONFIG_FILE, " - create it in ", PROJECT_DIR)
+	.say(" containing one line, the full path to qlik.exe, e.g.")
+	.say("     D:\\installed software\\qlik-cli\\qlik.exe")
+	.rule(); quit(status = 1)
+}
+.cfg <- trimws(readLines(CONFIG_FILE, warn = FALSE))
 .cfg <- .cfg[nzchar(.cfg) & !startsWith(.cfg, "#")]
 if (!length(.cfg)) {
-	.record(1, "locate qlik.exe", FALSE,
-	        paste0(CONFIG_FILE, " is empty"))
-	quit(status = 1)
+	.rule(); .say(" ", CONFIG_FILE, " is empty."); .rule(); quit(status = 1)
 }
-# Quotes are stripped because pasting from Explorer's "Copy as path" wraps the
-# path in them, and that is the likeliest way this file gets filled in.
+# Quotes stripped because Explorer's "Copy as path" wraps the path in them,
+# which is the likeliest way this file gets filled in.
 QLIK <- gsub('^"|"$', "", .cfg[1])
 
+.say(" Q = ", QLIK)
+.rule()
+
 if (!file.exists(QLIK)) {
-	.record(1, "locate qlik.exe", FALSE, paste0("not found: ", QLIK))
-	cat("\n", strrep("-", 68), "\n", sep = "")
-	cat("That path came from ", CONFIG_FILE, ". Check it and run again.\n", sep = "")
+	.record(1, "locate qlik", FALSE, "no such file")
+	.rule(); .say(" Fix the path in ", CONFIG_FILE, " and re-run."); .rule()
 	quit(status = 1)
 }
-.record(1, "locate qlik.exe", TRUE, QLIK)
+.record(1, "locate qlik", TRUE, "")
 
 # --- rung 2: can R invoke it at all? -------------------------------------
-# The core question. Everything below is meaningless if this fails, so this
-# is the one rung that stops the run.
+# The core question; everything below is meaningless if it fails, so this is
+# the only rung that stops the run.
 r2 <- .run_qlik(QLIK, "version", "02-version")
 if (r2$status != 0) {
-	.record(2, "invoke qlik from R", FALSE,
-	        paste0("exit ", r2$status,
-	               if (r2$status == 124) " (TIMED OUT — it may be prompting)" else ""))
-	cat("\n", strrep("-", 68), "\n", sep = "")
-	cat("STOPPING: if R cannot run 'qlik version' nothing below can work.\n",
-	    "Run the HINT line above by hand. If it works there but not here,\n",
-	    "the fault is in R's invocation and that is exactly what to report.\n", sep = "")
-	cat("Output was:\n"); cat(paste0("    ", r2$out, collapse = "\n"), "\n")
-	quit(status = 1)
+	.record(2, "Q version", FALSE,
+	        paste0("exit ", r2$status, if (r2$status == 124) " TIMEOUT" else ""))
+	.explain(r2)
+	.rule()
+	.say(" STOP: R cannot run qlik at all.")
+	.say(" Run the $ line above by hand. If it works there but not")
+	.say(" here, R's invocation is the fault - that is the finding.")
+	.rule(); quit(status = 1)
 }
-.record(2, "invoke qlik from R", TRUE, paste(r2$out, collapse = " "))
+.record(2, "Q version", TRUE, .trunc(r2$out, 40))
 
 # --- rung 3: is the saved context visible to a child of R? ---------------
-# Adam authenticates with a saved context (qlik context use), which lives in
-# his user profile. A child process of R runs as the same user, so it SHOULD
-# inherit it — but "should" is the assumption this whole day exists to test.
-r3 <- .run_qlik(QLIK, c("context", "ls"), "03-context-ls")
+# Adam authenticates with a saved context, which lives in his user profile. A
+# child of R runs as the same user so it SHOULD inherit it - "should" being
+# the assumption this whole exercise exists to test.
+r3 <- .run_qlik(QLIK, c("context", "ls"), "03-context")
 if (r3$status != 0) {
-	.record(3, "saved context visible", FALSE, paste0("exit ", r3$status))
-	.capture_help(QLIK, "context", "03-context-help")
+	.record(3, "Q context ls", FALSE, paste0("exit ", r3$status))
+	.explain(r3); .capture_help(QLIK, "context", "03-context-help")
 } else {
-	.record(3, "saved context visible", TRUE,
-	        paste0(length(r3$out), " line(s) returned"))
+	.record(3, "Q context ls", TRUE, paste0(length(r3$out), " lines"))
 }
 
-# --- rung 4: list spaces -------------------------------------------------
-# Captured TWICE, default and explicit --json. I have never seen this
-# command's output, so I am not guessing which one it is: whichever parses
-# more cleanly becomes what the promoted version uses.
-r4 <- .run_qlik(QLIK, c("space", "ls"), "04-space-ls-default")
+# --- rungs 4-5: list spaces ----------------------------------------------
+# Captured both default and --json because I have never seen which one this
+# build emits; whichever is structured becomes what the promoted version uses.
+r4 <- .run_qlik(QLIK, c("space", "ls"), "04-space-ls")
 if (r4$status != 0) {
-	.record(4, "list spaces", FALSE, paste0("exit ", r4$status))
-	.capture_help(QLIK, "space", "04-space-help")
+	.record(4, "Q space ls", FALSE, paste0("exit ", r4$status))
+	.explain(r4); .capture_help(QLIK, "space", "04-space-help")
 } else {
-	.record(4, "list spaces", TRUE, paste0(length(r4$out), " line(s)"))
+	.record(4, "Q space ls", TRUE,
+	        paste0(length(r4$out), " lines, ", .shape_of(r4$out)))
 }
-r4j <- .run_qlik(QLIK, c("space", "ls", "--json"), "05-space-ls-json")
+r4j <- .run_qlik(QLIK, c("space", "ls", "--json"), "05-space-json")
 if (r4j$status != 0) {
-	.record(5, "list spaces (--json)", FALSE,
-	        paste0("exit ", r4j$status, " — may simply not be a valid flag"))
+	.record(5, "  + --json", FALSE, paste0("exit ", r4j$status, ", flag may not exist"))
 } else {
-	.record(5, "list spaces (--json)", TRUE, paste0(length(r4j$out), " line(s)"))
+	.record(5, "  + --json", TRUE,
+	        paste0(length(r4j$out), " lines, ", .shape_of(r4j$out)))
 }
 
 # --- rung 6: is the target space there? ----------------------------------
-# A substring test, deliberately. Confirming the space is REACHABLE needs no
-# parser, and json_strings.R cannot help here — it extracts string literals
-# and discards structure by design (INTERFACES.md), so it cannot associate a
-# name with its id. Writing a real JSON parser against output I have never
-# seen is the mistake this rung is shaped to avoid.
+# A substring test, deliberately: proving the space is REACHABLE needs no
+# parser, and a parser written against unseen output is the mistake this
+# whole design avoids.
 .haystack <- c(r4$out, r4j$out)
 .found <- any(grepl(SPACE_NAME, .haystack, fixed = TRUE))
-.record(6, paste0("space '", SPACE_NAME, "' present"), .found,
-        if (.found) "matched in space listing" else "NOT found in either listing")
+.record(6, SPACE_NAME, .found, if (.found) "found" else "NOT in listing")
 
-# --- rung 7: best-effort id, then the apps in it -------------------------
-# HEURISTIC, and labelled as one: take the "id" nearest-preceding the line
-# holding the space name. That is right for a flat array of objects and wrong
-# for anything nested. It is here to get today unblocked, not to be kept —
-# the raw dumps are what a correct implementation gets written against.
+# --- rungs 7-8: the space id, then the apps in it ------------------------
+# PRIMARY: `space filter --names <name> --quiet` returns just the id, one
+# line, no parsing. From the documented reference (qlik.dev, checked
+# 2026-08-21), not inferred. An earlier version of this rung guessed the id
+# positionally from `space ls` output without checking the docs at all; Adam
+# called that out and he was right to.
+#
+# FALLBACK: that positional heuristic is kept, and still labelled a guess on
+# screen, for one specific reason - `space filter` is documented as
+# EXPERIMENTAL and may change between releases. If it has changed on the
+# tenant's CLI build, the fallback still produces an answer rather than
+# costing a whole round-trip.
 SPACE_ID <- NA
-if (.found) {
+.id_how  <- ""
+rf <- .run_qlik(QLIK, c("space", "filter", "--names", SPACE_NAME, "--quiet"),
+                "05b-space-filter")
+
+# An id must LOOK like one before it is believed. .run_qlik merges stderr into
+# stdout (stderr = TRUE), so a command that succeeds while printing a warning
+# hands back that warning text as its first line - and without this check that
+# text became the space id and was passed straight to `app ls --spaceId`.
+# Caught 2026-08-21 when a stub returned status 0 with an error on stderr and
+# rung 7 cheerfully reported "not a command" as the id. Wrong AND confident is
+# the one outcome worth spending code to prevent.
+.looks_like_id <- function(s) grepl("^[A-Za-z0-9_-]{8,}$", s)
+
+if (rf$status == 0) {
+	.cand <- trimws(rf$out)
+	.cand <- .cand[nzchar(.cand) & .looks_like_id(.cand)]
+	if (length(.cand)) { SPACE_ID <- .cand[1]; .id_how <- " (filter)" }
+}
+if (is.na(SPACE_ID) && .found) {
 	flat <- paste(.haystack, collapse = "\n")
 	at <- regexpr(SPACE_NAME, flat, fixed = TRUE)
 	if (at > 0) {
@@ -217,30 +264,37 @@ if (.found) {
 		if (ids[1] > 0) {
 			last <- ids[length(ids)]
 			frag <- substr(before, last, last + attr(ids, "match.length")[length(ids)] - 1)
-			SPACE_ID <- sub('.*"([^"]+)"$', "\\1", frag)
+			.hit <- sub('.*"([^"]+)"$', "\\1", frag)
+			# Same believability test as the filter path above - the heuristic
+			# has more ways to go wrong, not fewer.
+			if (.looks_like_id(.hit)) { SPACE_ID <- .hit; .id_how <- " (guess)" }
 		}
 	}
 }
+apps <- NULL
 if (is.na(SPACE_ID)) {
-	.record(7, "extract space id", FALSE,
-	        "heuristic found none — read qlik_probe_out/ and tell me the real shape")
+	.record(7, "space id", FALSE,
+	        paste0("filter exit ", rf$status, ", fallback found none"))
 } else {
-	.record(7, "extract space id", TRUE, paste0(SPACE_ID, " (heuristic)"))
-
-	r8 <- .run_qlik(QLIK, c("app", "ls", "--spaceId", SPACE_ID), "06-apps-in-space")
+	.record(7, "space id", TRUE, paste0(SPACE_ID, .id_how))
+	r8 <- .run_qlik(QLIK, c("app", "ls", "--spaceId", SPACE_ID), "06-apps")
 	if (r8$status != 0) {
-		.record(8, "list apps in space", FALSE, paste0("exit ", r8$status))
-		.capture_help(QLIK, "app", "06-app-help")
+		.record(8, "Q app ls", FALSE, paste0("exit ", r8$status))
+		.explain(r8); .capture_help(QLIK, "app", "06-app-help")
 	} else {
-		.record(8, "list apps in space", TRUE, paste0(length(r8$out), " line(s)"))
+		apps <- r8$out
+		.record(8, "Q app ls", TRUE,
+		        paste0(length(r8$out), " lines, ", .shape_of(r8$out)))
 	}
 }
 
 # --- summary --------------------------------------------------------------
-cat("\n", strrep("-", 68), "\n", sep = "")
+.rule()
 .pass <- sum(vapply(.results, function(r) isTRUE(r$ok), logical(1)))
-cat(sprintf("%d of %d rungs passed.\n", .pass, length(.results)))
-cat("Raw output: ", normalizePath(OUT_DIR), "\n", sep = "")
-cat("\nSend back: the lines above, plus the files in ", OUT_DIR, ".\n", sep = "")
-cat("Those files are what a correct parser gets written against — until then\n",
-    "rung 7 is a guess and is marked as one.\n", sep = "")
+.say(sprintf(" %d/%d PASS", .pass, length(.results)))
+# The two lines that make a photo sufficient. Without these I would be asking
+# for a JSON file, which costs half an hour and often is not possible at all.
+.say(" space keys: ", .trunc(.keys_of(.haystack), SCREEN_W - 14))
+if (!is.null(apps)) .say(" app keys:   ", .trunc(.keys_of(apps), SCREEN_W - 14))
+.say(" >> PHOTOGRAPH THIS SCREEN - it is all I need.")
+.rule()
