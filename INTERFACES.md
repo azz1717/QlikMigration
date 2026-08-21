@@ -772,7 +772,10 @@ entry current in the same commit that changes its function.
   parenthesised block.
 - WHY IT EXISTS: the VM has only R-4.3.1 and this dev machine has 4.5.2, so any
   pinned path is wrong on one of them. Pinning forced a hand edit to
-  `launch_console_ui.bat` on the VM which every `git pull` then reverted.
+  `launch_console_ui.bat` on the VM, which then got clobbered every time a
+  fresh copy of the file was brought over from the repo (no git on the VM —
+  files arrive by browser download / copy-paste, never `git pull`; see
+  [[vm-return-channel-is-a-photo]] / STATE.md).
 
 ## qlik_probe.bat / launch_console_ui.bat — double-click launchers
 
