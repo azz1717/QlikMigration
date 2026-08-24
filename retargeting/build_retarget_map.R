@@ -152,6 +152,37 @@ bm_indexes <- function(fx) {
 
 bm_is_true <- function(x) tolower(x) %in% c("true", "1", "yes", "y")
 
+#' How many DISTINCT apps read each qvd, keyed by `RelPath`.
+#'
+#' OPTIONAL: the map builds without it, because consumer data is an extract
+#' someone has to produce and its absence must not block resolution.
+#'
+#' Two traps in `qvd_consumers.csv`, both measured 2026-08-24:
+#'   * it is a producer x consumer CROSS PRODUCT — 17,187 rows collapse to
+#'     3,969 distinct path/consumer pairs, and counting rows overstates
+#'     `fusion/organisation.qvd` as 882 apps against a true 126;
+#'   * `-` is its blank, not the empty string.
+#'
+#' `QVDPathNormalized` is already in the canonical form `rp_canonical_path()`
+#' produces, so stripping the in-scope root yields a `RelPath` directly — 168
+#' of 168 in-scope paths join to `qvdlist.csv`.
+#'
+#' COVERAGE IS PARTIAL and that must not be misread: only 168 of ~2,634
+#' on-prem qvds carry consumer data. **A missing count means UNKNOWN, never
+#' zero, and never unused.** The column is NA where unknown, precisely so that
+#' nothing downstream can quietly treat absence as evidence.
+bm_consumer_counts <- function(path = "fixtures/qvd_consumers.csv") {
+  if (!file.exists(path)) return(NULL)
+  cc <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character")
+  if (!all(c("QVDPathNormalized", "ConsumerAppID") %in% names(cc))) return(NULL)
+  keep <- nzchar(cc$ConsumerAppID) & cc$ConsumerAppID != "-"
+  pr <- unique(cc[keep, c("QVDPathNormalized", "ConsumerAppID")])
+  cp <- rp_canonical_path(pr$QVDPathNormalized)
+  ok <- startsWith(cp, .RP_ROOT)
+  rel <- substring(cp[ok], nchar(.RP_ROOT) + 1L)
+  tapply(pr$ConsumerAppID[ok], rel, function(x) length(unique(x)))
+}
+
 #' Does this qvd combine or reshape more than one source?
 #'
 #' Such a qvd has no single view that can replace it however the names line
@@ -204,7 +235,7 @@ bm_suggest_sql <- function(best, qvd_name, cols, multi) {
 # --- the crunch -----------------------------------------------------------
 
 #' One row per on-prem qvd. No script is consulted.
-build_retarget_map <- function(fx, idx) {
+build_retarget_map <- function(fx, idx, consumers = NULL) {
   q   <- fx$qvd
   src <- bm_src_key(q$BestSqlObject)
   n   <- nrow(q)
@@ -262,8 +293,12 @@ build_retarget_map <- function(fx, idx) {
     payload[[i]] <- pay
   }
 
+  nconsumers <- if (is.null(consumers)) rep(NA_integer_, n) else
+    as.integer(consumers[tolower(gsub("\\\\", "/", q$RelPath))])
+
   list(map = data.frame(
         rel_path = q$RelPath, qvd_name = q$QvdName, creator_app = q$CreatorAppName,
+        n_consumer_apps = nconsumers,
         source_object = q$BestSqlObject, sql_object_match = q$SqlObjectMatch,
         load_logic = q$LoadLogic, multi_source = vapply(seq_len(n),
           function(i) bm_multi_source(q[i, ]), logical(1)),
@@ -280,17 +315,32 @@ build_retarget_map <- function(fx, idx) {
 main <- function(args) {
   outd <- if (length(args) >= 2L && args[1] == "--out") args[2] else "retargeting"
   fx  <- bm_load_fixtures()
+  cons <- bm_consumer_counts()
   fx$qvd <- bm_dedupe_qvds(fx$qvd)
   if (attr(fx$qvd, "collapsed") > 0L)
     cat("  collapsed ", attr(fx$qvd, "collapsed"),
         " duplicate qvd path row(s); creators merged\n", sep = "")
   idx <- bm_indexes(fx)
-  r   <- build_retarget_map(fx, idx)
+  r   <- build_retarget_map(fx, idx, cons)
 
   cat("build_retarget_map: ", nrow(r$map), " on-prem qvds\n", sep = "")
   v <- sort(table(r$map$verdict), decreasing = TRUE)
   for (k in names(v)) cat(sprintf("  %-22s %5d\n", k, v[[k]]))
   cat("  columns dropped by the chosen view, total: ", sum(r$map$n_columns_dropped), "\n", sep = "")
+  if (is.null(cons)) {
+    cat("  consumer counts: NOT AVAILABLE (fixtures/qvd_consumers.csv absent)\n")
+  } else {
+    known <- !is.na(r$map$n_consumer_apps)
+    cat("  consumer counts known for ", sum(known), " qvds (absence = UNKNOWN, not unused)\n", sep = "")
+    blk <- r$map[known & r$map$verdict %in% c("needs-import", "needs-creating", "multi-source"), ]
+    blk <- blk[order(-blk$n_consumer_apps), ]
+    if (nrow(blk)) {
+      cat("  top blockers by apps affected:\n")
+      for (i in seq_len(min(8L, nrow(blk))))
+        cat(sprintf("    %4d apps  %-20s %s\n", blk$n_consumer_apps[i],
+                    blk$verdict[i], blk$rel_path[i]))
+    }
+  }
 
   mfile <- file.path(outd, "retarget_map.csv")
   pfile <- file.path(outd, "retarget_payloads.json")
