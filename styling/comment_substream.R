@@ -73,13 +73,25 @@ find_comment_runs <- function(tokens) {
   if (nrow(ln) == 0) return(list(runs = list(), warnings = bs$warnings))
 
   is_line_comment <- ln$kind == "comment" & startsWith(tokens$text[ln$idx], "//")
-  idx  <- ln$idx[is_line_comment]
-  line <- ln$line[is_line_comment]
+  idx <- ln$idx[is_line_comment]
   if (length(idx) == 0) return(list(runs = list(), warnings = bs$warnings))
 
-  # contiguous == consecutive integer source lines; nothing else can occupy
-  # a line between two comments numbered N and N+1.
-  grp  <- cumsum(c(TRUE, diff(line) != 1L))
+  # Contiguous means nothing but whitespace sits between two comment-owning
+  # lines - an interior BLANK line no longer breaks a run (Adam, 2026-08-24:
+  # not a new scope call - resolved decision 3 already implies an interior
+  # gap is carried through unstyled inside ONE child stream, the same as
+  # interior prose). Anything else in the gap - live code, a block comment,
+  # a ///$tab marker - still breaks it, since those are real tokens, not
+  # whitespace. Tested by TOKEN INDEX, not by line-number arithmetic, since
+  # the gap's actual content (not its line count) is what matters here.
+  brk <- logical(length(idx)); brk[1] <- TRUE
+  if (length(idx) > 1L) {
+    for (k in 2:length(idx)) {
+      gap <- if (idx[k] > idx[k - 1L] + 1L) (idx[k - 1L] + 1L):(idx[k] - 1L) else integer(0)
+      brk[k] <- length(gap) > 0L && !all(tokens$type[gap] == "WS")
+    }
+  }
+  grp  <- cumsum(brk)
   runs <- unname(split(idx, grp))
   list(runs = runs, warnings = bs$warnings)
 }

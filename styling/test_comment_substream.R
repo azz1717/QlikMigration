@@ -84,20 +84,31 @@ source("styling/comment_substream.R")
   "\t[D] as [D]",
   "FROM x.qvd (qvd);",
   "",
+  "SET sep1 = 1;",
+  "",
   "// Old:",
   "// LOAD",
+  "",
   "// \t[E] as [E],",
   "// \t[F] as [F]",
   "// FROM y.qvd (qvd);",
   "",
+  "SET sep2 = 1;",
+  "",
   "// [G] as [G] = SubField(",
   "// [H], 1)",
+  "",
+  "SET sep3 = 1;",
   "",
   "// [Never] as [Closes] = SubField(",
   "// this paren never closes",
   "",
+  "SET sep4 = 1;",
+  "",
   "// This is just a note about the table above.",
   "// It has no brackets or commas at all.",
+  "",
+  "SET sep5 = 1;",
   "",
   "// [Mix1] as [Mix1],",
   "// Note: mix1 feeds into a downstream chart.",
@@ -133,6 +144,12 @@ source("styling/comment_substream.R")
 .r2 <- .syn_ex$runs[[2]]
 .ok("synthetic: run 2 (commented table) extracted as load_block",
     identical(.r2$status, "extracted") && identical(.r2$kind, "load_block"))
+# run 2 has an INTERIOR blank line (between "// LOAD" and its field list) -
+# the widened contiguity rule (Adam, 2026-08-24: blank lines no longer
+# break a run) must still pull all 5 comment lines into ONE run (the blank
+# line itself owns no row - it has no comment token at all), not stop at 2.
+.ok("synthetic: run 2's interior blank line does not split the run (5 lines, one run)",
+    length(.r2$comment_idx) == 5L && (.r2$line_end - .r2$line_start) == 5L)
 
 # run 3: multi-line expression, parens balance only across the whole run
 # (plan section 6.1's last bullet) - ONE run, not refused, not split.
