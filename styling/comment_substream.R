@@ -240,6 +240,38 @@ find_comment_runs <- function(tokens) {
 #'     tokens      - the child token stream, leading trivia excluded; NULL
 #'                   for a refused or prose_only run
 #'     line_kind   - per-line "blank"/"stmt"/"field"/"prose", child order
+#' Strip a child stream's own leading trivia - whitespace, and a depth-0
+#' boundary comma with its own trailing whitespace if present - as ONE
+#' captured prefix, so `tokens` always begins at the first substantive
+#' token. Section 7's normalising extraction, factored out so both
+#' extract_comment_runs() and a future styling pass that BAKES a new
+#' leading separator into `tokens` (e.g. a driver's own comma synthesis via
+#' enforce_leading_commas()'s context$first_field=FALSE) can restore the
+#' same canonical shape - `tokens` never carries leading trivia, in cycle 1
+#' or any later one. See extract_comment_runs()'s own header comment for
+#' the full failure this prevents (the growth-per-re-run corruption).
+#'
+#' @param child a child token stream (text/type/line).
+#' @return list(tokens, leading_sep) - `leading_sep` is NA_character_ if
+#'   there was none.
+.cs_strip_leading_sep <- function(child) {
+  n0 <- nrow(child)
+  i <- 1L
+  if (n0 > 0 && child$type[i] == "WS") i <- i + 1L
+  if (i <= n0 && child$type[i] == "COMMA") {
+    i <- i + 1L
+    if (i <= n0 && child$type[i] == "WS") i <- i + 1L
+  }
+  cut <- i - 1L
+  leading_sep <- NA_character_
+  if (cut >= 1L) {
+    leading_sep <- paste(child$text[seq_len(cut)], collapse = "")
+    child <- child[-seq_len(cut), , drop = FALSE]
+    rownames(child) <- NULL
+  }
+  list(tokens = child, leading_sep = leading_sep)
+}
+
 extract_comment_runs <- function(tokens) {
   fr <- find_comment_runs(tokens)
   runs <- vector("list", length(fr$runs))
@@ -263,20 +295,9 @@ extract_comment_runs <- function(tokens) {
     # cycles even though no character was duplicated. Capturing it up
     # front removes the asymmetry: `tokens` never carries leading trivia,
     # in cycle 1 or any later one.
-    n0 <- nrow(child)
-    i <- 1L
-    if (n0 > 0 && child$type[i] == "WS") i <- i + 1L
-    if (i <= n0 && child$type[i] == "COMMA") {
-      i <- i + 1L
-      if (i <= n0 && child$type[i] == "WS") i <- i + 1L
-    }
-    cut <- i - 1L
-    leading_sep <- NA_character_
-    if (cut >= 1L) {
-      leading_sep <- paste(child$text[seq_len(cut)], collapse = "")
-      child <- child[-seq_len(cut), , drop = FALSE]
-      rownames(child) <- NULL
-    }
+    stripped <- .cs_strip_leading_sep(child)
+    child <- stripped$tokens
+    leading_sep <- stripped$leading_sep
 
     cls <- .cs_classify_run(child)
     status <- if (isTRUE(cls$is_prose_only)) "prose_only"

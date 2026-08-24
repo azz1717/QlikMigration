@@ -24,7 +24,15 @@
 
 source("shared/qlik_tokenizer.R")
 source("shared/qlik_reserved_words.R")
+source("styling/ensure_explicit_aliases.R")
+source("styling/enforce_bracket_references.R")
+source("styling/enforce_leading_commas.R")
+source("styling/enforce_intraline_spacing.R")
+source("styling/enforce_reserved_word_case.R")
+source("styling/enforce_vertical_layout.R")
+source("styling/enforce_alias_alignment.R")
 source("styling/comment_substream.R")
+source("styling/comment_style_driver.R")
 
 .checks <- 0L
 .fails  <- 0L
@@ -82,16 +90,27 @@ source("styling/comment_substream.R")
 #' threads real passes through, e.g. `function(run) { run$tokens <-
 #' enforce_leading_commas(run$tokens, ctx); run }` - no rework of this file
 #' needed, only a different `style` argument. Applies `style` to every
-#' extracted run of `parent` in one pass and re-extracts once (cheap: O(runs),
-#' not O(runs^2)) - valid because a `style` that does not change a run's
-#' LINE COUNT never triggers serialize_comment_run()'s splice/void path, so
-#' every later run's parent indices stay exactly where find_comment_runs()
-#' put them. Returns the fully modified parent for chaining/isolation checks.
+#' extracted run of `parent` and re-extracts once (cheap: O(runs), not
+#' O(runs^2)) - in REVERSE source order (Task 4, real driver): a `style`
+#' that changes a run's line count shifts every index AFTER it via
+#' serialize_comment_run()'s splice_tokens() path, so processing
+#' highest-comment_idx-first means every run still to be styled sits
+#' BEFORE any edit already made, and its own `comment_idx` (captured once,
+#' up front, from the unedited parent) is still exactly where
+#' find_comment_runs() put it. Forward order is only safe when NO style
+#' in use ever changes line count (true of the identity and
+#' set_leading_separator cycles below) - reverse order is a superset of
+#' that, so it is used unconditionally rather than per-style. Caught
+#' directly on fixtures/[Grant Managing Region].txt (34 runs, several
+#' genuinely reflow under real styling): forward order left 14/34 runs
+#' silently re-extracting to text SHIFTED INTO from a neighbouring run,
+#' not their own. Returns the fully modified parent for chaining/isolation
+#' checks.
 .check_p2_fixed_point <- function(parent, ex, label, style = function(run) run,
                                    edit_label = "identity") {
   work <- parent
   styled <- vector("list", length(ex$runs))
-  for (i in seq_along(ex$runs)) {
+  for (i in rev(seq_along(ex$runs))) {
     r <- ex$runs[[i]]
     if (r$status != "extracted") next
     r <- style(r)
@@ -113,6 +132,24 @@ source("styling/comment_substream.R")
   .ok(sprintf("%s P2: fixed point stable under %s edit (%d extracted runs)",
               label, edit_label, n), length(bad) == 0, bad)
   list(work = work, ex2 = ex2)
+}
+
+#' P3 (general form): every LIVE token (excluding COMMENT/WS/VOID trivia)
+#' byte-identical and in the same order before/after, WITHOUT requiring row
+#' count to be stable - unlike .check_p3_isolation() below, valid for an
+#' edit that legitimately changes comment row counts (the real driver: a
+#' restyled run's line count is whatever styling produces, not what the
+#' author typed). WS is excluded deliberately: a driver-inserted line
+#' between two comment rows is itself a new WS row, which is NOT a
+#' violation of isolation as long as no LIVE (real code) token moved.
+.check_p3_isolation_general <- function(parent, work, label) {
+  live <- function(tk) tk$type != "COMMENT" & tk$type != "WS" & tk$type != "VOID"
+  p <- parent[live(parent), , drop = FALSE]
+  w <- work[live(work), , drop = FALSE]
+  ok <- identical(p$type, w$type) && identical(p$text, w$text)
+  .ok(sprintf("%s P3 (general): every live (non-comment, non-trivia) token unchanged and in order",
+              label), ok,
+      if (!ok) sprintf("live token count %d -> %d", nrow(p), nrow(w)) else character(0))
 }
 
 #' P3 Parent isolation: every non-COMMENT parent token byte-identical
@@ -227,6 +264,21 @@ source("styling/comment_substream.R")
   invisible(list(n_comment_tok = n_comment_tok, n_block_tok = n_block_tok))
 }
 
+#' Driver-specific coverage (acceptance 5, and the split the overseer asked
+#' for 2026-08-24): how many extracted runs the REAL driver actually
+#' restyled, broken out by the mechanism each one went through - so a
+#' regression in the scaffold path or the prose-split path shows as a
+#' number, separately from a plain (unwrapped) load_block.
+.report_driver_coverage <- function(path_label, coverage_tbl) {
+  if (length(coverage_tbl) == 0) {
+    cat(sprintf("  %s driver: 0 extracted runs\n", path_label))
+    return(invisible(NULL))
+  }
+  parts <- vapply(names(coverage_tbl), function(nm)
+    sprintf("%s=%d", nm, coverage_tbl[[nm]]), character(1))
+  cat(sprintf("  %s driver buckets: %s\n", path_label, paste(parts, collapse = ", ")))
+}
+
 # =======================================================================
 # Driver: run all six properties against one already-tokenized parent.
 # =======================================================================
@@ -248,11 +300,35 @@ source("styling/comment_substream.R")
   .check_p4_no_crossing(parent, ex, label)
   .check_p5_parses(p2$work, label)
 
+  # P2, cycle 3: the REAL driver (styling/comment_style_driver.R) - passes
+  # 1-7 scaffolded/threaded through context derived from the parent, per
+  # plan sections 3/9. Reuses P2/P3/P5 unchanged, only a different `style`
+  # argument - exactly what P2's own docstring anticipated. This is the
+  # first time the fixed point runs with real styling (plan section 7's
+  # risk, its true test).
+  driver_style <- make_comment_styler(parent)
+  p2d <- .check_p2_fixed_point(parent, ex, label, style = driver_style,
+                                edit_label = "REAL DRIVER (comment_style_driver.R)")
+  .check_p3_isolation_general(parent, p2d$work, label)
+  .check_p5_parses(p2d$work, label)
+
+  # Idempotence (acceptance 2): the whole-parent driver applied twice must
+  # equal applied once, byte-identical - the stronger, end-to-end form of
+  # the same fixed-point property, exercised through style_comment_substream()
+  # rather than run-by-run.
+  once  <- style_comment_substream(parent)
+  twice <- style_comment_substream(once$tokens)
+  .ok(sprintf("%s driver idempotence: applied twice == applied once", label),
+      identical(once$tokens$text, twice$tokens$text) &&
+        identical(once$tokens$type, twice$tokens$type) &&
+        nrow(once$tokens) == nrow(twice$tokens))
+
   elapsed <- as.numeric(Sys.time() - t0, units = "secs")
   cov <- .report_coverage(label, parent, ex)
+  .report_driver_coverage(label, once$coverage)
   cat(sprintf("    %.2fs\n", elapsed))
   invisible(list(parent = parent, ex = ex, n_comment_tok = cov$n_comment_tok,
-                 n_block_tok = cov$n_block_tok))
+                 n_block_tok = cov$n_block_tok, driver_once = once))
 }
 
 .verify_file <- function(path, encoding = "UTF-8") {
@@ -346,6 +422,64 @@ source("styling/comment_substream.R")
     identical(.r6$status, "extracted") && identical(.r6$kind, "field_run") &&
       length(.r6$comment_idx) == 3L &&
       identical(.r6$line_kind, c("field", "prose", "field")))
+
+# =======================================================================
+# Context params (Task 3) non-default behaviour - committed checks (Task 4
+# acceptance 3). Task 3 proved the DEFAULT path byte-identical against the
+# baseline; these are the first committed checks that the NON-default path
+# (what the driver actually calls) does what its INTERFACES.md entry says.
+# =======================================================================
+.section("Context params (Task 3) non-default behaviour")
+
+# context$first_field = FALSE (pass 3): a leading comma is synthesised in
+# front of the call's own first segment when one isn't already there.
+.cf3_default <- tokenize_qlik("LOAD [B] AS [B]\nFROM x;")
+.cf3_default <- enforce_leading_commas(.cf3_default)$tokens
+.ok("enforce_leading_commas: first_field default/TRUE leaves the first segment untouched (today's behaviour)",
+    !any(.cf3_default$type == "COMMA"))
+
+.cf3_false <- tokenize_qlik("LOAD [B] AS [B]\nFROM x;")
+.cf3_false <- enforce_leading_commas(.cf3_false, list(first_field = FALSE))$tokens
+.ok("enforce_leading_commas: first_field=FALSE synthesises a leading comma before the first segment",
+    any(.cf3_false$type == "COMMA") &&
+      identical(paste(.cf3_false$text, collapse = ""), "LOAD ,[B] AS [B]\nFROM x;"))
+
+# context$base_depth (pass 6): extra tabs prefixed onto every line's flat
+# indent, including line 1. Compared by TAB COUNT on the field's own
+# leading WS (after its last newline), not by string-prepending - the
+# extra tabs land right after the newline, not in front of the whole gap.
+.cf6_src <- "LOAD\n[B] AS [B]\nFROM x;"
+.cf6_0 <- enforce_vertical_layout(tokenize_qlik(.cf6_src), list(base_depth = 0L))$tokens
+.cf6_2 <- enforce_vertical_layout(tokenize_qlik(.cf6_src), list(base_depth = 2L))$tokens
+.cf6_field_tabs <- function(tk) {
+  i <- which(tk$type == "BRACKET" & tk$text == "[B]")[1]
+  gap <- tk$text[i - 1L]
+  nchar(gsub("[^\t]", "", sub("^.*\n", "", gap)))
+}
+.ok("enforce_vertical_layout: base_depth adds exactly N extra tabs to the flat indent",
+    .cf6_field_tabs(.cf6_2) == .cf6_field_tabs(.cf6_0) + 2L)
+
+# context$target_col (pass 7): taken as given, never widened by a wider
+# field of this call's own. Two fields of very different width, so the
+# NATURAL (unsupplied) column is forced wide by the long one - target_col
+# must override that, not just add to it.
+.cf7_src <- paste0("LOAD\n\t[X] AS [X],\n\t[VeryLongFieldNameHereIndeed] AS ",
+                   "[VeryLongFieldNameHereIndeed]\nFROM x;")
+.cf7_laid_out <- enforce_vertical_layout(tokenize_qlik(.cf7_src))$tokens
+.cf7_natural <- enforce_alias_alignment(.cf7_laid_out)$tokens
+.cf7_given   <- enforce_alias_alignment(.cf7_laid_out, list(target_col = 8L))$tokens
+.cf7_as_col <- function(tk, field) {
+  fi <- which(tk$type == "BRACKET" & tk$text == field)[1]
+  ai <- which(tk$type == "WORD" & toupper(tk$text) == "AS")
+  ai <- ai[ai > fi][1]
+  col <- 0L
+  for (ch in strsplit(tk$text[fi:(ai - 1L)], "", fixed = TRUE)) for (c in ch) {
+    col <- if (c == "\t") (col %/% 4L + 1L) * 4L else col + 1L
+  }
+  col
+}
+.ok("enforce_alias_alignment: target_col is TAKEN AS GIVEN, overriding this call's own wider natural max",
+    .cf7_as_col(.cf7_given, "[X]") < .cf7_as_col(.cf7_natural, "[X]"))
 
 # --- splice/void: a line-count-changing edit, exercised on its own since
 # the properties above deliberately avoid it (P3's isolation check is only
