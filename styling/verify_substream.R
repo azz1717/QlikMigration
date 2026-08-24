@@ -467,6 +467,42 @@ source("styling/comment_style_driver.R")
     identical(unname(.syn_driver_bucket[.r8_key]), "field_run_scaffolded"))
 
 # =======================================================================
+# Rule C: comment-run attachment (Task 5c, Adam's stage-2 GMR review,
+# 2026-08-24). The fix lives in enforce_vertical_layout.R's eff_id loop
+# (pass 6), not the substream/driver - but this file already sources that
+# pass (needed for the driver's own scaffold wrap), so the regression lives
+# here rather than a fourth verifier file. Mirrors GMR's 178-179 shape
+# exactly: a WHERE-fragment comment sits 4 raw blank lines below the
+# statement it filters and only 1 above an unrelated commented-out table -
+# nearer to the table by raw position, yet must still attach ABOVE.
+# =======================================================================
+.section("Rule C: WHERE/AND/OR comment run attaches ABOVE, not below")
+
+.rc_src <- paste0(
+  "LOAD [A] AS [A]\n",
+  "FROM x;\n",
+  "\n\n\n\n",
+  "//WHERE [B] = 1;\n",
+  "\n",
+  "// [C]:\n",
+  "// LOAD [D] AS [D]\n",
+  "// FROM y;\n",
+  "\n",
+  "LOAD [E] AS [E]\n",
+  "FROM z;\n"
+)
+.rc_out <- detokenize(enforce_vertical_layout(tokenize_qlik(.rc_src))$tokens)
+.rc_from_i  <- grep("FROM x;$", .rc_out)
+.rc_where_i <- grep("//WHERE \\[B\\] = 1;", .rc_out)
+.rc_c_i     <- grep("// \\[C\\]:", .rc_out)
+.ok("Rule C: WHERE-fragment glued (0 blank lines) to the statement above it, mirroring GMR's 178-179",
+    length(.rc_from_i) == 1L && length(.rc_where_i) == 1L &&
+      .rc_where_i == .rc_from_i + 1L)
+.ok("Rule C: the unrelated commented table block below keeps its own (down) attachment - 2 blank lines still separate it",
+    length(.rc_c_i) == 1L && .rc_c_i > .rc_where_i &&
+      identical(.rc_out[(.rc_where_i + 1L):(.rc_c_i - 1L)], c("", "")))
+
+# =======================================================================
 # Context params (Task 3) non-default behaviour - committed checks (Task 4
 # acceptance 3). Task 3 proved the DEFAULT path byte-identical against the
 # baseline; these are the first committed checks that the NON-default path

@@ -108,6 +108,23 @@
 #' being left untouched rather than normalised (DESIGN §4.8).
 .qvl_count_newlines <- function(s) nchar(gsub("[^\n]", "", s))
 
+#' Rule C (Adam 2026-08-24, stage-2 GMR review, comment-attachment defect):
+#' does a comment line's own body open with a depth-0 WHERE/AND/OR word? Such
+#' a line is a leftover filter condition belonging to the statement it
+#' trails, never a description of what comes next - so a run starting with
+#' one must NOT be reattached to the following statement the way an ordinary
+#' leading comment is (see the eff_id loop below). Token-typed detection
+#' (tokenize_qlik(), the same technique comment_substream.R uses to look
+#' inside a comment's own text) rather than a raw-text regex twin - a
+#' fragment like "// android of the two" must not match on substring alone.
+.qvl_is_condition_continuation <- function(comment_text) {
+  body <- sub("^//", "", comment_text)
+  ctok <- tokenize_qlik(body)
+  ctok <- ctok[!(ctok$type %in% c("WS", "VOID")), , drop = FALSE]
+  if (nrow(ctok) == 0L) return(FALSE)
+  ctok$type[1] == "WORD" && tolower(ctok$text[1]) %in% c("where", "and", "or")
+}
+
 #' Indices of EVERY WS token in the whitespace run immediately preceding a
 #' line start - increasing order, integer(0) if there is none (only possible
 #' for the very first line of the file, if it has no leading blank
@@ -173,14 +190,29 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
   # of the NEXT non-comment line, so a comment block stays glued to what it
   # describes rather than to what precedes it - UNLESS a ///$tab section
   # sits in between, in which case the comment keeps its own id and that
-  # boundary is never crossed.
+  # boundary is never crossed. Rule C exception (Adam 2026-08-24): a
+  # comment RUN whose own first line is a depth-0 WHERE/AND/OR condition
+  # fragment keeps its default id (tied to what precedes) instead - "run"
+  # here means raw-source-line-contiguous, the same contiguity
+  # find_comment_runs() (comment_substream.R) uses; a blank line ends one
+  # even though blank lines produce no row in L at all, so this walks the
+  # run's own start backward rather than reusing the forward `j` scan
+  # above, which merges through blank gaps on purpose for every OTHER case.
   eff_id <- L$stmt_id
   i <- nlines
   while (i >= 1L) {
     if (L$kind[i] == "comment") {
-      j <- i + 1L
-      while (j <= nlines && L$kind[j] == "comment") j <- j + 1L
-      if (j <= nlines && L$kind[j] != "section") eff_id[i] <- eff_id[j]
+      run_start <- i
+      while (run_start > 1L && L$kind[run_start - 1L] == "comment" &&
+             (L$line[run_start] - L$line[run_start - 1L]) == 1L) {
+        run_start <- run_start - 1L
+      }
+      stays_above <- .qvl_is_condition_continuation(t_text[L$idx[run_start]])
+      if (!stays_above) {
+        j <- i + 1L
+        while (j <= nlines && L$kind[j] == "comment") j <- j + 1L
+        if (j <= nlines && L$kind[j] != "section") eff_id[i] <- eff_id[j]
+      }
     }
     i <- i - 1L
   }
