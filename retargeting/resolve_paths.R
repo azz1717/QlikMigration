@@ -188,7 +188,13 @@ rp_resolve_one <- function(stem, schema, refs, views) {
                 view_name = NA_character_,
                 evidence = "no view of that name"))
 
-  if (length(hit) > 1L && !is.na(schema)) {
+  # The old directory is a HINT THAT MAY BE WRONG (Adam, 2026-08-24): schema
+  # alignment was never enforced on-prem, so a directory is not a schema.
+  # ORIC, NACCHO and AEDC are directories in app-unbuilt that are not
+  # VIEW_SCHEMA values at all; GMR uses SSR. Narrow by it only where it names
+  # a real schema, and never let a non-matching directory count as evidence.
+  known <- !is.na(schema) && tolower(schema) %in% tolower(views$index$view_schema)
+  if (length(hit) > 1L && known) {
     narrowed <- hit[tolower(views$index$view_schema[hit]) == tolower(schema)]
     if (length(narrowed) == 1L) hit <- narrowed
   }
