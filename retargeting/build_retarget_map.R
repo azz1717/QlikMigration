@@ -323,9 +323,19 @@ main <- function(args) {
   idx <- bm_indexes(fx)
   r   <- build_retarget_map(fx, idx, cons)
 
-  cat("build_retarget_map: ", nrow(r$map), " on-prem qvds\n", sep = "")
-  v <- sort(table(r$map$verdict), decreasing = TRUE)
-  for (k in names(v)) cat(sprintf("  %-22s %5d\n", k, v[[k]]))
+  # Split ESS out of the headline (Adam, 2026-08-24). ESS is 2,249 of 2,660
+  # qvds, so an estate-wide total is an ESS total wearing a disguise and says
+  # almost nothing about the grant apps being migrated. Report both.
+  top <- tolower(sub("/.*$", "", gsub("\\\\", "/", r$map$rel_path)))
+  ess <- top == "ess"
+  cat("build_retarget_map: ", nrow(r$map), " on-prem qvds (",
+      sum(!ess), " non-ESS, ", sum(ess), " ESS)\n", sep = "")
+  v  <- sort(table(r$map$verdict), decreasing = TRUE)
+  ve <- table(r$map$verdict[!ess])
+  cat(sprintf("  %-22s %6s %8s\n", "verdict", "all", "non-ESS"))
+  for (k in names(v))
+    cat(sprintf("  %-22s %6d %8d\n", k, v[[k]],
+                if (k %in% names(ve)) ve[[k]] else 0L))
   cat("  columns dropped by the chosen view, total: ", sum(r$map$n_columns_dropped), "\n", sep = "")
   if (is.null(cons)) {
     cat("  consumer counts: NOT AVAILABLE (fixtures/qvd_consumers.csv absent)\n")
