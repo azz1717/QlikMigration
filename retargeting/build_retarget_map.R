@@ -200,6 +200,40 @@ bm_consumer_counts <- function(path = "fixtures/qvd_consumers.csv") {
   tapply(pr$ConsumerAppID[ok], rel, function(x) length(unique(x)))
 }
 
+#' The app catalog: `AppID` -> app name and stream, from `appcatalog.csv`.
+#'
+#' INGESTED ONLY (Adam, 2026-08-24) — nothing consumes this yet. It is the
+#' key that would let an AppID in `qvd_consumers.csv` be read as an app, but
+#' that data is still untrusted (see `bm_consumer_counts`), so the reader
+#' lands first and the interpretation waits.
+#'
+#' Faithful to the file: no copy-suffix collapsing and no stream
+#' classification. 578 of 1,348 names carry a `(n)` copy suffix and 1,021
+#' rows have no stream, so deciding which row is "the real app" is a judgement
+#' with consequences — it belongs in whatever tool makes it, argued once and
+#' in the open, not smuggled into a reader.
+#'
+#' NOT UTF-8. One byte in the file (row 527, an en dash in an app name) is
+#' 0x96 - Windows-1252. Read as UTF-8 it survives as an INVALID string that
+#' every later grepl/sort warns on or refuses, so the encoding is declared
+#' here rather than left to the locale.
+#'
+#' `-` is the blank, as in `qvd_consumers.csv`; it becomes NA here so that no
+#' caller can join on a literal dash. Names may contain commas and are quoted
+#' in the file — `read.csv` handles that, hand-splitting on "," does not.
+#'
+#' OPTIONAL: returns NULL if the fixture is absent or lacks its columns.
+bm_app_catalog <- function(path = "fixtures/appcatalog.csv",
+                           fileEncoding = "Windows-1252") {
+  if (!file.exists(path)) return(NULL)
+  a <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character",
+                       fileEncoding = fileEncoding)
+  if (!all(c("AppID", "AppName", "StreamName") %in% names(a))) return(NULL)
+  blank <- function(x) { x[!nzchar(x) | x == "-"] <- NA_character_; x }
+  data.frame(app_id = a$AppID, app_name = blank(a$AppName),
+             stream = blank(a$StreamName), stringsAsFactors = FALSE)
+}
+
 #' Does this qvd combine or reshape more than one source?
 #'
 #' Such a qvd has no single view that can replace it however the names line
