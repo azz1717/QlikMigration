@@ -154,6 +154,14 @@ bm_is_true <- function(x) tolower(x) %in% c("true", "1", "yes", "y")
 
 #' How many DISTINCT apps read each qvd, keyed by `RelPath`.
 #'
+#' *** THE SOURCE DATA IS UNDER REVIEW AND CURRENTLY UNTRUSTED ***
+#' Adam, 2026-08-24: "I have done some investigating on the qvd_consumers
+#' datasource and think it is busted." Nothing downstream may act on these
+#' counts, and no plan may be ordered by them, until that resolves. The
+#' column is still produced and the tool still runs, because deleting the
+#' code would only mean rebuilding it if the extract turns out to be fixable
+#' - but every consumer of it is warned, loudly, at the point of use.
+#'
 #' OPTIONAL: the map builds without it, because consumer data is an extract
 #' someone has to produce and its absence must not block resolution.
 #'
@@ -341,11 +349,13 @@ main <- function(args) {
     cat("  consumer counts: NOT AVAILABLE (fixtures/qvd_consumers.csv absent)\n")
   } else {
     known <- !is.na(r$map$n_consumer_apps)
-    cat("  consumer counts known for ", sum(known), " qvds (absence = UNKNOWN, not unused)\n", sep = "")
+    cat("  *** consumer counts are UNTRUSTED - source data under review",
+        " (Adam, 2026-08-24) ***\n", sep = "")
+    cat("  consumer counts present for ", sum(known), " qvds (absence = UNKNOWN, not unused)\n", sep = "")
     blk <- r$map[known & r$map$verdict %in% c("needs-import", "needs-creating", "multi-source"), ]
     blk <- blk[order(-blk$n_consumer_apps), ]
     if (nrow(blk)) {
-      cat("  top blockers by apps affected:\n")
+      cat("  top blockers by apps affected (DO NOT PLAN FROM THIS YET):\n")
       for (i in seq_len(min(8L, nrow(blk))))
         cat(sprintf("    %4d apps  %-20s %s\n", blk$n_consumer_apps[i],
                     blk$verdict[i], blk$rel_path[i]))
