@@ -148,43 +148,6 @@
   data.frame(start = lns$idx, end = ends)
 }
 
-#' Strip a run's OWN TRAILING boundary trivia - a depth-agnostic mirror of
-#' .cs_strip_leading_sep(), from the tail instead of the head: trailing
-#' whitespace, and a trailing comma (with its own preceding whitespace) if
-#' present. comment_substream.R only models a LEADING separator (the tie to
-#' whatever precedes a run) - a run can just as easily end mid-field-list,
-#' tied to whatever LIVE field follows it, and that trailing comma is NOT a
-#' real "next field" for the wrap's own purposes.
-#'
-#' GOTCHA this exists to fix: without it, a run like `"field", ` (one
-#' field, trailing comma+space tying it to a live field after the run) gets
-#' wrapped as "LOAD\n\"field\", \nFROM x;" - the wrap's OWN "FROM" reads as
-#' the next field to enforce_leading_commas(), which then "relocates" the
-#' trailing comma to sit in front of FROM, corrupting the boundary (caught
-#' directly on fixtures/formatexample.txt:27, not by inspection). Stripping
-#' the trailing bit before wrapping and reattaching it verbatim afterward
-#' removes the ambiguity the same way leading_sep already does at the
-#' other end.
-#'
-#' @return list(tokens, trailing_sep) - `trailing_sep` is NA_character_ if
-#'   there was none.
-.csd_strip_trailing_sep <- function(child) {
-  n <- nrow(child)
-  j <- n
-  if (j >= 1L && child$type[j] == "WS") j <- j - 1L
-  if (j >= 1L && child$type[j] == "COMMA") {
-    j <- j - 1L
-    if (j >= 1L && child$type[j] == "WS") j <- j - 1L
-  }
-  trailing_sep <- NA_character_
-  if (j < n) {
-    trailing_sep <- paste(child$text[(j + 1L):n], collapse = "")
-    child <- child[seq_len(j), , drop = FALSE]
-    rownames(child) <- NULL
-  }
-  list(tokens = child, trailing_sep = trailing_sep)
-}
-
 #' Split a child stream's rows into maximal same-kind (prose / not-prose)
 #' groups. Each group: list(start, end, is_prose) - a token index RANGE
 #' into `child`, source order.
@@ -272,14 +235,14 @@
     return(list(run = run, stats = stats))
   }
 
-  # Strip the run's OWN trailing boundary trivia FIRST, before grouping -
-  # see .csd_strip_trailing_sep()'s header. line_kind is re-derived from
-  # the truncated body rather than reused, since removing trailing rows
-  # can (rarely) remove a whole line and desync the two.
-  tail_strip <- .csd_strip_trailing_sep(run$tokens)
-  body_tokens <- tail_strip$tokens
-  trailing_sep <- tail_strip$trailing_sep
-  line_kind <- if (is.na(trailing_sep)) run$line_kind else .cs_classify_run(body_tokens)$line_kind
+  # The run's OWN outer trailing boundary trivia (ties it to whatever LIVE
+  # field follows, outside the run) was already stripped into
+  # `run$trailing_sep` at extraction time (comment_substream.R's
+  # canonicalization, Task 4b defect 1's fix) - no local re-strip needed,
+  # and no desync risk either, since extraction now strips it BEFORE
+  # classifying, so `run$line_kind` already reflects the trimmed body.
+  body_tokens <- run$tokens
+  line_kind <- run$line_kind
 
   groups <- .csd_make_groups(body_tokens, line_kind)
   if (length(groups) == 0) {
@@ -294,8 +257,22 @@
   # when it had a real trailing WS/comma to strip and reattach) - the
   # stitch loop below inserts a join "\n" ONLY where this is FALSE.
   has_own_sep <- logical(n)
+  # TRUE wherever `pieces[g]` is a SCAFFOLDED code group's own styled text -
+  # such a piece always supplies its own complete leading indentation
+  # (enforce_vertical_layout ran on it fresh, inside the wrap), so whatever
+  # trailing indentation the PRECEDING piece happens to carry (a prose
+  # group's raw slice absorbs the next line's indent verbatim, per
+  # .csd_line_ranges' line-start convention - the same WS token carries the
+  # break AND the following line's indent) must not also survive into the
+  # join, or every re-styling cycle stacks a second copy on top of the
+  # first (Task 4b defect 3's actual mechanism - not a whitespace-ownership
+  # question at extraction, but at THIS stitch: confirmed directly by
+  # instrumenting the synthetic field/prose/field run, 2 tabs -> 4 tabs
+  # after one extra driver cycle, not by inspection).
+  is_scaffolded_code <- logical(n)
   is_prose_vec <- vapply(groups, `[[`, logical(1), "is_prose")
   first_code_seen <- FALSE
+  last_code_group_styled <- FALSE
   n_scaffolded <- 0L; n_unstylable <- 0L
 
   for (g in seq_len(n)) {
@@ -303,42 +280,25 @@
     raw <- paste(body_tokens$text[grp$start:grp$end], collapse = "")
     if (grp$is_prose) { pieces[g] <- raw; has_own_sep[g] <- TRUE; next }
 
-    # KNOWN LIMITATION (converged here under budget, not a design choice):
-    # only the FIRST code group of a run is scaffolded. A run with prose
-    # splitting it into TWO OR MORE separated code groups was found
-    # unstable under a second driver application (synthetic fixture run 6
-    # - field, prose, field - the second group's own padding grew 2 tabs
-    # between cycles; root cause not yet isolated past "not
-    # .csd_style_group() itself, which is idempotent standalone - see
-    # session notes"). Leaving every code group AFTER the first
-    # byte-identical to its authored form is the safe, converged choice:
-    # it is never less correct than today's baseline (no styling at all),
-    # and it is what real fixtures already exercise (GMR's one
-    # prose-carrying run has exactly one code group either side, not two
-    # scaffolded groups) - this limitation is UNTESTED against a real
-    # multi-code-group prose split because none exists in the mandatory
-    # fixtures. Follow-up: isolate why the run-level styler (not
-    # .csd_style_group() alone) produces different padding for a NON-first
-    # group on a second pass.
-    if (first_code_seen) {
-      pieces[g] <- raw
-      has_own_sep[g] <- TRUE
-      n_unstylable <- n_unstylable + 1L
-      next
-    }
-
     # A code group's OWN raw slice absorbs the boundary WS leading into
     # whatever follows it (.cs_classify_run()'s line-range convention,
-    # same as .csd_strip_trailing_sep()'s target at the whole-run level) -
-    # for the LAST group that boundary is the run's own tail, already
-    # handled above, but an INTERIOR code group (one followed by a prose
-    # group) has the exact same shape: a trailing comma with nothing
-    # structurally after it inside the scaffold except the synthetic
-    # FROM. Strip it from EVERY group, not just the run's own last one, or
-    # it corrupts the same way fixtures/formatexample.txt:27 did (caught
-    # directly: synthetic run 6's field-prose-field case was not stable
-    # under a second driver application until this was per-group).
-    grp_tail <- .csd_strip_trailing_sep(raw_tokens <- body_tokens[grp$start:grp$end, , drop = FALSE])
+    # same as .cs_strip_trailing_sep()'s target at the whole-run level) -
+    # an INTERIOR code group (one followed by a prose group, or by another
+    # code group now that every group is scaffolded - Task 4b defect 3)
+    # has the exact same shape: a trailing comma with nothing structurally
+    # after it inside the scaffold except the synthetic FROM. Strip it
+    # from EVERY group, not just the run's own last one, or it corrupts
+    # the same way fixtures/formatexample.txt:27 did (caught directly:
+    # synthetic run 6's field-prose-field case was not stable under a
+    # second driver application until this was per-group). Reattached
+    # verbatim below regardless of styling outcome - UNLIKE the run's own
+    # outer trailing_sep (Task 4b defect 1), an interior separator may tie
+    # this group to PROSE, which never grows a leading comma of its own to
+    # absorb the duplication, so dropping it here is not safe in general;
+    # ground truth (pass 8) only exercises the single-group, outer-boundary
+    # case, so that is the only place the "drop, don't reattach" rule
+    # applies.
+    grp_tail <- .cs_strip_trailing_sep(body_tokens[grp$start:grp$end, , drop = FALSE])
     raw_body <- paste(grp_tail$tokens$text, collapse = "")
     grp_trailing <- grp_tail$trailing_sep
 
@@ -353,10 +313,13 @@
       pieces[g] <- raw
       has_own_sep[g] <- TRUE   # `raw` still carries its own original tail
       n_unstylable <- n_unstylable + 1L
+      last_code_group_styled <- FALSE
     } else {
       pieces[g] <- paste0(styled, if (!is.na(grp_trailing)) grp_trailing else "")
       has_own_sep[g] <- !is.na(grp_trailing)
+      is_scaffolded_code[g] <- TRUE
       n_scaffolded <- n_scaffolded + 1L
+      last_code_group_styled <- TRUE
     }
     first_code_seen <- TRUE
   }
@@ -366,15 +329,34 @@
     for (g in 2:n) {
       # Join with "\n" only when the PRECEDING piece does not already
       # carry its own trailing boundary text (see has_own_sep above) -
-      # otherwise this would double a newline .csd_strip_trailing_sep()
+      # otherwise this would double a newline .cs_strip_trailing_sep()
       # already reattached (caught directly: synthetic run 6 - field,
       # prose, field - was not stable under a second driver application
       # until this joined on has_own_sep instead of is_prose_vec alone).
       sep <- if (has_own_sep[g - 1L]) "" else "\n"
+      if (is_scaffolded_code[g]) {
+        # This piece already supplies its own complete leading indentation
+        # (see is_scaffolded_code's own header) - strip trailing SPACE/TAB
+        # (never the newline itself, which still ends the preceding line)
+        # off the accumulated text first, or the preceding group's own
+        # trailing indent survives alongside it and both get counted next
+        # cycle (Task 4b defect 3).
+        out <- sub("[ \t]+$", "", out)
+      }
       out <- paste0(out, sep, pieces[g])
     }
   }
-  if (!is.na(trailing_sep)) out <- paste0(out, trailing_sep)
+  # The run's OWN outer trailing_sep (ties it to whatever LIVE field
+  # follows) is re-supplied verbatim UNLESS the run's last code group was
+  # actually restyled (Task 4b defect 1: pass 8 ground truth drops it in
+  # exactly this case - "uncommenting must not double a separator against
+  # the next live field's own leading comma", which this driver's
+  # leading-comma convention already supplies on every live field by the
+  # time this runs). A run left entirely raw (GUARD 1/SEMI-guard tripped
+  # on its last group) keeps its trailing_sep untouched - never worse than
+  # today's baseline.
+  drop_trailing <- !is.na(run$trailing_sep) && last_code_group_styled
+  if (!is.na(run$trailing_sep) && !drop_trailing) out <- paste0(out, run$trailing_sep)
 
   if (nzchar(out)) {
     restyled <- tokenize_qlik(out)
@@ -392,6 +374,7 @@
     run$tokens <- stripped$tokens
     run$leading_sep <- stripped$leading_sep
   }
+  if (drop_trailing) run$trailing_sep <- NA_character_
   stats$bucket <- if (n_scaffolded > 0L) "field_run_scaffolded" else "field_run_unstylable"
   stats$prose_lines <- sum(run$line_kind == "prose")
   stats$prose_groups <- sum(is_prose_vec)
@@ -454,7 +437,34 @@
       }
       pre_as <- line_start:(s$as_idx - 1L)
       pre_as <- pre_as[t_type[pre_as] != "VOID" & (is.na(ws_idx) | pre_as != ws_idx)]
-      cols <- c(cols, base_col + sum(nchar(t_text[pre_as])))
+      content_col <- base_col + sum(nchar(t_text[pre_as]))
+      # UNLIKE pass 7's OWN "cols" (which measures a field's NATURAL width
+      # before alignment, on purpose - it needs that to compute a target),
+      # this function reads back the column of an ALREADY-ALIGNED live
+      # block, so it must measure where AS actually LANDS, tabs and all -
+      # not the pre-padding content width, which varies per field and whose
+      # mode is meaningless. Bug fixed here (2026-08-24, Task 4b defect 2):
+      # excluding ws_idx (mirroring pass 7's pre-alignment formula) made
+      # `cols` the natural per-field width again, so its mode rarely matched
+      # the block's real shared column - the driver then handed
+      # enforce_alias_alignment() a target 1-2 tabs short, reproducing only
+      # one tab of padding instead of the block's real long run (caught
+      # directly against fixtures/formatexample.txt's pass-8 ground truth,
+      # baseline-substream/pipeline/formatexample/changes/
+      # 8-commented-field-style.csv). Expanding ws_idx's own text (it is the
+      # one token here that CAN carry tabs) from content_col recovers AS's
+      # true landing column; subtracting 1 undoes the mandatory single space
+      # pass 7 always keeps immediately before AS (see its own header:
+      # "AS itself therefore lands one column past every tab stop, not on
+      # it") to recover target_col in the same units enforce_alias_alignment
+      # expects back via context$target_col.
+      as_start_col <- content_col
+      target_field <- content_col
+      if (!is.na(ws_idx)) {
+        as_start_col <- .eaa_tab_col(t_text[ws_idx], start_col = content_col)
+        target_field <- as_start_col - 1L
+      }
+      cols <- c(cols, target_field)
     }
     col_of[L:last] <- if (length(cols)) as.integer(names(sort(table(cols), decreasing = TRUE))[1]) else 0L
     fc <- segs[[grp[1]]]$content_idx

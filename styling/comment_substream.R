@@ -237,8 +237,19 @@ find_comment_runs <- function(tokens) {
 #'                   section 7's normalising extraction - metadata, never
 #'                   a token in `tokens`; re-supplied verbatim by
 #'                   serialize_comment_run() unless the caller changes it)
-#'     tokens      - the child token stream, leading trivia excluded; NULL
-#'                   for a refused or prose_only run
+#'     trailing_sep - the mirror of leading_sep at the tail: exact text of
+#'                   the run's stripped trailing trivia (whitespace, and a
+#'                   trailing comma with its own preceding whitespace if
+#'                   present), or NA if there was none. Re-supplied verbatim
+#'                   by serialize_comment_run() by default (an unmodified/
+#'                   identity run round-trips byte-identically, same as
+#'                   leading_sep) - a styling pass that wants to drop it
+#'                   (comment_style_driver.R does, once a run's own
+#'                   leading-comma convention on the field after it already
+#'                   supplies the separation) calls set_trailing_separator()
+#'                   with NA, same pattern as leading.
+#'     tokens      - the child token stream, leading AND trailing trivia
+#'                   excluded; NULL for a refused or prose_only run
 #'     line_kind   - per-line "blank"/"stmt"/"field"/"prose", child order
 #' Strip a child stream's own leading trivia - whitespace, and a depth-0
 #' boundary comma with its own trailing whitespace if present - as ONE
@@ -272,6 +283,44 @@ find_comment_runs <- function(tokens) {
   list(tokens = child, leading_sep = leading_sep)
 }
 
+#' Strip a child stream's own TRAILING boundary trivia - a mirror of
+#' .cs_strip_leading_sep() from the tail: trailing whitespace, and a
+#' depth-agnostic trailing comma (with its own preceding whitespace) if
+#' present. A run can end mid-field-list, tied to whatever LIVE field
+#' follows it outside the run - that comma is exactly as much a boundary
+#' separator as a leading one, and section 7's growth-prevention argument
+#' applies identically at this end: left as a token, a styling pass that
+#' bakes leading-comma convention onto the NEXT field (already true of this
+#' codebase's leading-comma style, DESIGN's own convention) makes the run's
+#' own trailing comma a DUPLICATE separator once uncommented - "field,\n,
+#' nextfield" - never merely inert. Stripping it into metadata here, at the
+#' SAME canonicalizing stage as the leading strip, is what lets
+#' serialize_comment_run() choose whether to re-supply it (verbatim, for an
+#' unstyled/identity run - preserves P1's round trip) or drop it (a styled
+#' run's leading-comma convention on the field that follows already
+#' supplies the separation - comment_style_driver.R's job, not this file's).
+#'
+#' @param child a child token stream (text/type/line), already
+#'   leading-stripped.
+#' @return list(tokens, trailing_sep) - `trailing_sep` is NA_character_ if
+#'   there was none.
+.cs_strip_trailing_sep <- function(child) {
+  n <- nrow(child)
+  j <- n
+  if (j >= 1L && child$type[j] == "WS") j <- j - 1L
+  if (j >= 1L && child$type[j] == "COMMA") {
+    j <- j - 1L
+    if (j >= 1L && child$type[j] == "WS") j <- j - 1L
+  }
+  trailing_sep <- NA_character_
+  if (j < n) {
+    trailing_sep <- paste(child$text[(j + 1L):n], collapse = "")
+    child <- child[seq_len(j), , drop = FALSE]
+    rownames(child) <- NULL
+  }
+  list(tokens = child, trailing_sep = trailing_sep)
+}
+
 extract_comment_runs <- function(tokens) {
   fr <- find_comment_runs(tokens)
   runs <- vector("list", length(fr$runs))
@@ -299,20 +348,29 @@ extract_comment_runs <- function(tokens) {
     child <- stripped$tokens
     leading_sep <- stripped$leading_sep
 
+    # Trailing strip happens at the SAME canonicalizing stage, before
+    # classification, so line_kind is derived from the fully-trivia-stripped
+    # child (never desynced from a later, separate trailing strip - see
+    # .cs_strip_trailing_sep()'s own header).
+    tail_stripped <- .cs_strip_trailing_sep(child)
+    child <- tail_stripped$tokens
+    trailing_sep <- tail_stripped$trailing_sep
+
     cls <- .cs_classify_run(child)
     status <- if (isTRUE(cls$is_prose_only)) "prose_only"
               else if (is.na(cls$kind)) "refused" else "extracted"
 
     runs[[r]] <- list(
-      comment_idx = comment_idx,
-      line_start  = tokens$line[comment_idx[1]],
-      line_end    = tokens$line[comment_idx[length(comment_idx)]],
-      status      = status,
-      kind        = cls$kind,
-      reason      = cls$reason,
-      leading_sep = leading_sep,
-      tokens      = if (status == "extracted") child else NULL,
-      line_kind   = cls$line_kind)
+      comment_idx  = comment_idx,
+      line_start   = tokens$line[comment_idx[1]],
+      line_end     = tokens$line[comment_idx[length(comment_idx)]],
+      status       = status,
+      kind         = cls$kind,
+      reason       = cls$reason,
+      leading_sep  = leading_sep,
+      trailing_sep = trailing_sep,
+      tokens       = if (status == "extracted") child else NULL,
+      line_kind    = cls$line_kind)
   }
   list(runs = runs, warnings = fr$warnings)
 }
@@ -354,6 +412,18 @@ set_leading_separator <- function(run, sep) {
   run
 }
 
+#' Set (or clear) a run's trailing separator - the mirror of
+#' set_leading_separator() at the tail. See .cs_strip_trailing_sep()'s
+#' header for what this ties to (whatever LIVE field follows the run).
+#'
+#' @param run one element of extract_comment_runs()'s $runs.
+#' @param sep character - exact separator text, or NA to clear.
+#' @return the run, with `$trailing_sep` updated.
+set_trailing_separator <- function(run, sep) {
+  run$trailing_sep <- if (is.na(sep)) NA_character_ else sep
+  run
+}
+
 #' Serialize one (possibly modified) run back into a parent token stream's
 #' COMMENT tokens.
 #'
@@ -370,7 +440,8 @@ set_leading_separator <- function(run, sep) {
 serialize_comment_run <- function(tokens, run) {
   stopifnot(run$status == "extracted")
   lead <- if (!is.na(run$leading_sep)) run$leading_sep else ""
-  body_text <- paste0(lead, paste(run$tokens$text, collapse = ""))
+  trail <- if (!is.null(run$trailing_sep) && !is.na(run$trailing_sep)) run$trailing_sep else ""
+  body_text <- paste0(lead, paste(run$tokens$text, collapse = ""), trail)
 
   new_lines <- strsplit(body_text, "\n", fixed = TRUE)[[1]]
   if (length(new_lines) == 0) new_lines <- ""
