@@ -69,6 +69,39 @@ bm_json_obj <- function(lst) {
 
 # --- inputs ---------------------------------------------------------------
 
+#' Collapse `qvdlist.csv` to ONE row per qvd path, and refuse to guess.
+#'
+#' 11 of 2,660 rows are duplicate `RelPath`s (measured 2026-08-24): the same
+#' qvd written by several apps — duplicated builders, or a builder cloned per
+#' programme. All 11 agree on `BestSqlObject` and field count, so the verdict
+#' is unaffected — but the MAP is keyed on the path, and a lookup that
+#' silently takes whichever row came first is the wrong way to be right.
+#'
+#' The extra creators are preserved rather than dropped: which apps build a
+#' qvd is exactly what someone re-pointing it needs to know. A disagreement on
+#' the source object is a genuine conflict, so it STOPS rather than picking a
+#' side — that would be a silently wrong mapping, the one failure this whole
+#' design exists to avoid.
+bm_dedupe_qvds <- function(q) {
+  k <- tolower(gsub("\\\\", "/", q$RelPath))
+  dup <- unique(k[duplicated(k)])
+  if (length(dup)) {
+    bad <- dup[vapply(dup, function(x)
+      length(unique(q$BestSqlObject[k == x])) > 1L, logical(1))]
+    if (length(bad))
+      stop("qvdlist.csv: ", length(bad), " qvd path(s) appear twice with DIFFERENT ",
+           "source objects, so no single verdict is possible: ",
+           paste(utils::head(q$RelPath[k %in% bad], 3), collapse = "; "),
+           ". Resolve in the fixture; this tool will not pick one.", call. = FALSE)
+  }
+  keep <- !duplicated(k)
+  out  <- q[keep, , drop = FALSE]
+  out$CreatorAppName <- vapply(k[keep], function(x)
+    paste(unique(q$CreatorAppName[k == x]), collapse = " | "), character(1))
+  attr(out, "collapsed") <- nrow(q) - nrow(out)
+  out
+}
+
 bm_load_fixtures <- function(dir = "fixtures") {
   need <- c(qvd = "qvdlist.csv", views = "views.csv",
             cols = "DBfixture1.csv", lineage = "DBfixture2.csv")
@@ -247,6 +280,10 @@ build_retarget_map <- function(fx, idx) {
 main <- function(args) {
   outd <- if (length(args) >= 2L && args[1] == "--out") args[2] else "retargeting"
   fx  <- bm_load_fixtures()
+  fx$qvd <- bm_dedupe_qvds(fx$qvd)
+  if (attr(fx$qvd, "collapsed") > 0L)
+    cat("  collapsed ", attr(fx$qvd, "collapsed"),
+        " duplicate qvd path row(s); creators merged\n", sep = "")
   idx <- bm_indexes(fx)
   r   <- build_retarget_map(fx, idx)
 
