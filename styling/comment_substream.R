@@ -128,6 +128,36 @@ find_comment_runs <- function(tokens) {
 #' multi-word name cannot be written that way - while it is exactly how a
 #' sentence reads. A single bare word (DESIGN 1.7's un-bracketed field
 #' reference) and keyword-adjacent pairs ("field as alias") are unaffected.
+#' Does this line (already WS-stripped, one line's tokens) open/close a
+#' statement, per .CS_STMT_WORDS?
+#'
+#' "if" is dual-use - both a statement keyword AND a ternary/expr FUNCTION
+#' (QLIK_KEYWORDS and QLIK_FUNCTIONS both list it, shared/qlik_
+#' reserved_words.R) - unlike every other word in .CS_STMT_WORDS, which is
+#' statement-only. A bare `If(...)` inside a field expression (real case:
+#' fixtures/[Grant Managing Region].txt's "GMU Region"/"Organisation.ORP..."
+#' blocks) is not a statement merely for containing the word. Told apart the
+#' same way find_block_structure() already does (qlik_tokenizer.R GOTCHA,
+#' "IF (x = 1) THEN is legal"): a depth-0 THEN somewhere on the line, not by
+#' what follows "if" itself - call position alone would wrongly clear a
+#' genuine "IF (x = 1) THEN" statement, which also has "(" right after it.
+.cs_has_stmt_word <- function(ctypes, ctext) {
+  is_word <- ctypes == "WORD"
+  lc <- tolower(ctext)
+  hit <- is_word & lc %in% .CS_STMT_WORDS
+  if (!any(hit)) return(FALSE)
+  if_hit <- is_word & lc == "if"
+  if (any(hit & !if_hit)) return(TRUE)
+  if (!any(if_hit)) return(FALSE)
+  depth <- 0L
+  for (i in seq_along(ctypes)) {
+    if (ctypes[i] == "LPAREN") depth <- depth + 1L
+    else if (ctypes[i] == "RPAREN") depth <- depth - 1L
+    else if (depth == 0L && ctypes[i] == "WORD" && lc[i] == "then") return(TRUE)
+  }
+  FALSE
+}
+
 .cs_is_field_shaped <- function(ctypes, ctext) {
   n <- length(ctypes)
   if (n == 0) return(FALSE)
@@ -135,7 +165,7 @@ find_comment_runs <- function(tokens) {
   if (n == 0) return(FALSE)
   if (ctypes[n] == "COMMA") { ctypes <- ctypes[-n]; ctext <- ctext[-n]; n <- n - 1L }
   if (n == 0) return(FALSE)
-  if (any(ctypes == "WORD" & tolower(ctext) %in% .CS_STMT_WORDS)) return(FALSE)
+  if (.cs_has_stmt_word(ctypes, ctext)) return(FALSE)
 
   starters <- c("BRACKET", "DQUOTE", "SQUOTE", "WORD", "NUMBER", "LPAREN")
   first_ok <- ctypes[1] %in% starters || (ctypes[1] == "OPERATOR" && ctext[1] == "-")
@@ -153,7 +183,7 @@ find_comment_runs <- function(tokens) {
 .cs_line_kind <- function(ctypes, ctext) {
   n <- length(ctypes)
   if (n == 0) return("blank")
-  if (any(ctypes == "WORD" & tolower(ctext) %in% .CS_STMT_WORDS)) return("stmt")
+  if (.cs_has_stmt_word(ctypes, ctext)) return("stmt")
   # a bare table label ("Name:" / "[Name]:") is a statement fragment
   if (n == 2L && ctypes[2] == "OTHER" && ctext[2] == ":") return("stmt")
   if (.cs_is_field_shaped(ctypes, ctext)) "field" else "prose"

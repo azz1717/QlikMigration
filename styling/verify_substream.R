@@ -382,6 +382,18 @@ source("styling/comment_style_driver.R")
   "// [Mix1] as [Mix1],",
   "// Note: mix1 feeds into a downstream chart.",
   "// [Mix2] as [Mix2]",
+  "",
+  "SET sep6 = 1;",
+  "",
+  "// If([Risk Rating], 'Not Rated', [Risk Rating]) as [Profile],",
+  "// [Second Field] as [Second Field],",
+  "// [Third Field] as [Third Field]",
+  "",
+  "SET sep7 = 1;",
+  "",
+  "//   IF(LEN([X]) > 1, [X],",
+  "//      IF(MATCH([X], 'A', 'B'), 'AB',",
+  "//         IF(MATCH([X], 'C'), 'C'))) AS [Y],",
   ""
 ), collapse = "\n")
 
@@ -393,8 +405,8 @@ source("styling/comment_style_driver.R")
 .syn_kind   <- vapply(.syn_ex$runs, function(r) if (is.na(r$kind)) NA_character_ else r$kind, character(1))
 .syn_lines  <- vapply(.syn_ex$runs, function(r) sprintf("%d-%d", r$line_start, r$line_end), character(1))
 
-.ok(sprintf("synthetic: found %d runs (expected 6)", length(.syn_ex$runs)),
-    length(.syn_ex$runs) == 6L, paste(.syn_lines, .syn_status, .syn_kind))
+.ok(sprintf("synthetic: found %d runs (expected 8)", length(.syn_ex$runs)),
+    length(.syn_ex$runs) == 8L, paste(.syn_lines, .syn_status, .syn_kind))
 
 .r1 <- .syn_ex$runs[[1]]
 .ok("synthetic: run 1 (mid-list fields) extracted as field_run, leading_sep captured",
@@ -422,6 +434,37 @@ source("styling/comment_style_driver.R")
     identical(.r6$status, "extracted") && identical(.r6$kind, "field_run") &&
       length(.r6$comment_idx) == 3L &&
       identical(.r6$line_kind, c("field", "prose", "field")))
+
+# Regression checks (Adam's stage-2 GMR review, fixed 2026-08-24): a bare
+# "If(...)" opening a field-shaped comment line/run used to force the WHOLE
+# run to classify "stmt" -> refused ("commented statement outside a LOAD
+# block"), even though IF is dual-use (also a QLIK_FUNCTIONS ternary) and
+# every line was plainly field-shaped. Left the run's original ragged
+# indentation and unbracketed/unaliased text completely untouched - visible
+# in real GMR output as [GMU Region]:'s multi-line nested-IF comment block
+# (wrong indentation, run 8 below) and the Organisation risk-exemption
+# block (not bracketed/aliased at all, run 7 below). Root cause: .CS_STMT_
+# WORDS' "if" hit didn't tell call position ("If(...)") from the real
+# control-flow keyword - see .cs_has_stmt_word()'s own comment.
+.r7 <- .syn_ex$runs[[7]]
+.ok("synthetic: run 7 (single-line If(...) field w/ alias+trailing comma, defect 2's shape) extracted as field_run, not refused as a statement",
+    identical(.r7$status, "extracted") && identical(.r7$kind, "field_run") &&
+      length(.r7$comment_idx) == 3L)
+
+.r8 <- .syn_ex$runs[[8]]
+.ok("synthetic: run 8 (multi-line ragged-indent nested-IF field, defect 1's shape) extracted as field_run, not refused as a statement",
+    identical(.r8$status, "extracted") && identical(.r8$kind, "field_run") &&
+      length(.r8$comment_idx) == 3L)
+
+.syn_driver_bucket <- setNames(.syn_res$driver_once$changes$bucket,
+                                paste(.syn_res$driver_once$changes$line_start,
+                                      .syn_res$driver_once$changes$line_end))
+.r7_key <- paste(.r7$line_start, .r7$line_end)
+.r8_key <- paste(.r8$line_start, .r8$line_end)
+.ok("synthetic: run 7 (defect 2's shape) actually STYLED by the real driver (bucket field_run_scaffolded, not left raw)",
+    identical(unname(.syn_driver_bucket[.r7_key]), "field_run_scaffolded"))
+.ok("synthetic: run 8 (defect 1's shape) actually STYLED by the real driver (bucket field_run_scaffolded, not left raw)",
+    identical(unname(.syn_driver_bucket[.r8_key]), "field_run_scaffolded"))
 
 # =======================================================================
 # Context params (Task 3) non-default behaviour - committed checks (Task 4

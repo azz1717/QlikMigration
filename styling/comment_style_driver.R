@@ -528,7 +528,24 @@ style_comment_substream <- function(tokens) {
   ch_kind  <- character(0); ch_bucket <- character(0)
 
   for (r in rev(ex$runs)) {
-    if (r$status != "extracted") next
+    if (r$status != "extracted") {
+      # Adam's stage-2 GMR review (2026-08-24): a silent refusal - a
+      # plainly field-shaped run left completely raw because .cs_classify_
+      # run() misjudged it - was invisible in this report: the loop just
+      # skipped it and the whole-file coverage counters (below) never saw
+      # it either. A failure buys a mechanism (CLAUDE.md) - every run now
+      # gets a row here, `extracted` or not, so a future silent refusal
+      # shows up in the CSV/coverage table instead of only in Adam's eyes.
+      ch_start  <- c(ch_start, r$line_start)
+      ch_end    <- c(ch_end, r$line_end)
+      ch_kind   <- c(ch_kind, r$kind %||% NA_character_)
+      ch_bucket <- c(ch_bucket, if (r$status == "refused") {
+        sprintf("run_refused (%s)", r$reason %||% "unknown reason")
+      } else {
+        sprintf("run_%s", r$status)
+      })
+      next
+    }
     idx <- r$comment_idx[1]
     ctx <- if (idx <= length(pctx$in_fl) && pctx$in_fl[idx]) {
       list(target_col = pctx$col_of[idx], first_field = idx < pctx$first_live[idx])
