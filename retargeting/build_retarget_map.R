@@ -371,7 +371,33 @@ build_retarget_map <- function(fx, idx, consumers = NULL) {
         n_source_columns = ncol_src, n_view_columns = ncol_view,
         n_columns_dropped = ndrop, decided_by = "auto",
         stringsAsFactors = FALSE),
-       payloads = payload)
+       payloads = payload,
+       # The chosen view's column NAMES, for the per-app field check that runs
+       # at runtime (DESIGN §6.6). The map carries only counts, and the names
+       # cannot be re-derived downstream without views.csv - which is exactly
+       # what the lookup architecture removes from the runtime.
+       columns = bm_view_columns(q$RelPath, vs, vn, payload))
+}
+
+#' `rel_path` x one row per column of the view chosen for that qvd.
+#'
+#' Empty for verdicts that chose no view (`needs-import`, `needs-creating`,
+#' `unmapped`): there is no column list to check against, and inventing one
+#' from the source object would let a load look checked when nothing checked
+#' it.
+bm_view_columns <- function(rel_path, vs, vn, payload) {
+  parts <- lapply(seq_along(payload), function(i) {
+    vc <- payload[[i]]$view_columns
+    if (!length(vc)) return(NULL)
+    data.frame(rel_path = rel_path[i], view_schema = vs[i], view_name = vn[i],
+               column = vc, stringsAsFactors = FALSE)
+  })
+  parts <- Filter(Negate(is.null), parts)
+  if (!length(parts))
+    return(data.frame(rel_path = character(0), view_schema = character(0),
+                      view_name = character(0), column = character(0),
+                      stringsAsFactors = FALSE))
+  do.call(rbind, parts)
 }
 
 # --- CLI ------------------------------------------------------------------
@@ -419,9 +445,14 @@ main <- function(args) {
   }
 
   mfile <- file.path(outd, "retarget_map.csv")
+  cfile <- file.path(outd, "retarget_columns.csv")
   pfile <- file.path(outd, "retarget_payloads.json")
   old <- rp_read_if(mfile)
   utils::write.csv(rp_merge(old, r$map, "rel_path"), mfile, row.names = FALSE)
+  # NOT merged like the map: this is derived data with no hand edits to
+  # protect, and a stale row here would fail a field check for a view that no
+  # longer has that column.
+  utils::write.csv(r$columns, cfile, row.names = FALSE)
 
   con <- file(pfile, open = "wt", encoding = "UTF-8")
   on.exit(close(con))
@@ -432,7 +463,9 @@ main <- function(args) {
                       if (i < length(r$payloads)) "," else ""), con)
   }
   writeLines("}", con)
-  cat("wrote ", mfile, " and ", pfile, "\n", sep = "")
+  cat("wrote ", mfile, ", ", cfile, " (", nrow(r$columns),
+      " view columns) and ", pfile, "
+", sep = "")
 }
 
 if (sys.nframe() == 0L) main(commandArgs(trailingOnly = TRUE))

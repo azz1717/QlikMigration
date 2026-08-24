@@ -1,11 +1,17 @@
-# resolve_paths.R — phase 3 stage 4, the RESOLVER. DESIGN §6.6.
+# resolve_paths.R — phase 3 stage 4, the LOOKUP. DESIGN §6.6.
 #
-# Decides, for every on-prem qvd load, WHICH Cloud view replaces it and what
-# its fields are called there. It writes two lookup tables and nothing else:
-# no script is read for rewriting, no script is written. The rewriter is a
-# separate tool that consumes these tables and never consults views.csv
-# (DESIGN §6.6) — which is what keeps the trailing-% and prefix logic in one
-# place instead of two.
+# Says, for every on-prem qvd load in ONE app, which Cloud view replaces it
+# and what its fields are called there. It writes two tables and nothing else:
+# no script is written. The rewriter is a separate tool that consumes these
+# tables and never consults views.csv (DESIGN §6.6) — which is what keeps the
+# trailing-% and prefix logic in one place instead of two.
+#
+# IT NO LONGER RESOLVES. The verdict for a path is looked up in
+# `retarget_map.csv`, built once for the whole estate by
+# `build_retarget_map.R`. Resolution is expensive, identical for every app
+# reading the same qvd, and — the real reason — reviewable in ONE file rather
+# than drifting per app. This tool contributes the two things only the app
+# knows: WHICH loads exist, and WHICH fields each one reads.
 #
 # Base R only. Not sourced by run_pipeline.R.
 #
@@ -19,13 +25,14 @@
 #
 # THE SAFETY ARGUMENT FOR A STRICT FIELD CHECK
 #
-# Several steps below are heuristics — which prefix to strip, which view a
-# name means. Every one of them is made safe by the same property: the field
-# check is STRICT (Adam, 2026-08-24). Every field the old load READS must
-# exist as a column of the candidate view. A heuristic that guesses wrong
-# produces a name the view does not have, so the load fails the check and is
-# reported for review. The failure mode of a bad guess is a flag, never a
-# silently wrong mapping. Do not loosen the check without re-reading this.
+# One heuristic survives the move to a lookup: which prefix to strip from a
+# field name. It is made safe by the same property as before — the field check
+# is STRICT (Adam, 2026-08-24). Every field the old load READS must exist as a
+# column of the view the map chose. A wrong strip produces a name the view
+# does not have, so the load is flagged rather than silently mis-mapped. The
+# check matters MORE under a lookup, not less: the map was built from the qvd
+# inventory without seeing a single script, so it cannot know what this app
+# reads. Do not loosen it without re-reading this.
 
 .rp_file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 PROJECT_DIR <- if (length(.rp_file_arg)) {
@@ -148,85 +155,117 @@ rp_segment_refs <- function(tokens, seg) {
   vapply(src, function(i) undelimit(tokens$text[i], tokens$type[i]), character(1))
 }
 
-# --- the oracle ----------------------------------------------------------
+# --- the map (the oracle) -------------------------------------------------
 
-#' views.csv -> per-view column sets. The ONLY authority on what a Cloud qvd
-#' contains; nothing is inferred from the old script (DESIGN §6.6).
-rp_read_views <- function(path = "fixtures/views.csv") {
-  if (!file.exists(path))
-    stop("views.csv not found at '", path, "'. Pass --views <path>.", call. = FALSE)
-  v <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character")
-  need <- c("VIEW_SCHEMA", "VIEW_NAME", "COLUMN_NAME")
-  miss <- setdiff(need, names(v))
+#' `retarget_map.csv` + `retarget_columns.csv` -> a lookup keyed by canonical
+#' relative path.
+#'
+#' The map is built ONCE for the estate by `build_retarget_map.R`; this tool
+#' does not resolve anything itself (DESIGN §6.6, "one crunch, then lookups").
+#' Both files are REQUIRED. A missing map is not a reason to fall back to
+#' searching per script - that is the shape this replaced, and two code paths
+#' that can disagree is worse than stopping.
+rp_read_map <- function(map_path  = "retargeting/retarget_map.csv",
+                        cols_path = "retargeting/retarget_columns.csv") {
+  if (!file.exists(map_path))
+    stop("retarget_map.csv not found at '", map_path,
+         "'. Run 'Rscript retargeting/build_retarget_map.R' first, or pass --map <path>.",
+         call. = FALSE)
+  if (!file.exists(cols_path))
+    stop("retarget_columns.csv not found at '", cols_path,
+         "'. It comes from the same run as the map; the field check cannot run without it.",
+         call. = FALSE)
+
+  m <- utils::read.csv(map_path, stringsAsFactors = FALSE, colClasses = "character")
+  need <- c("rel_path", "verdict", "view_schema", "view_name", "new_path",
+            "n_columns_dropped", "decided_by")
+  miss <- setdiff(need, names(m))
   if (length(miss))
-    stop("views.csv is missing column(s): ", paste(miss, collapse = ", "), call. = FALSE)
-  key <- paste(v$VIEW_SCHEMA, v$VIEW_NAME, sep = "\r")
-  sp  <- split(v$COLUMN_NAME, key)
-  parts <- strsplit(names(sp), "\r", fixed = TRUE)
-  data.frame(view_schema = vapply(parts, `[`, character(1), 1L),
-             view_name   = vapply(parts, `[`, character(1), 2L),
-             n_columns   = lengths(sp),
-             stringsAsFactors = FALSE)[order(names(sp)), ] -> idx
-  list(index = idx, columns = sp)
+    stop("retarget_map.csv is missing column(s): ", paste(miss, collapse = ", "),
+         call. = FALSE)
+
+  key <- rp_canonical_path(m$rel_path)
+  # The crunch collapses duplicate paths, but the map is hand-editable and an
+  # edit can reintroduce one. Two rows for a path means two verdicts, and a
+  # lookup taking whichever came first is the wrong way to be right.
+  if (anyDuplicated(key))
+    stop("retarget_map.csv has ", sum(duplicated(key)), " duplicate rel_path(s), e.g. '",
+         m$rel_path[anyDuplicated(key)], "'. Resolve it in the map; this tool will not pick one.",
+         call. = FALSE)
+
+  cl <- utils::read.csv(cols_path, stringsAsFactors = FALSE, colClasses = "character")
+  cols <- split(cl$column, rp_canonical_path(cl$rel_path))
+
+  list(index = m, row = setNames(seq_len(nrow(m)), key), columns = cols)
 }
 
-# --- resolution ----------------------------------------------------------
+#' The relative key an in-scope path becomes. NA if it is not under the root -
+#' callers classify first, so that is a bug rather than a miss.
+rp_map_key <- function(path) {
+  cp <- rp_canonical_path(path)
+  if (!startsWith(cp, .RP_ROOT)) return(NA_character_)
+  substring(cp, nchar(.RP_ROOT) + 1L)
+}
 
-#' One path -> one verdict.
+#' One in-scope load -> one status, by LOOKUP. No searching, no scoring.
 #'
-#' Order is DESIGN §6.6's: name, then schema only where the collision needs
-#' breaking, then the field check ALWAYS — including on a unique name match,
-#' because a unique name is not evidence that the qvd is the same shape.
+#' The map's verdict is the answer, with two things only the app can add:
 #'
-#' A cross-schema tie the path cannot break is NEVER resolved automatically
-#' (Adam, 2026-08-20), even where one candidate's field overlap leads.
-#' Guessing a schema silently points a load at the wrong data.
-rp_resolve_one <- function(stem, schema, refs, views) {
-  hit <- which(tolower(views$index$view_name) == tolower(stem))
-  if (!length(hit))
-    return(list(status = "unmatched", view_schema = NA_character_,
-                view_name = NA_character_,
-                evidence = "no view of that name"))
+#'   * `not-in-map` - the estate crunch never saw this qvd. It is a gap in the
+#'     inventory, not a resolution failure, and it must not be confused with
+#'     `unmapped`, which means the crunch looked and found no source object.
+#'   * `field-mismatch` - the map says this load can be rewritten, but THIS app
+#'     reads a field the chosen view does not have. The strict check is what
+#'     makes the map safe to act on: the map knows the view's shape, only the
+#'     script knows what is actually read (DESIGN §6.6).
+#'
+#' The check runs on the rewritable verdicts only. `multi-source` is a rebuild
+#' decision whatever the fields say, and the rest have no view to check
+#' against - a load flagged for a human is already flagged.
+rp_lookup_one <- function(key, refs, map) {
+  i <- if (is.na(key)) NULL else map$row[[key]]
+  if (is.null(i))
+    return(list(status = "not-in-map", view_schema = NA_character_,
+                view_name = NA_character_, new_path = NA_character_,
+                evidence = "no row in retarget_map.csv for this path"))
 
-  # The old directory is a HINT THAT MAY BE WRONG (Adam, 2026-08-24): schema
-  # alignment was never enforced on-prem, so a directory is not a schema.
-  # ORIC, NACCHO and AEDC are directories in app-unbuilt that are not
-  # VIEW_SCHEMA values at all; GMR uses SSR. Narrow by it only where it names
-  # a real schema, and never let a non-matching directory count as evidence.
-  known <- !is.na(schema) && tolower(schema) %in% tolower(views$index$view_schema)
-  if (length(hit) > 1L && known) {
-    narrowed <- hit[tolower(views$index$view_schema[hit]) == tolower(schema)]
-    if (length(narrowed) == 1L) hit <- narrowed
-  }
-  if (length(hit) > 1L)
-    return(list(status = "ambiguous", view_schema = NA_character_,
-                view_name = NA_character_,
-                evidence = paste0(length(hit), " views named that, schemas: ",
-                                  paste(views$index$view_schema[hit], collapse = "/"))))
+  row <- map$index[i, ]
+  vs  <- if (nzchar(row$view_schema)) row$view_schema else NA_character_
+  vn  <- if (nzchar(row$view_name))   row$view_name   else NA_character_
+  np  <- if (nzchar(row$new_path))    row$new_path    else NA_character_
+  ev  <- paste0("map: ", row$verdict, " (source ", row$source_object, ")")
 
-  vs  <- views$index$view_schema[hit]
-  vn  <- views$index$view_name[hit]
-  col <- views$columns[[paste(vs, vn, sep = "\r")]]
+  if (!(row$verdict %in% c("retarget", "retarget-incomplete")))
+    return(list(status = row$verdict, view_schema = vs, view_name = vn,
+                new_path = if (row$verdict == "needs-import") NA_character_ else np,
+                evidence = ev))
 
+  col  <- map$columns[[key]]
   want <- unique(rp_norm_field(refs))
   want <- want[nzchar(want)]
   missing <- want[!(tolower(want) %in% tolower(col))]
 
   if (length(missing))
     return(list(status = "field-mismatch", view_schema = vs, view_name = vn,
+                new_path = NA_character_,
                 evidence = paste0(length(missing), " of ", length(want),
-                                  " read fields absent from the view: ",
+                                  " read fields absent from ", vs, ".", vn, ": ",
                                   paste(utils::head(missing, 5L), collapse = "; "))))
 
-  list(status = "resolved", view_schema = vs, view_name = vn,
-       evidence = paste0(length(want), " of ", length(want),
-                         " read fields present (view has ", length(col), " columns)"))
+  list(status = row$verdict, view_schema = vs, view_name = vn, new_path = np,
+       evidence = paste0(length(want), " of ", length(want), " read fields present in ",
+                         vs, ".", vn, " (", length(col), " columns",
+                         if (row$verdict == "retarget-incomplete")
+                           paste0("; the view drops ", row$n_columns_dropped,
+                                  " of the source's, unread by this app") else "",
+                         ")"))
 }
+
 
 #' Resolve every `from` load in one script.
 #'
 #' @return list(paths, fields, warnings)
-resolve_paths <- function(tokens, views, app = NA_character_) {
+resolve_paths <- function(tokens, map, app = NA_character_) {
   sl   <- script_loads(tokens)
   segs <- find_load_segments(tokens)$segments
   frm  <- sl$loads[sl$loads$source_kind == "from" & !is.na(sl$loads$source), ]
@@ -266,8 +305,8 @@ resolve_paths <- function(tokens, views, app = NA_character_) {
       warn <- c(warn, sprintf("line %d: `%s` reads no named field (wildcard?); the field check cannot run",
                               ld$line_start, parts$stem))
 
-    v <- rp_resolve_one(parts$stem, parts$schema, refs, views)
-    np <- if (v$status == "resolved") rp_new_path(v$view_schema, v$view_name) else NA_character_
+    v  <- rp_lookup_one(rp_map_key(ld$source), refs, map)
+    np <- v$new_path
 
     out[[length(out) + 1L]] <- data.frame(
       app = app, load_id = ld$load_id, table = ld$table, tab = ld$tab,
@@ -276,7 +315,9 @@ resolve_paths <- function(tokens, views, app = NA_character_) {
       n_read_fields = length(refs), evidence = v$evidence,
       decided_by = "auto", stringsAsFactors = FALSE)
 
-    if (v$status == "resolved" && length(refs))
+    # Field pairs only for the verdicts that actually rewrite. A pair for a
+    # load nobody will rewrite is a claim the tool has not earned.
+    if (v$status %in% c("retarget", "retarget-incomplete") && length(refs))
       fmap[[length(fmap) + 1L]] <- data.frame(
         view_schema = v$view_schema, view_name = v$view_name,
         old_field = refs, new_field = rp_norm_field(refs),
@@ -325,7 +366,8 @@ rp_read_if <- function(path)
 main <- function(args) {
   if (!length(args)) {
     cat("usage: Rscript retargeting/resolve_paths.R <script.qvs> [--app NAME]",
-        "[--views fixtures/views.csv] [--out retargeting]\n")
+        "[--map retargeting/retarget_map.csv] [--columns retargeting/retarget_columns.csv]",
+        "[--out retargeting]\n")
     return(invisible(NULL))
   }
   script <- args[1]
@@ -333,15 +375,17 @@ main <- function(args) {
     i <- match(flag, args); if (is.na(i) || i == length(args)) default else args[i + 1L]
   }
   app   <- getopt("--app", basename(dirname(normalizePath(script, mustWork = FALSE))))
-  vpath <- getopt("--views", "fixtures/views.csv")
+  mpath <- getopt("--map", "retargeting/retarget_map.csv")
+  cpath <- getopt("--columns", "retargeting/retarget_columns.csv")
   outd  <- getopt("--out", "retargeting")
 
-  views  <- rp_read_views(vpath)
+  map    <- rp_read_map(mpath, cpath)
   tokens <- read_qlik_script(script)
-  r      <- resolve_paths(tokens, views, app = app)
+  r      <- resolve_paths(tokens, map, app = app)
 
   cat("resolve_paths: ", script, "\n", sep = "")
-  cat("  views:     ", nrow(views$index), " distinct schema/view pairs\n", sep = "")
+  cat("  map:       ", nrow(map$index), " qvds, ", length(map$columns),
+      " with a view column list\n", sep = "")
   cat("  from-loads:", nrow(r$paths), "\n")
   st <- table(r$paths$status)
   for (n in names(st)) cat(sprintf("    %-16s %d\n", n, st[[n]]))
