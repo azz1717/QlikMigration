@@ -223,11 +223,24 @@ bm_consumer_counts <- function(path = "fixtures/qvd_consumers.csv") {
 #' in the file — `read.csv` handles that, hand-splitting on "," does not.
 #'
 #' OPTIONAL: returns NULL if the fixture is absent or lacks its columns.
-bm_app_catalog <- function(path = "fixtures/appcatalog.csv",
-                           fileEncoding = "Windows-1252") {
+#' UTF-8 if the file is valid UTF-8, Windows-1252 otherwise.
+#'
+#' The fixtures disagree: five of the six csvs are UTF-8 or plain ASCII and
+#' `appcatalog.csv` is Windows-1252 (one 0x96 en dash, row 527). Re-saving the
+#' odd one out would only hold until the next extract, and would then be read
+#' with the wrong encoding — so the reader decides per file instead of anyone
+#' remembering. Guessing wrong is not silent either way: a 1252 byte read as
+#' UTF-8 gives an INVALID string that later grepl/sort warn on, and UTF-8 read
+#' as 1252 gives visible mojibake.
+bm_file_encoding <- function(path) {
+  raw <- readLines(path, warn = FALSE, encoding = "bytes")
+  if (all(validUTF8(raw))) "UTF-8" else "Windows-1252"
+}
+
+bm_app_catalog <- function(path = "fixtures/appcatalog.csv") {
   if (!file.exists(path)) return(NULL)
   a <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character",
-                       fileEncoding = fileEncoding)
+                       fileEncoding = bm_file_encoding(path))
   if (!all(c("AppID", "AppName", "StreamName") %in% names(a))) return(NULL)
   blank <- function(x) { x[!nzchar(x) | x == "-"] <- NA_character_; x }
   data.frame(app_id = a$AppID, app_name = blank(a$AppName),
