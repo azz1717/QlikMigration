@@ -36,7 +36,7 @@ root is entry points, everything else is engine room:
 | `diagnostics/` | `qlik_cli_probe.R` — tenant reachability probe (DESIGN §8) |
 | `input-apps/` | Put the app you want processed here (its own subfolder) |
 | `outputs/` | Styled scripts and reports land here, named after the app |
-| `shared/` | Tokenizer and reserved-word lists — used by everything below |
+| `shared/` | Tokenizer, reserved-word lists, and the csv/JSON helpers — used by everything below |
 | `styling/` | The eight style passes `run_pipeline.R` wires together |
 | `analysis/` | Phase 2 usage/review/pruning scripts, and the migration debt report |
 | `retargeting/` | Phase 3 — not started yet (DESIGN §6.6) |

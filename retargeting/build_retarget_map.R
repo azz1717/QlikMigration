@@ -40,32 +40,9 @@ if (is.na(PROJECT_DIR) || !dir.exists(PROJECT_DIR)) {
 }
 setwd(PROJECT_DIR)
 source("retargeting/resolve_paths.R")
+source("shared/json_write.R")
+source("shared/csv_read.R")
 
-# --- a minimal JSON writer -----------------------------------------------
-# Base R has none, and `jsonlite` is a development-machine oracle that must
-# not reach shipped tooling (INTERFACES.md). Only the shapes used below are
-# supported: string, character vector, and a named list of those.
-bm_json_escape <- function(x) {
-  x <- gsub("\\", "\\\\", x, fixed = TRUE)
-  x <- gsub("\"", "\\\"", x, fixed = TRUE)
-  x <- gsub("\r", "\\r", x, fixed = TRUE)
-  x <- gsub("\n", "\\n", x, fixed = TRUE)
-  x <- gsub("\t", "\\t", x, fixed = TRUE)
-  # Remaining C0 controls would produce invalid JSON; drop them rather than
-  # emit a file that will not parse. Qlik scripts do carry stray control
-  # characters, so this is not hypothetical.
-  gsub("[\001-\037]", "", x)
-}
-bm_json_str <- function(x) paste0("\"", bm_json_escape(as.character(x)), "\"")
-bm_json_arr <- function(x)
-  if (!length(x)) "[]" else paste0("[", paste(bm_json_str(x), collapse = ","), "]")
-bm_json_obj <- function(lst) {
-  parts <- vapply(names(lst), function(k) {
-    v <- lst[[k]]
-    paste0(bm_json_str(k), ":", if (length(v) == 1L && !is.list(v)) bm_json_str(v) else bm_json_arr(v))
-  }, character(1))
-  paste0("{", paste(parts, collapse = ","), "}")
-}
 
 # --- inputs ---------------------------------------------------------------
 
@@ -223,24 +200,10 @@ bm_consumer_counts <- function(path = "fixtures/qvd_consumers.csv") {
 #' in the file — `read.csv` handles that, hand-splitting on "," does not.
 #'
 #' OPTIONAL: returns NULL if the fixture is absent or lacks its columns.
-#' UTF-8 if the file is valid UTF-8, Windows-1252 otherwise.
-#'
-#' The fixtures disagree: five of the six csvs are UTF-8 or plain ASCII and
-#' `appcatalog.csv` is Windows-1252 (one 0x96 en dash, row 527). Re-saving the
-#' odd one out would only hold until the next extract, and would then be read
-#' with the wrong encoding — so the reader decides per file instead of anyone
-#' remembering. Guessing wrong is not silent either way: a 1252 byte read as
-#' UTF-8 gives an INVALID string that later grepl/sort warn on, and UTF-8 read
-#' as 1252 gives visible mojibake.
-bm_file_encoding <- function(path) {
-  raw <- readLines(path, warn = FALSE, encoding = "bytes")
-  if (all(validUTF8(raw))) "UTF-8" else "Windows-1252"
-}
-
 bm_app_catalog <- function(path = "fixtures/appcatalog.csv") {
   if (!file.exists(path)) return(NULL)
   a <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character",
-                       fileEncoding = bm_file_encoding(path))
+                       fileEncoding = file_encoding(path))
   if (!all(c("AppID", "AppName", "StreamName") %in% names(a))) return(NULL)
   blank <- function(x) { x[!nzchar(x) | x == "-"] <- NA_character_; x }
   data.frame(app_id = a$AppID, app_name = blank(a$AppName),
@@ -471,8 +434,8 @@ main <- function(args) {
   on.exit(close(con))
   writeLines("{", con)
   for (i in seq_along(r$payloads)) {
-    writeLines(paste0("  ", bm_json_str(r$map$rel_path[i]), ": ",
-                      bm_json_obj(r$payloads[[i]]),
+    writeLines(paste0("  ", json_str(r$map$rel_path[i]), ": ",
+                      json_obj(r$payloads[[i]]),
                       if (i < length(r$payloads)) "," else ""), con)
   }
   writeLines("}", con)
