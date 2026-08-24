@@ -43,6 +43,16 @@
 # Vanilla base R only.
 
 #' @param tokens a token stream data.frame (see tokenize_qlik / read_qlik_script).
+#' @param context optional list. `context$first_field`: is the FIRST segment
+#'   of this call's own token stream the true first field of its enclosing
+#'   LOAD list? NULL/TRUE (default) derives exactly today's behaviour - no
+#'   comma is ever placed before the first segment, since nothing in the
+#'   whole-file scan targets it. `FALSE` (for a child stream - PLAN
+#'   sections 3/5/9 - whose own first segment is really a CONTINUATION of a
+#'   list that starts before this stream) makes the pass ensure a leading comma
+#'   sits in front of that first segment too, inserting one if not already
+#'   there. Idempotent the same way the rest of the pass is: a second call
+#'   finds the comma already immediately before the segment and does nothing.
 #' @return a list with:
 #'   $tokens   - the token stream with commas relocated
 #'   $warnings - character vector describing any trailing comma that could
@@ -50,7 +60,9 @@
 #'   $changes  - data.frame(from_line, to_line, field_preview), one row per
 #'               comma moved - an exact record of what changed, for
 #'               sanity-checking instead of eyeballing a generic text diff.
-enforce_leading_commas <- function(tokens) {
+#'               A synthesised leading comma (first_field = FALSE case) has
+#'               from_line = NA (nothing was relocated - it was inserted).
+enforce_leading_commas <- function(tokens, context = NULL) {
   found <- find_load_segments(tokens)
   warn <- found$warnings
   insertions <- list()
@@ -72,8 +84,10 @@ enforce_leading_commas <- function(tokens) {
   # Change log accumulated as plain vectors and turned into a data.frame once.
   # Building one data.frame per iteration and rbind()-ing them was pure
   # bookkeeping overhead that cost more than the pass's real work.
-  ch_from <- integer(nseg); ch_to <- integer(nseg)
-  ch_prev <- character(nseg); nch <- 0L
+  # +1L: room for the context$first_field=FALSE synthesised-comma entry
+  # below, on top of the at-most-nseg relocations the main loop can log.
+  ch_from <- integer(nseg + 1L); ch_to <- integer(nseg + 1L)
+  ch_prev <- character(nseg + 1L); nch <- 0L
 
   # stamped per use instead of constructing a data.frame every iteration
   comma_row <- data.frame(text = ",", type = "COMMA", line = 1L,
@@ -121,8 +135,49 @@ enforce_leading_commas <- function(tokens) {
     ch_prev[nch] <- substr(trimws(preview), 1, 40)
   }
 
+  # context$first_field = FALSE: this call's own first segment is not
+  # really the list's first field (PLAN sections 3/5/9) - a live-equivalent field
+  # always has a leading separator, so synthesise one if none is there yet.
+  # NULL/TRUE derives today's behaviour: never touch the first segment.
+  first_field <- TRUE
+  if (!is.null(context) && !is.null(context$first_field)) first_field <- isTRUE(context$first_field)
+
+  need_head_comma <- FALSE
+  head_idx <- NA_integer_
+  if (!first_field && nseg > 0L) {
+    head_idx <- found$segments[[1]]$content_idx[1]
+    p <- head_idx - 1L
+    while (p >= 1L && t_type[p] %in% c("WS", "COMMENT")) p <- p - 1L
+    already <- p >= 1L && t_type[p] == "COMMA"
+    if (!already) {
+      if (head_idx > 1L) {
+        key <- as.character(head_idx - 1L)
+        new_comma <- comma_row
+        new_comma$line <- t_line[head_idx]
+        insertions[[key]] <- if (is.null(insertions[[key]])) new_comma else rbind(insertions[[key]], new_comma)
+      } else {
+        need_head_comma <- TRUE   # nothing precedes token 1 - splice_tokens()
+                                   # has no "insert before everything" key;
+                                   # prepend by rbind() after splicing, same
+                                   # deferred technique enforce_vertical_
+                                   # layout.R uses for its own line-1 case.
+      }
+      preview <- paste(t_text[head_idx:min(head_idx + 4, n)], collapse = "")
+      nch <- nch + 1L
+      ch_from[nch] <- NA_integer_
+      ch_to[nch]   <- t_line[head_idx]
+      ch_prev[nch] <- substr(trimws(preview), 1, 40)
+    }
+  }
+
   if (nvoid > 0L) tokens <- void_token(tokens, void_idx[seq_len(nvoid)])
   tokens <- splice_tokens(tokens, insertions)
+
+  if (need_head_comma) {
+    tokens <- rbind(
+      data.frame(text = ",", type = "COMMA", line = t_line[head_idx], stringsAsFactors = FALSE),
+      tokens)
+  }
 
   changes_df <- data.frame(
     from_line     = ch_from[seq_len(nch)],

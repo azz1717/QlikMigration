@@ -131,6 +131,17 @@
 }
 
 #' @param tokens a token stream data.frame (see tokenize_qlik / read_qlik_script).
+#' @param context optional list. `context$base_depth`: extra tab count added
+#'   ahead of every line's own flat kind-based indent (PLAN sections 3/5). NULL/0
+#'   (default) derives exactly today's behaviour. A child stream's own
+#'   `find_block_structure()` has no enclosing LOAD keyword to see, so on its
+#'   own it reads as top-level (statement = 1 tab) even when the block it
+#'   came from actually sits at field depth - `base_depth` corrects that
+#'   without reinterpreting `kind` itself. Applied uniformly, including the
+#'   stream's own line 1 (that line's blank-line collapse is a separate
+#'   concern from its indent - see the `i == 1L` branch below), so a child
+#'   stream is never quietly treated as top-level just because it is line 1
+#'   of ITS OWN token stream.
 #' @return a list with:
 #'   $tokens   - the token stream with vertical whitespace normalised
 #'   $warnings - find_block_structure()'s warnings (unbalanced blocks,
@@ -140,7 +151,10 @@
 #'               field / continuation / comment / directive) - never
 #'               "section", since
 #'               those are never rewritten.
-enforce_vertical_layout <- function(tokens) {
+enforce_vertical_layout <- function(tokens, context = NULL) {
+  base_depth <- 0L
+  if (!is.null(context) && !is.null(context$base_depth)) base_depth <- as.integer(context$base_depth)
+
   tokens <- .qvl_join_orphan_semicolons(tokens)
   bs <- find_block_structure(tokens)
   L <- bs$lines
@@ -241,7 +255,7 @@ enforce_vertical_layout <- function(tokens) {
       next
     }
 
-    indent <- .qvl_indent[[kind_i]]
+    indent <- paste0(strrep("\t", base_depth), .qvl_indent[[kind_i]])
     if (kind_i == "field" && isTRUE(L$first_field[i])) indent <- paste0(indent, "  ")
 
     run <- .preceding_ws_run(t_type, L$idx[i])

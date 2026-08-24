@@ -92,11 +92,18 @@
 
 #' @param tokens a token stream data.frame (see tokenize_qlik / read_qlik_script).
 #'   Must already have vertical layout applied - see the ordering note above.
+#' @param context optional list. `context$target_col`: the column every
+#'   eligible field's AS should reach (PLAN sections 3/5/9), used INSTEAD OF
+#'   the block's own computed max. NULL (default) derives exactly today's
+#'   behaviour - the block max, per LOAD block, as before. When supplied it
+#'   is TAKEN AS GIVEN (Adam, PLAN section 9 resolved decision) - never widened by
+#'   this call's own eligible fields, even if one of them is wider; outlier
+#'   exclusion (`.eaa_max_field_width`) still applies on top of it.
 #' @return a list with:
 #'   $tokens   - the token stream with AS-column whitespace normalised
 #'   $warnings - find_load_segments()'s warnings, passed through unchanged
 #'   $changes  - data.frame(line, before, after), one row per rewritten gap
-enforce_alias_alignment <- function(tokens) {
+enforce_alias_alignment <- function(tokens, context = NULL) {
   seg  <- find_load_segments(tokens)
   segs <- seg$segments
   warn <- seg$warnings
@@ -187,7 +194,11 @@ enforce_alias_alignment <- function(tokens) {
     # exactly this: the max below is taken over the NARROW fields only.
     narrow <- cols < .eaa_max_field_width
     if (!any(narrow)) next
-    target_col <- (max(cols[narrow]) %/% .eaa_tab_width + 1L) * .eaa_tab_width
+    target_col <- if (!is.null(context) && !is.null(context$target_col)) {
+      as.integer(context$target_col)   # given, not derived - never widened by cols
+    } else {
+      (max(cols[narrow]) %/% .eaa_tab_width + 1L) * .eaa_tab_width
+    }
 
     for (k in seq_along(elig)) {
       if (!narrow[k]) next   # outlier - left exactly as authored
