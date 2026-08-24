@@ -21,9 +21,8 @@ touch anything:
 
 See DESIGN §5.
 
-See [DESIGN.md](DESIGN.md) for architecture, decisions, the roadmap, verified
-Qlik behaviours, and the migration debt report (§7). (Dev-only, not part of
-this tracked repo — see "Repo layout" below.)
+See [docs/DESIGN.md](docs/DESIGN.md) for architecture, decisions, the roadmap,
+verified Qlik behaviours, and the migration debt report (§7).
 
 ## Repo layout
 
@@ -32,21 +31,29 @@ root is entry points, everything else is engine room:
 
 | Where | What |
 |---|---|
-| *(repo root)* | Entry points: `launch_console_ui.bat`, `qlik_probe.bat`, `run_pipeline.R`, `console_ui.R`, `render_report.R`, `qlik_cli_probe.R` |
+| *(repo root)* | Entry points only: `launch_console_ui.bat`, `qlik_probe.bat`, plus this `README.md` |
+| `ui/` | `console_ui.R` — the interactive front end the launcher starts |
+| `diagnostics/` | `qlik_cli_probe.R` — tenant reachability probe (DESIGN §8) |
 | `input-apps/` | Put the app you want processed here (its own subfolder) |
 | `outputs/` | Styled scripts and reports land here, named after the app |
 | `shared/` | Tokenizer and reserved-word lists — used by everything below |
 | `styling/` | The eight style passes `run_pipeline.R` wires together |
 | `analysis/` | Phase 2 usage/review/pruning scripts, and the migration debt report |
 | `retargeting/` | Phase 3 — not started yet (DESIGN §6.6) |
-| `fixtures/` | The three dev fixtures kept version-controlled for troubleshooting |
 
-Development-only material (`DESIGN.md`, `CLAUDE.md`, `INTERFACES.md`,
-`STATE.md`, example apps, `verify.R`) is **not tracked** — this is a solo-dev
-repo where git exists purely to deliver scripts to VMs that never commit or
-push, so keeping dev clutter out of what gets pushed was the whole point of
-this reorg. Those files still exist on the development machine; they are
-simply not part of what a VM operator downloads.
+The working docs live in `docs/`, which is **ignored here and has its own git
+repo with no remote** (2026-08-24). They need history — you cannot safely
+compact design prose you cannot diff back — but they do not need publishing,
+and git offers no way to track a file locally while withholding it from a
+push. Two needs, two repos. Commit doc changes from inside `docs/`; `git
+status` at the root will never show them.
+
+Still not tracked, and deliberately: the example apps, `verify.R` (a dev gate
+that must never run on a VM), the `fixtures/` it reads, and Adam's personal
+`docs/dlmf-log.md`. The fixtures were untracked on 2026-08-24: they exist for
+`verify.R`, `verify.R` never runs on a VM, so the repo was carrying its
+largest files for nobody. git here exists purely to deliver scripts to VMs that
+never commit or push, so what a VM operator downloads stays lean.
 
 ## Requirements
 

@@ -49,19 +49,22 @@ report_mock.html
 app-unbuilt/
 app2-unbuilt/
 
-# Dev-only pipeline gates - never run on a VM, only before a push here.
-# Bare names (no leading /) match at any depth, so this still covers
+# Dev-only pipeline gate - never run on a VM, only before a push here.
+# Bare name (no leading /) matches at any depth, so this still covers
 # verify.R now that it lives at styling/verify.R (2026-08-21 reorg).
 verify.R
-verify_docs.R
 
-# Workflow docs other than README.md.
-CLAUDE.md
-DESIGN.md
-INTERFACES.md
-STATE.md
-PLAN-comment-substream.md
-dlmf-log.md
+# docs/ HAS ITS OWN GIT REPO (2026-08-24), and is ignored here on purpose.
+#
+# The working notes need history - DESIGN.md is 1778 lines and compacting a
+# closed section is only safe if the prose can be diffed back. They do not need
+# publishing: a VM operator downloads scripts and has no use for them. Git
+# cannot track a file locally and withhold it from a push, so the two needs
+# split into two repos. docs/ has NO REMOTE and must never be given one.
+#
+# Consequence to remember: `git status` here will never show a doc edit. Commit
+# doc changes inside docs/ (cd docs && git commit), in the same session.
+docs/
 
 # 2026-08-21 folder reorg: console_ui.R writes results here, regenerated from
 # the input app each run. The placeholder note IS tracked (explicit name, not
@@ -73,3 +76,14 @@ outputs/*
 # input-apps/ has no generated content to ignore - only its placeholder note
 # is tracked; whatever a user drops in there is theirs to manage, not ignored
 # by this repo (they know what they put there).
+
+# Dev fixtures: untracked 2026-08-24. They are inputs for verify.R, which is
+# itself a dev-only gate that never runs on a VM - so a VM operator has no use
+# for them, and they were the largest thing the repo carried for nobody.
+fixtures/
+
+# CLAUDE.md must sit at the repo root - the harness loads ./CLAUDE.md by path,
+# so it cannot live in docs/ with the other working notes. It is ignored here
+# for the same reason they are: it is session rules for the development
+# machine, of no use to a VM operator, and not for publishing.
+CLAUDE.md
