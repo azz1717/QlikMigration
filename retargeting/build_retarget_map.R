@@ -314,6 +314,19 @@ build_retarget_map <- function(fx, idx, consumers = NULL) {
     scols <- if (!is.na(src[i])) idx$obj_cols[[src[i]]] else NULL
     cands <- if (!is.na(src[i])) idx$views_over[[src[i]]] else NULL
     imp   <- if (length(cands)) cands[cands %in% idx$imported] else character(0)
+    # The SAME-NAME rule (Adam, 2026-08-24). Lineage never links a view to a
+    # same-named object - 7 of its 2,161 rows share a name and none share a
+    # schema - because the Cloud view and the on-prem object are SIBLINGS over
+    # the same base tables, not parent and child (DESIGN §6.6). Without this,
+    # 1,439 qvds whose source object has an imported view of exactly that
+    # schema and name never get it considered, and 57 are told to create a
+    # view that already exists carrying every column they need.
+    #
+    # It joins the candidates and wins on coverage like any other; it is not
+    # privileged. A name is weaker evidence than recorded lineage, and the
+    # column comparison is what decides either way.
+    if (!is.na(src[i]) && src[i] %in% idx$imported)
+      imp <- union(imp, src[i])
 
     ncol_src[i] <- length(scols)
     pay <- list(rel_path = row$RelPath, source_object = row$BestSqlObject,

@@ -1,0 +1,8 @@
+"view_schema","view_name","old_field","new_field"
+"NIAA","Program Tracker","Programme.Programme Id%","Programme Id"
+"NIAA","Program Tracker","Programme.Programme","Programme"
+"NIAA","Program Tracker","Grant Activity.Grant Activity Id%","Grant Activity Id"
+"NIAA","Program Tracker","Grant Activity.Activity Id","Activity Id"
+"NIAA","Program Tracker","PMC Region.PMC Region Id%","PMC Region Id"
+"NIAA","Program Tracker","PMC Region.PMC Region Code","PMC Region Code"
+"NIAA","Program Tracker","PMC Region.PMC Region","PMC Region"
