@@ -71,11 +71,17 @@ bm_json_obj <- function(lst) {
 
 #' Collapse `qvdlist.csv` to ONE row per qvd path, and refuse to guess.
 #'
-#' 11 of 2,660 rows are duplicate `RelPath`s (measured 2026-08-24): the same
-#' qvd written by several apps — duplicated builders, or a builder cloned per
-#' programme. All 11 agree on `BestSqlObject` and field count, so the verdict
-#' is unaffected — but the MAP is keyed on the path, and a lookup that
-#' silently takes whichever row came first is the wrong way to be right.
+#' 11 of 2,660 rows are duplicate `RelPath`s (measured 2026-08-24). NOT
+#' cloned builders, as first recorded — they are ONE app under several NAMES.
+#' A creator ID carries up to five names in this extract ("01 QVD Builder -
+#' Inphinity Forms" / "01 QVD Generator - Inphinity Forms" / "01 ESS QVD
+#' Builder - CDP(9)" all share one id), while ZERO names carry more than one
+#' id. The id is the stable key; the name is a point-in-time label, so
+#' de-duplicating by NAME would be exactly backwards.
+#'
+#' All 11 agree on `BestSqlObject` and field count, so the verdict is
+#' unaffected — but the MAP is keyed on the path, and a lookup that silently
+#' takes whichever row came first is the wrong way to be right.
 #'
 #' The extra creators are preserved rather than dropped: which apps build a
 #' qvd is exactly what someone re-pointing it needs to know. A disagreement on
@@ -96,6 +102,9 @@ bm_dedupe_qvds <- function(q) {
   }
   keep <- !duplicated(k)
   out  <- q[keep, , drop = FALSE]
+  # Merged names may be the SAME app renamed over time, not several apps.
+  # Kept verbatim rather than collapsed: the history is the useful part, and
+  # this tool is in no position to decide which label is current.
   out$CreatorAppName <- vapply(k[keep], function(x)
     paste(unique(q$CreatorAppName[k == x]), collapse = " | "), character(1))
   attr(out, "collapsed") <- nrow(q) - nrow(out)
