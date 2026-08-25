@@ -201,7 +201,22 @@ find_comment_runs <- function(tokens) {
   if (n == 0) return(list(kind = NA_character_, reason = "empty body",
                            line_kind = character(0), is_prose_only = FALSE))
 
-  bs  <- find_block_structure(child)
+  # Perf (2026-08-25, perf-sub7 stage B): find_block_structure(), given no
+  # `segments`, derives them itself by calling find_load_segments() on this
+  # SAME `child` internally (shared/qlik_tokenizer.R, its own "field vs
+  # continuation" section) - and two lines down this function called
+  # find_load_segments(child) again, on the identical unmutated frame, to
+  # get the same answer a second time. Computing it once, up front, and
+  # threading it into find_block_structure() via its documented `segments`
+  # argument (stage 3's own contract: "must come from find_load_segments
+  # (tokens) on this SAME tokens, not a mutated copy" - true here, `child`
+  # is never touched before this function returns) cuts one of the two
+  # find_load_segments() calls this function was making per run. `seg` is a
+  # pure function of `child` alone, so hoisting it above the depth check
+  # changes nothing it depends on - only the depth-unbalanced refusal path
+  # now computes a `seg` it doesn't use (rare: 1/40 runs on GMR).
+  seg <- find_load_segments(child)
+  bs  <- find_block_structure(child, segments = seg)
   lns <- bs$lines
   line_kind <- character(0)
   if (nrow(lns) > 0) {
@@ -223,7 +238,6 @@ find_comment_runs <- function(tokens) {
                 line_kind = line_kind, is_prose_only = FALSE))
   }
 
-  seg <- find_load_segments(child)
   if (length(seg$warnings) > 0) {
     return(list(kind = NA_character_,
                 reason = paste("incomplete LOAD statement:", seg$warnings[1]),
