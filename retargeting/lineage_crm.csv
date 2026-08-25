@@ -1,0 +1,311 @@
+"generator_app","qvd_path_raw","qvd_field","db_connection","db_schema","db_table","db_column","src_qvd_path","src_qvd_field","status","line"
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.Interaction Id","AzureDbProdNIAADL","CRM","Linking Table","Interaction Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.User Id","AzureDbProdNIAADL","CRM","Linking Table","User Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.Interaction Owner Id","AzureDbProdNIAADL","CRM","Linking Table","Interaction Owner Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.Engagement Owner Id","AzureDbProdNIAADL","CRM","Linking Table","Engagement Owner Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.Organisation Id","AzureDbProdNIAADL","CRM","Linking Table","Organisation Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.Contact Id","AzureDbProdNIAADL","CRM","Linking Table","Contact Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.Engagement Id","AzureDbProdNIAADL","CRM","Linking Table","Engagement Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\CRM Linking Table.qvd","CRM Linking Table.Party Id","AzureDbProdNIAADL","CRM","Linking Table","Party Id",NA,NA,"mapped",58
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Engagement Id%","AzureDbProdNIAADL","CRM","Engagement","Engagement Id",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Organisation Id%","AzureDbProdNIAADL","CRM","Engagement","Organisation Id",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.NIAA Region Owner Id%","AzureDbProdNIAADL","CRM","Engagement","NIAA Region Owner Id",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Organisation Contact Id%","AzureDbProdNIAADL","CRM","Engagement","Organisation Contact Id",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Title","AzureDbProdNIAADL","CRM","Engagement","Title",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Key Topics","AzureDbProdNIAADL","CRM","Engagement","Key Topics",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Purpose of Engagement","AzureDbProdNIAADL","CRM","Engagement","Purpose of Engagement",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Interaction Count","AzureDbProdNIAADL","CRM","Engagement","Interaction Count",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Action Required","AzureDbProdNIAADL","CRM","Engagement","Action Required",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Last Engagement Date","AzureDbProdNIAADL","CRM","Engagement","Last Engagement Date",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Created by","AzureDbProdNIAADL","CRM","Engagement","Created by",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Creator Name","AzureDbProdNIAADL","CRM","Engagement","Creator Name",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Creation Date","AzureDbProdNIAADL","CRM","Engagement","Creation Date",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Last Modified Date","AzureDbProdNIAADL","CRM","Engagement","Last Modified Date",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Due Date","AzureDbProdNIAADL","CRM","Engagement","Due Date",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Owner Id%","AzureDbProdNIAADL","CRM","Engagement","Owner Id",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Owner Name","AzureDbProdNIAADL","CRM","Engagement","Owner Name",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Owner Business Unit","AzureDbProdNIAADL","CRM","Engagement","Owner Business Unit",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Status","AzureDbProdNIAADL","CRM","Engagement","Status",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Organisation Code","AzureDbProdNIAADL","CRM","Engagement","Org Code",NA,NA,"mapped",115
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Organisation Id%","AzureDbProdNIAADL","CRM","Organisation","Organisation Id",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Name","AzureDbProdNIAADL","CRM","Organisation","Name",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.ABN","AzureDbProdNIAADL","CRM","Organisation","ABN",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Alternate Name","AzureDbProdNIAADL","CRM","Organisation","Alternate Name",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Indigeneit","AzureDbProdNIAADL","CRM","Organisation","Indigeneity",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Entity Type","AzureDbProdNIAADL","CRM","Organisation","Entity Type",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Entity Type Code","AzureDbProdNIAADL","CRM","Organisation","Entity Type Code",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Organisation Type","AzureDbProdNIAADL","CRM","Organisation","Organisation Type",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Industry Sector","AzureDbProdNIAADL","CRM","Organisation","Industry Sector",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.NIAA Organisation Lead","AzureDbProdNIAADL","CRM","Organisation","NIAA Organisation Lead",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Parent Organisation","AzureDbProdNIAADL","CRM","Organisation","Parent Organisation",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Parent Organisation Id","AzureDbProdNIAADL","CRM","Organisation","Parent Organisation Id",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Parent Organisation ABN","AzureDbProdNIAADL","CRM","Organisation","Parent Organisation ABN",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.ORP Rating","AzureDbProdNIAADL","CRM","Organisation","ORP Rating",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Latest PRA Rating","AzureDbProdNIAADL","CRM","Organisation","Latest PRA Rating",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Risk Exemption","AzureDbProdNIAADL","CRM","Organisation","Risk Exemption",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Primary Contact Id%","AzureDbProdNIAADL","CRM","Organisation","Primary Contact Id",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Communication Protocol","AzureDbProdNIAADL","CRM","Organisation","Communication Protocol",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Compliance Review","AzureDbProdNIAADL","CRM","Organisation","Compliance Review",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address City","AzureDbProdNIAADL","CRM","Organisation","Address City",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Full Address","AzureDbProdNIAADL","CRM","Organisation","Full Address",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address Country","AzureDbProdNIAADL","CRM","Organisation","Address Country",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Street Address","AzureDbProdNIAADL","CRM","Organisation","Street Address",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address latitude","AzureDbProdNIAADL","CRM","Organisation","Address latitude",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address Longitude","AzureDbProdNIAADL","CRM","Organisation","Address Longitude",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address Postcode","AzureDbProdNIAADL","CRM","Organisation","Address Postcode",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address State","AzureDbProdNIAADL","CRM","Organisation","Address State",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 City","AzureDbProdNIAADL","CRM","Organisation","Address2 City",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 Full Address","AzureDbProdNIAADL","CRM","Organisation","Address2 Full Address",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 Country","AzureDbProdNIAADL","CRM","Organisation","Address2 Country",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 latitude","AzureDbProdNIAADL","CRM","Organisation","Address2 latitude",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 longitude","AzureDbProdNIAADL","CRM","Organisation","Address2 longitude",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 Street Address","AzureDbProdNIAADL","CRM","Organisation","Address2 Street Address",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 Postcode","AzureDbProdNIAADL","CRM","Organisation","Address2 Postcode",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Address2 State","AzureDbProdNIAADL","CRM","Organisation","Address2 State",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Email Address","AzureDbProdNIAADL","CRM","Organisation","Email Address",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Total Funding","AzureDbProdNIAADL","CRM","Organisation","Total Funding",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Current Funding","AzureDbProdNIAADL","CRM","Organisation","Current Funding",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Current Activity Funds Released","AzureDbProdNIAADL","CRM","Organisation","Current Activity Funds Released",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Total Funds Released","AzureDbProdNIAADL","CRM","Organisation","Total Funds Released",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Count of Grant Activities","AzureDbProdNIAADL","CRM","Organisation","Count of Grant Activities",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Current Activities","AzureDbProdNIAADL","CRM","Organisation","Current Activities",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Count of Total Applications","AzureDbProdNIAADL","CRM","Organisation","Count of Total Applications",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Current Applications","AzureDbProdNIAADL","CRM","Organisation","Current Applications",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Status Code","AzureDbProdNIAADL","CRM","Organisation","Status Code",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Status","AzureDbProdNIAADL","CRM","Organisation","Status",NA,NA,"mapped",217
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Outcome Id%","AzureDbProdNIAADL","CRM","Engagement Outcome","Outcome Id",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Engagement Id%","AzureDbProdNIAADL","CRM","Engagement Outcome","Engagement Id",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Title ","AzureDbProdNIAADL","CRM","Engagement Outcome","Title",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Description ","AzureDbProdNIAADL","CRM","Engagement Outcome","Description",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Type ","AzureDbProdNIAADL","CRM","Engagement Outcome","Type",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Other Type Description","AzureDbProdNIAADL","CRM","Engagement Outcome","Other Type Description",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Created by","AzureDbProdNIAADL","CRM","Engagement Outcome","Created by",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Date Created","AzureDbProdNIAADL","CRM","Engagement Outcome","Date Created",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Related Opportunity Id%","AzureDbProdNIAADL","CRM","Engagement Outcome","Related Opportunity Id",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Outcome.qvd","Engagement Outcome.Status","AzureDbProdNIAADL","CRM","Engagement Outcome","Status",NA,NA,"mapped",248
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Metatag.qvd","Engagement Metatag.Engagement Id%","AzureDbProdNIAADL","CRM","Engagement Metatag","Engagement Id",NA,NA,"mapped",261
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement Metatag.qvd","Engagement Metatag.Metatag","AzureDbProdNIAADL","CRM","Engagement Metatag","Metatag",NA,NA,"mapped",261
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation Metatag.qvd","Organistaion Metatag.Organisation Id%","AzureDbProdNIAADL","CRM","Organisation Metatag","Organisation Id",NA,NA,"mapped",274
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation Metatag.qvd","Organisation Metatag.Metatag","AzureDbProdNIAADL","CRM","Organisation Metatag","Metatag",NA,NA,"mapped",274
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Tag.qvd","Tag.Tag Id%","AzureDbProdNIAADL","CRM","Tag","Tag Id",NA,NA,"mapped",290
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Tag.qvd","Tag.Owner Id%","AzureDbProdNIAADL","CRM","Tag","Owner Id",NA,NA,"mapped",290
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Tag.qvd","Tag.Tag Name","AzureDbProdNIAADL","CRM","Tag","Tag Name",NA,NA,"mapped",290
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Note Id%","AzureDbProdNIAADL","CRM","Note","Note Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Title","AzureDbProdNIAADL","CRM","Note","Title",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Created By User Id%","AzureDbProdNIAADL","CRM","Note","Created By User Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Created On","AzureDbProdNIAADL","CRM","Note","Created On",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Is Document","AzureDbProdNIAADL","CRM","Note","Is Document",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Modified By User Id%","AzureDbProdNIAADL","CRM","Note","Modified By User Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Modified On","AzureDbProdNIAADL","CRM","Note","Modified On",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Description","AzureDbProdNIAADL","CRM","Note","Description",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Engagement Id%","AzureDbProdNIAADL","CRM","Note","Engagement Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Interaction Id%","AzureDbProdNIAADL","CRM","Note","Interaction Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Object Type","AzureDbProdNIAADL","CRM","Note","Object Type",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Tag Id%","AzureDbProdNIAADL","CRM","Note","Tag Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Owning Business Unit Id%","AzureDbProdNIAADL","CRM","Note","Owning Business Unit Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Owning User Id%","AzureDbProdNIAADL","CRM","Note","Owning User Id",NA,NA,"mapped",328
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Contact Id%","AzureDbProdNIAADL","CRM","Contacts","Contact Id",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Customer Id%","AzureDbProdNIAADL","CRM","Contacts","Customer Id",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Title","AzureDbProdNIAADL","CRM","Contacts","Title",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.First Name","AzureDbProdNIAADL","CRM","Contacts","First Name",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Last Name","AzureDbProdNIAADL","CRM","Contacts","Last Name",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Full Name","AzureDbProdNIAADL","CRM","Contacts","Full Name",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Preferred Name","AzureDbProdNIAADL","CRM","Contacts","Preferred Name",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Alternate Name","AzureDbProdNIAADL","CRM","Contacts","Alternate Name",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Suffix","AzureDbProdNIAADL","CRM","Contacts","Suffix",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Job Title","AzureDbProdNIAADL","CRM","Contacts","Job Title",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Organisation Id%","AzureDbProdNIAADL","CRM","Contacts","Organisation Id",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Email","AzureDbProdNIAADL","CRM","Contacts","Email",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Main Phone","AzureDbProdNIAADL","CRM","Contacts","Main Phone",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Mobile Phone","AzureDbProdNIAADL","CRM","Contacts","Mobile Phone",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Email Address 2","AzureDbProdNIAADL","CRM","Contacts","Email Address 2",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Email Address 3","AzureDbProdNIAADL","CRM","Contacts","Email Address 3",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Telephone 2","AzureDbProdNIAADL","CRM","Contacts","Telephone 2",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Telephone 3","AzureDbProdNIAADL","CRM","Contacts","Telephone 3",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Tags","AzureDbProdNIAADL","CRM","Contacts","Tags",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Collection Notice Provided","AzureDbProdNIAADL","CRM","Contacts","Collection Notice Provided",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Collection Method","AzureDbProdNIAADL","CRM","Contacts","Collection Method",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Collection Notice Notes","AzureDbProdNIAADL","CRM","Contacts","Collection Notice Notes",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Business Address Details","AzureDbProdNIAADL","CRM","Contacts","Business Address Details",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Postal Address Details","AzureDbProdNIAADL","CRM","Contacts","Postal Address Details",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Stakeholder Involvement","AzureDbProdNIAADL","CRM","Contacts","Stakeholder Involvement",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Sectors","AzureDbProdNIAADL","CRM","Contacts","Sectors",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Specialist Subject Areas","AzureDbProdNIAADL","CRM","Contacts","Specialist Subject Areas",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Biography","AzureDbProdNIAADL","CRM","Contacts","Biography",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Communication Protocol","AzureDbProdNIAADL","CRM","Contacts","Communication Protocol",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Relationship Lead","AzureDbProdNIAADL","CRM","Contacts","Relationship Lead",NA,NA,"mapped",397
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Interaction Id%","AzureDbProdNIAADL","CRM","Interaction","Interaction Id",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Activity Type","AzureDbProdNIAADL","CRM","Interaction","Activity Type",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.User Id%","AzureDbProdNIAADL","CRM","Interaction","User Id",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Date Created","AzureDbProdNIAADL","CRM","Interaction","Date Created",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Date Completed","AzureDbProdNIAADL","CRM","Interaction","Date Completed",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Description","AzureDbProdNIAADL","CRM","Interaction","Description",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Location","AzureDbProdNIAADL","CRM","Interaction","Location",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Date","AzureDbProdNIAADL","CRM","Interaction","Date",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Owner Id%","AzureDbProdNIAADL","CRM","Interaction","Owner Id",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Duration","AzureDbProdNIAADL","CRM","Interaction","Duration",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Start Time","AzureDbProdNIAADL","CRM","Interaction","Start Time",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.End Time","AzureDbProdNIAADL","CRM","Interaction","End Time",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Subject","AzureDbProdNIAADL","CRM","Interaction","Subject",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Notes","AzureDbProdNIAADL","CRM","Interaction","Notes",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Status","AzureDbProdNIAADL","CRM","Interaction","Status",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Purpose","AzureDbProdNIAADL","CRM","Interaction","Purpose",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Action Required","AzureDbProdNIAADL","CRM","Interaction","Action Required",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Engagement Id%","AzureDbProdNIAADL","CRM","Interaction","Engagement Id",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Type","AzureDbProdNIAADL","CRM","Interaction","Type",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Mesh Block Code","AzureDbProdNIAADL","CRM","Interaction","Mesh Block Code",NA,NA,"mapped",447
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.User Id%","AzureDbProdNIAADL","CRM","User","User Id",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Identitiy Id","AzureDbProdNIAADL","CRM","User","Identitiy Id",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Frist Name","AzureDbProdNIAADL","CRM","User","Frist Name",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Last Name","AzureDbProdNIAADL","CRM","User","Last Name",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Full Name","AzureDbProdNIAADL","CRM","User","Full Name",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Internal Email","AzureDbProdNIAADL","CRM","User","Internal Email",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Personal Email","AzureDbProdNIAADL","CRM","User","Personal Email",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Section Id%","AzureDbProdNIAADL","CRM","User","Section Id",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Branch Id%","AzureDbProdNIAADL","CRM","User","Branch Id",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Division Id%","AzureDbProdNIAADL","CRM","User","Division Id",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Group Id%","AzureDbProdNIAADL","CRM","User","Group Id",NA,NA,"mapped",479
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact Metatag.qvd","Contact Metatag.Contact Id%","AzureDbProdNIAADL","CRM","Contact Metatag","Contact Id",NA,NA,"mapped",492
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact Metatag.qvd","Contact Metatag.Metatag","AzureDbProdNIAADL","CRM","Contact Metatag","Metatag",NA,NA,"mapped",492
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction Party.qvd","Interaction Party.Interaction Id","AzureDbProdNIAADL","CRM","Interaction Party","Interaction Id",NA,NA,"mapped",517
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction Party.qvd","Interaction Party.Party Id","AzureDbProdNIAADL","CRM","Interaction Party","Party Id",NA,NA,"mapped",517
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction Party.qvd","Interaction Party.Party Type Id","AzureDbProdNIAADL","CRM","Interaction Party","Party Type Id",NA,NA,"mapped",517
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction Party.qvd","Interaction Party.Party Type","AzureDbProdNIAADL","CRM","Interaction Party","Party Type",NA,NA,"mapped",517
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction Party.qvd","Interaction Party.Party Email Address","AzureDbProdNIAADL","CRM","Interaction Party","Party Email Addrress",NA,NA,"mapped",517
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction Party.qvd","Interaction Party.Organisation Id","AzureDbProdNIAADL","CRM","Interaction Party","Organisation Id",NA,NA,"mapped",517
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction Party.qvd","Interaction Party.User Id","AzureDbProdNIAADL","CRM","Interaction Party","User Id",NA,NA,"mapped",517
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Appointment Id","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Appointment Id",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Duration Minutes","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Duration Minutes",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.End Date","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","End Date",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Created By","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Created By",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Created Date","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Created Date",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Description","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Description",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Location","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Location",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Modified By","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Modified By",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Modified On","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Modified On",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Owner Id","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Owner Id",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Business Unit Owner","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Business Unit Owner",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Owning Team","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Owning Team",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Owning User","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Owning User",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Providers Attending","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Providers Attending",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Key Discussion Points","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Key Discussion Points",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.NIAA Staff Attending","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","NIAA Staff Attending",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.NIAA Non-NIAA Staff Attending","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","NIAA Non-NIAA Staff Attending",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Other Purpose","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Other Purpose",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Other Type","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Other Type",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Total Attendees","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Total Attendees",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Regarding Object Id","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Regarding Object Id",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Scheduled End Date","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Scheduled End Date",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Scheduled Start Date","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Scheduled Start Date",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Subject","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Subject",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Recurring Appiontment","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Recurring Appiontment",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Purpose","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Purpose",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Type","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Type",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Appointment.qvd","Appointment.Status","AzureDbProdNIAADL","""AZDB-AUE-PRD-NIAADL01""","CRM.Appointments","Status",NA,NA,"mapped",583
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Engagement Id%","AzureDbProdNIAADL","CRM","Engagement","Engagement Id",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Subject","AzureDbProdNIAADL","CRM","Engagement","Subject",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Status","AzureDbProdNIAADL","CRM","Engagement","Status",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.NIAA Region Id%","AzureDbProdNIAADL","CRM","Engagement","NIAA Region Id",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Contact Id%","AzureDbProdNIAADL","CRM","Engagement","Contact Id",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Organisation Id%","AzureDbProdNIAADL","CRM","Engagement","Organisation Id",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Purpose","AzureDbProdNIAADL","CRM","Engagement","Purpose",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Key Topics","AzureDbProdNIAADL","CRM","Engagement","Key Topics",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Action Required","AzureDbProdNIAADL","CRM","Engagement","Action Required",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Document Links","AzureDbProdNIAADL","CRM","Engagement","Document Links",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Tag Id%","AzureDbProdNIAADL","CRM","Engagement","Tag Id",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Outcome Subject","AzureDbProdNIAADL","CRM","Engagement","Outcome Subject",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Outcome Type","AzureDbProdNIAADL","CRM","Engagement","Outcome Type",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Outcome Description","AzureDbProdNIAADL","CRM","Engagement","Outcome Description",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Outcome Opportunity","AzureDbProdNIAADL","CRM","Engagement","Outcome Opportunity",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Outcome Created By","AzureDbProdNIAADL","CRM","Engagement","Outcome Created By",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Engagement.qvd","Engagement.Outcome Created Date","AzureDbProdNIAADL","CRM","Engagement","Outcome Created Date",NA,NA,"mapped",614
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Tag.qvd","Tag.Tag Id%","AzureDbProdNIAADL","CRM","Tag","Tag Id",NA,NA,"mapped",623
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Tag.qvd","Tag.Owner Id%","AzureDbProdNIAADL","CRM","Tag","Owner Id",NA,NA,"mapped",623
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Tag.qvd","Tag.Tag Name","AzureDbProdNIAADL","CRM","Tag","Tag Name",NA,NA,"mapped",623
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Note Id%","AzureDbProdNIAADL","CRM","Note","Note Id",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Title","AzureDbProdNIAADL","CRM","Note","Title",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Created By User Id%","AzureDbProdNIAADL","CRM","Note","Created By User Id",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Created On","AzureDbProdNIAADL","CRM","Note","Created On",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Is Document","AzureDbProdNIAADL","CRM","Note","Is Document",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Modified By User Id%","AzureDbProdNIAADL","CRM","Note","Modified By User Id",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Modified On","AzureDbProdNIAADL","CRM","Note","Modified On",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Description","AzureDbProdNIAADL","CRM","Note","Description",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Engagement Id%","AzureDbProdNIAADL","CRM","Note","Engagement Id",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Object Type","AzureDbProdNIAADL","CRM","Note","Object Type",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Tag Id%","AzureDbProdNIAADL","CRM","Note","Tag Id",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Owning Business Unit Id%","AzureDbProdNIAADL","CRM","Note","Owning Business Unit Id",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Note.qvd","Note.Owning User Id%","AzureDbProdNIAADL","CRM","Note","Owning User Id",NA,NA,"mapped",642
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Contact Id%","AzureDbProdNIAADL","CRM","Contact","Contact Id",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Customer Id%","AzureDbProdNIAADL","CRM","Contact","Customer Id",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Title","AzureDbProdNIAADL","CRM","Contact","Title",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.First Name","AzureDbProdNIAADL","CRM","Contact","First Name",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Last Name","AzureDbProdNIAADL","CRM","Contact","Last Name",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Full Name","AzureDbProdNIAADL","CRM","Contact","Full Name",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Preferred Name","AzureDbProdNIAADL","CRM","Contact","Preferred Name",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Alternate Name","AzureDbProdNIAADL","CRM","Contact","Alternate Name",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Suffix","AzureDbProdNIAADL","CRM","Contact","Suffix",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Job Title","AzureDbProdNIAADL","CRM","Contact","Job Title",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Organisation Id%","AzureDbProdNIAADL","CRM","Contact","Organisation Id",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Email","AzureDbProdNIAADL","CRM","Contact","Email",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Main Phone","AzureDbProdNIAADL","CRM","Contact","Main Phone",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Mobile Phone","AzureDbProdNIAADL","CRM","Contact","Mobile Phone",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Email Address 2","AzureDbProdNIAADL","CRM","Contact","Email Address 2",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Email Address 3","AzureDbProdNIAADL","CRM","Contact","Email Address 3",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Telephone 2","AzureDbProdNIAADL","CRM","Contact","Telephone 2",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Telephone 3","AzureDbProdNIAADL","CRM","Contact","Telephone 3",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Tags","AzureDbProdNIAADL","CRM","Contact","Tags",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Collection Notice Provided","AzureDbProdNIAADL","CRM","Contact","Collection Notice Provided",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Collection Method","AzureDbProdNIAADL","CRM","Contact","Collection Method",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Collection Notice Notes","AzureDbProdNIAADL","CRM","Contact","Collection Notice Notes",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Business Address Details","AzureDbProdNIAADL","CRM","Contact","Business Address Details",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Postal Address Details","AzureDbProdNIAADL","CRM","Contact","Postal Address Details",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Stakeholder Involvement","AzureDbProdNIAADL","CRM","Contact","Stakeholder Involvement",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Sectors","AzureDbProdNIAADL","CRM","Contact","Sectors",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Specialist Subject Areas","AzureDbProdNIAADL","CRM","Contact","Specialist Subject Areas",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Biography","AzureDbProdNIAADL","CRM","Contact","Biography",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Contact.qvd","Contact.Communication Protocol","AzureDbProdNIAADL","CRM","Contact","Communication Protocol",NA,NA,"mapped",677
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Organisation Id%","AzureDbProdNIAADL","CRM","Organisation","Organisation Id",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Organisation","AzureDbProdNIAADL","CRM","Organisation","Organisation",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Entity Type Code","AzureDbProdNIAADL","CRM","Organisation","Entity Type Code",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Entity Type","AzureDbProdNIAADL","CRM","Organisation","Entity Type",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.ABN","AzureDbProdNIAADL","CRM","Organisation","ABN",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.ASIC Number","AzureDbProdNIAADL","CRM","Organisation","ASIC Number",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Parent Organisation","AzureDbProdNIAADL","CRM","Organisation","Parent Organisation",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Email Address","AzureDbProdNIAADL","CRM","Organisation","Email Address",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Street 1","AzureDbProdNIAADL","CRM","Organisation","Street 1",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Suburb","AzureDbProdNIAADL","CRM","Organisation","Suburb",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.State","AzureDbProdNIAADL","CRM","Organisation","State",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Postcode","AzureDbProdNIAADL","CRM","Organisation","Postcode",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Country","AzureDbProdNIAADL","CRM","Organisation","Country",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Latitude","AzureDbProdNIAADL","CRM","Organisation","Latitude",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Longitude","AzureDbProdNIAADL","CRM","Organisation","Longitude",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Organisation.qvd","Organisation.Status","AzureDbProdNIAADL","CRM","Organisation","Status",NA,NA,"mapped",699
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Interaction Id%","AzureDbProdNIAADL","CRM","Interaction","Interaction Id",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Activity Type","AzureDbProdNIAADL","CRM","Interaction","Activity Type",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.User Id%","AzureDbProdNIAADL","CRM","Interaction","User Id",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Date Created","AzureDbProdNIAADL","CRM","Interaction","Date Created",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Description","AzureDbProdNIAADL","CRM","Interaction","Description",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Location","AzureDbProdNIAADL","CRM","Interaction","Location",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Date","AzureDbProdNIAADL","CRM","Interaction","Date",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Tag Id%","AzureDbProdNIAADL","CRM","Interaction","Tag Id",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Duration","AzureDbProdNIAADL","CRM","Interaction","Duration",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Start Time","AzureDbProdNIAADL","CRM","Interaction","Start Time",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.End Time","AzureDbProdNIAADL","CRM","Interaction","End Time",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Subject","AzureDbProdNIAADL","CRM","Interaction","Subject",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Notes","AzureDbProdNIAADL","CRM","Interaction","Notes",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Status","AzureDbProdNIAADL","CRM","Interaction","Status",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Purpose","AzureDbProdNIAADL","CRM","Interaction","Purpose",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Action Required","AzureDbProdNIAADL","CRM","Interaction","Action Required",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Engagement Id%","AzureDbProdNIAADL","CRM","Interaction","Engagement Id",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\Interaction.qvd","Interaction.Type","AzureDbProdNIAADL","CRM","Interaction","Type",NA,NA,"mapped",723
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.User Id%","AzureDbProdNIAADL","CRM","User","User Id",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Identitiy Id","AzureDbProdNIAADL","CRM","User","Identitiy Id",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Frist Name","AzureDbProdNIAADL","CRM","User","Frist Name",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Last Name","AzureDbProdNIAADL","CRM","User","Last Name",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Full Name","AzureDbProdNIAADL","CRM","User","Full Name",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Internal Email","AzureDbProdNIAADL","CRM","User","Internal Email",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Personal Email","AzureDbProdNIAADL","CRM","User","Personal Email",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Section Id%","AzureDbProdNIAADL","CRM","User","Section Id",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Branch Id%","AzureDbProdNIAADL","CRM","User","Branch Id",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Division Id%","AzureDbProdNIAADL","CRM","User","Division Id",NA,NA,"mapped",752
+"CRM QVD Generator","lib://AppData\PROD\AzureDataLake\CRM\User.qvd","User.Group Id%","AzureDbProdNIAADL","CRM","User","Group Id",NA,NA,"mapped",752

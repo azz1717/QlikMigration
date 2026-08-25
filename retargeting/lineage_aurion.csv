@@ -1,0 +1,45 @@
+"generator_app","qvd_path_raw","qvd_field","db_connection","db_schema","db_table","db_column","src_qvd_path","src_qvd_field","status","line"
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Group","AzureDbProdNIAADL","AURION","Organisation Staff","Group",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Division","AzureDbProdNIAADL","AURION","Organisation Staff","Division",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Branch","AzureDbProdNIAADL","AURION","Organisation Staff","Branch",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Section","AzureDbProdNIAADL","AURION","Organisation Staff","Section",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Subsection","AzureDbProdNIAADL","AURION","Organisation Staff","Subsection",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Posn No","AzureDbProdNIAADL","AURION","Organisation Staff","Posn No",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Current Position Title","AzureDbProdNIAADL","AURION","Organisation Staff","Current Position Title",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Class Desc","AzureDbProdNIAADL","AURION","Organisation Staff","Class Desc",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Actual Occupant","AzureDbProdNIAADL","AURION","Organisation Staff","Actual Occupant",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Employment Type","AzureDbProdNIAADL","AURION","Organisation Staff","Employment Type",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.FTE","AzureDbProdNIAADL","AURION","Organisation Staff","FTE",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Location Code","AzureDbProdNIAADL","AURION","Organisation Staff","Location Code",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Substantive Occupant","AzureDbProdNIAADL","AURION","Organisation Staff","Substantive Occupant",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Reports to Employee","AzureDbProdNIAADL","AURION","Organisation Staff","Reports to Employee",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Reports to Position","AzureDbProdNIAADL","AURION","Organisation Staff","Reports to Position",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Aurion Id","AzureDbProdNIAADL","AURION","Organisation Staff","Aurion Id",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Attendance Type","AzureDbProdNIAADL","AURION","Organisation Staff","Aurion Attendance Type",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Employee Number","AzureDbProdNIAADL","AURION","Organisation Staff","Aurion Employee Number",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Organisation Unit Name","AzureDbProdNIAADL","AURION","Organisation Staff","Aurion Organisation Unit Name",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Position Occupied","AzureDbProdNIAADL","AURION","Organisation Staff","Aurion Position Occupied",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Employee Status","AzureDbProdNIAADL","AURION","Organisation Staff","Employee Status",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Currently on Leave","AzureDbProdNIAADL","AURION","Organisation Staff","Currently on Leave",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Return Date","AzureDbProdNIAADL","AURION","Organisation Staff","Return Date",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Person Number","AzureDbProdNIAADL","AURION","Organisation Staff","Person Number",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Date Commenced","AzureDbProdNIAADL","AURION","Organisation Staff","Date Commenced",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.ContractExpiryDate","AzureDbProdNIAADL","AURION","Organisation Staff","Contract_Expiry_Date",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Date Terminated","AzureDbProdNIAADL","AURION","Organisation Staff","Date_Terminated",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\Organisation Staff.qvd","Organisation Staff.Days Per Week","AzureDbProdNIAADL","AURION","Organisation Staff","Days_Per_Week",NA,NA,"mapped",106
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Aurion Location Code","AzureDbProdNIAADL","AURION","NIAA Site Locations","Code",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Office Name","AzureDbProdNIAADL","AURION","NIAA Site Locations","Office",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Status","AzureDbProdNIAADL","AURION","NIAA Site Locations","Record_Status",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Building Name","AzureDbProdNIAADL","AURION","NIAA Site Locations","Building_Property",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Street Address","AzureDbProdNIAADL","AURION","NIAA Site Locations","Street_Address",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Suburb","AzureDbProdNIAADL","AURION","NIAA Site Locations","Suburb",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site State","AzureDbProdNIAADL","AURION","NIAA Site Locations","State",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Post Code","AzureDbProdNIAADL","AURION","NIAA Site Locations","Post_Code",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Locations Latitude","AzureDbProdNIAADL","AURION","NIAA Site Locations","Latitude",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Locations Longitude","AzureDbProdNIAADL","AURION","NIAA Site Locations","Longitude",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","HSR Work Group","AzureDbProdNIAADL","AURION","NIAA Site Locations","HSR_Work_Group",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Phone Number","AzureDbProdNIAADL","AURION","NIAA Site Locations","Phone_Number",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Type","AzureDbProdNIAADL","AURION","NIAA Site Locations","Location_Type",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Workpoints","AzureDbProdNIAADL","AURION","NIAA Site Locations","Workpoints",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Site Anchored Desks","AzureDbProdNIAADL","AURION","NIAA Site Locations","Anchored_Desks",NA,NA,"mapped",164
+"AURION QVD Generator","lib://AppData\PROD\AzureDataLake\AURION\NIAA Site Locations.qvd","Mesh Block Code 2021","AzureDbProdNIAADL","AURION","NIAA Site Locations","Mesh Block Code 2021",NA,NA,"mapped",164
