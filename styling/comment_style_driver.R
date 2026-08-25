@@ -347,13 +347,33 @@
 #' line_kind vector (extract_comment_runs()'s per-run output) - the exact
 #' idx/end convention comment_substream.R's .cs_classify_run() already
 #' uses, so the two line up 1:1 with no re-derivation risk.
+#'
+#' Perf (2026-08-25, perf-sub7): no longer calls find_block_structure() -
+#' every run already paid for that once, inside .cs_classify_run(), to
+#' produce line_kind, and this was a second, identical call on the same
+#' unmutated child (413 calls, ~0.77s on app-unbuilt/script.qvs). Not
+#' plumbed through as a stored value from that call either (would still be
+#' a twin of its row/idx bookkeeping) - reshaped instead, directly from the
+#' child's OWN token `line` field, which every token already carries.
+#' Confirmed empirically (not assumed), by instrumenting a synthetic
+#' field/prose/field run with an interior blank comment line: a genuinely
+#' blank line contributes NO token and so no distinct `line` value at
+#' all (its newline is absorbed into the preceding line's trailing WS
+#' token, same token .cs_line_kind()'s own "blank" branch exists to catch
+#' but - per that run - never actually sees), which is exactly why
+#' find_block_structure() gives it no row either: a line START, in both,
+#' is simply the first child row whose `line` value differs from the row
+#' before it. bs$lines$idx and bs$lines$line matched this grouping index
+#' for index in that check. No line_kind/.cs_line_kind() logic is
+#' reproduced here - this only regroups token ROWS, the classification
+#' itself stays entirely in comment_substream.R.
 .csd_line_ranges <- function(child) {
   n <- nrow(child)
-  bs <- find_block_structure(child)
-  lns <- bs$lines
-  if (nrow(lns) == 0) return(data.frame(start = integer(0), end = integer(0)))
-  ends <- c(if (nrow(lns) > 1) lns$idx[-1] - 1L else integer(0), n)
-  data.frame(start = lns$idx, end = ends)
+  if (n == 0) return(data.frame(start = integer(0), end = integer(0)))
+  ln <- child$line
+  starts <- which(c(TRUE, ln[-1] != ln[-length(ln)]))
+  ends <- c(if (length(starts) > 1) starts[-1] - 1L else integer(0), n)
+  data.frame(start = starts, end = ends)
 }
 
 #' Split a child stream's rows into maximal same-kind (prose / not-prose)
