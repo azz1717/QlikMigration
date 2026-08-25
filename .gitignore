@@ -29,6 +29,11 @@ chunk_timings.rds
 # so it is never tracked - qlik_cli_path.txt.example IS tracked as the template.
 qlik_cli_path.txt
 qlik_probe_out/
+qlik_unbuild_out/
+
+# Unbuilt apps fetched by qlik_cli_unbuild.R - tenant content, stays on the
+# machine that fetched it.
+unbuilt/
 
 # Generated migration reports - regenerate with render_report.R.
 report_app*.html

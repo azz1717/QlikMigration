@@ -63,16 +63,11 @@ TIMEOUT_S   <- 60
 SCREEN_W    <- 72      # hard ceiling; nothing printed may exceed this
 VERBOSE     <- "--verbose" %in% commandArgs(trailingOnly = TRUE)
 
-# --- narrow output helpers ------------------------------------------------
-.trunc <- function(s, n) {
-	s <- gsub("[\r\n\t]+", " ", paste(s, collapse = " "))
-	# ASCII "..." not a Unicode ellipsis: this is read off a photo of a Windows
-	# console, whose codepage may not be UTF-8, and a mojibake character in the
-	# middle of truncated output is exactly the noise that costs a re-shoot.
-	if (nchar(s) > n) paste0(substr(s, 1, n - 3), "...") else s
-}
-.rule <- function() cat(strrep("-", SCREEN_W), "\n", sep = "")
-.say  <- function(...) cat(.trunc(paste0(...), SCREEN_W), "\n", sep = "")
+# --- shared helpers -------------------------------------------------------
+# .trunc/.rule/.say, .keys_of, .run_qlik, .explain, .looks_like_id moved to
+# qlik_cli_shared.R (2026-08-25) when qlik_cli_unbuild.R needed the same
+# ones and verify_docs' no-twins check refused the copies. Bodies unchanged.
+source("diagnostics/qlik_cli_shared.R")
 
 .results <- list()
 .record <- function(rung, label, ok, detail) {
@@ -84,57 +79,11 @@ VERBOSE     <- "--verbose" %in% commandArgs(trailingOnly = TRUE)
 	            .trunc(detail, SCREEN_W - 23)))
 }
 
-# What a parser needs from output I have never seen: the key names. Distinct,
-# in first-seen order, one line. This is the whole point of the redesign - it
-# replaces "send me the JSON file" with something photographable.
-.keys_of <- function(lines) {
-	m <- gregexpr('"([A-Za-z_][A-Za-z0-9_]*)"[[:space:]]*:', paste(lines, collapse = " "))
-	hits <- regmatches(paste(lines, collapse = " "), m)[[1]]
-	if (!length(hits)) return(NA_character_)
-	paste(unique(sub('^"([^"]+)".*$', "\\1", hits)), collapse = ",")
-}
-
 # Whether we are even looking at JSON decides which of the two space listings
 # the promoted version should use, so it is worth one word on screen.
 .shape_of <- function(lines) {
 	txt <- paste(lines, collapse = "")
 	if (grepl("[{\\[]", txt) && grepl('"[^"]+"[[:space:]]*:', txt)) "json" else "text"
-}
-
-# --- running qlik ---------------------------------------------------------
-# Invocation follows console_ui.R:72 exactly - command passed UNQUOTED,
-# arguments individually shQuote()d. That pairing is already proven against a
-# path containing a space ("C:\Program Files\R\..."), the same hazard as
-# "D:\software-installed\qlik-cli\". Do not "fix" this by shQuote()ing the
-# command too; on Windows that double-quotes it and it stops resolving.
-#
-# timeout guards the console-input trap: if qlik ever prompts (expired
-# context, a confirmation), an un-timed system2() hangs the session with no
-# way out. R kills it at TIMEOUT_S, which surfaces as status 124.
-.run_qlik <- function(qlik, args, slug) {
-	out <- tryCatch(
-		suppressWarnings(system2(qlik, shQuote(args),
-		                         stdout = TRUE, stderr = TRUE,
-		                         timeout = TIMEOUT_S)),
-		error = function(e) structure(paste("could not start process:",
-		                                    conditionMessage(e)),
-		                              status = -1L))
-	status <- attr(out, "status")
-	if (is.null(status)) status <- 0L
-	if (!is.null(slug)) {
-		writeLines(c(paste("$ Q", paste(args, collapse = " ")),
-		             paste("# exit:", status), "", out),
-		           file.path(OUT_DIR, paste0(slug, ".txt")))
-	}
-	list(out = out, status = status, args = paste(args, collapse = " "))
-}
-
-# On failure the command and a couple of lines of its output are the whole
-# diagnosis, so they print - but capped, or several failures overflow the
-# screen and cost the photo.
-.explain <- function(r) {
-	.say("     $ Q ", r$args)
-	for (ln in utils::head(r$out, if (VERBOSE) 20L else 2L)) .say("     > ", ln)
 }
 
 # A failed subcommand captures its --help TO DISK only. It is usually long,
@@ -281,15 +230,6 @@ if (!.found) {
 # quietly listing the apps of some other space.
 SPACE_ID <- NA
 .id_how  <- ""
-
-# An id must LOOK like one before it is believed. .run_qlik merges stderr into
-# stdout (stderr = TRUE), so a command that succeeds while printing a warning
-# hands back that warning text as its first line - and without this check that
-# text became the space id and was passed straight to `app ls --spaceId`.
-# Caught 2026-08-21 when a stub returned status 0 with an error on stderr and
-# rung 7 cheerfully reported "not a command" as the id. Wrong AND confident is
-# the one outcome worth spending code to prevent.
-.looks_like_id <- function(s) grepl("^[A-Za-z0-9_-]{8,}$", s)
 
 if (.found) {
 	flat <- paste(.haystack, collapse = "\n")
