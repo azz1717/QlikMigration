@@ -218,21 +218,28 @@ find_comment_runs <- function(tokens) {
   seg <- find_load_segments(child)
   bs  <- find_block_structure(child, segments = seg)
   lns <- bs$lines
+  # Hoist child's columns once: type/text are otherwise re-fetched from the
+  # data.frame per-element inside the per-line loop below (child$type[rng],
+  # child$text[ctok] on every k) and again for the whole-run depth check.
+  # Same values, same order, no logic change.
+  c_type <- child$type
+  c_text <- child$text
   line_kind <- character(0)
   if (nrow(lns) > 0) {
-    ends <- c(if (nrow(lns) > 1) lns$idx[-1] - 1L else integer(0), n)
+    lns_idx <- lns$idx
+    ends <- c(if (nrow(lns) > 1) lns_idx[-1] - 1L else integer(0), n)
     line_kind <- character(nrow(lns))
     for (k in seq_len(nrow(lns))) {
-      rng  <- lns$idx[k]:ends[k]
-      ctok <- rng[child$type[rng] != "WS"]
-      line_kind[k] <- .cs_line_kind(child$type[ctok], child$text[ctok])
+      rng  <- lns_idx[k]:ends[k]
+      ctok <- rng[c_type[rng] != "WS"]
+      line_kind[k] <- .cs_line_kind(c_type[ctok], c_text[ctok])
     }
   }
 
   # multi-line expressions balance only across the whole run (plan section
   # 6.1's last bullet) - this is the one refusal test applied to the RUN as
   # a whole rather than line by line.
-  depth <- sum(child$type == "LPAREN") - sum(child$type == "RPAREN")
+  depth <- sum(c_type == "LPAREN") - sum(c_type == "RPAREN")
   if (depth != 0L) {
     return(list(kind = NA_character_, reason = "unbalanced parentheses across the run",
                 line_kind = line_kind, is_prose_only = FALSE))
@@ -350,11 +357,12 @@ find_comment_runs <- function(tokens) {
 #'   there was none.
 .cs_strip_trailing_sep <- function(child) {
   n <- nrow(child)
+  c_type <- child$type  # hoisted: child$type[j] was re-fetched via $ up to 3x
   j <- n
-  if (j >= 1L && child$type[j] == "WS") j <- j - 1L
-  if (j >= 1L && child$type[j] == "COMMA") {
+  if (j >= 1L && c_type[j] == "WS") j <- j - 1L
+  if (j >= 1L && c_type[j] == "COMMA") {
     j <- j - 1L
-    if (j >= 1L && child$type[j] == "WS") j <- j - 1L
+    if (j >= 1L && c_type[j] == "WS") j <- j - 1L
   }
   trailing_sep <- NA_character_
   if (j < n) {
@@ -368,10 +376,15 @@ find_comment_runs <- function(tokens) {
 extract_comment_runs <- function(tokens) {
   fr <- find_comment_runs(tokens)
   runs <- vector("list", length(fr$runs))
+  # Hoist tokens' columns once: text/line were each re-fetched from the
+  # data.frame per run (text once, line twice for line_start/line_end)
+  # inside this loop. Same values, same order, no logic change.
+  t_text <- tokens$text
+  t_line <- tokens$line
 
   for (r in seq_along(fr$runs)) {
     comment_idx <- fr$runs[[r]]
-    bodies   <- substring(tokens$text[comment_idx], 3L)
+    bodies   <- substring(t_text[comment_idx], 3L)
     combined <- paste(bodies, collapse = "\n")
     child    <- tokenize_qlik(combined)
 
@@ -406,8 +419,8 @@ extract_comment_runs <- function(tokens) {
 
     runs[[r]] <- list(
       comment_idx  = comment_idx,
-      line_start   = tokens$line[comment_idx[1]],
-      line_end     = tokens$line[comment_idx[length(comment_idx)]],
+      line_start   = t_line[comment_idx[1]],
+      line_end     = t_line[comment_idx[length(comment_idx)]],
       status       = status,
       kind         = cls$kind,
       reason       = cls$reason,
@@ -518,9 +531,12 @@ serialize_comment_run <- function(tokens, run) {
     tokens <- splice_tokens(tokens, setNames(list(ins), as.character(old_idx[n_old])))
   } else if (n_new < n_old) {
     surplus <- old_idx[(n_new + 1L):n_old]
+    # Hoisted: tokens$type[j] was re-fetched via $ once per element of
+    # `surplus` inside this vapply. Same values, same order.
+    t_type <- tokens$type
     ws_before <- vapply(surplus, function(i) {
       j <- i - 1L
-      if (j >= 1L && tokens$type[j] == "WS") j else NA_integer_
+      if (j >= 1L && t_type[j] == "WS") j else NA_integer_
     }, integer(1))
     tokens <- void_token(tokens, c(surplus, ws_before[!is.na(ws_before)]))
   }
