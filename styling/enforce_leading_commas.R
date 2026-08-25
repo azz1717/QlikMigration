@@ -69,7 +69,6 @@
 enforce_leading_commas <- function(tokens, context = NULL) {
   found <- find_load_segments(tokens)
   warn <- found$warnings
-  insertions <- list()
 
   n <- nrow(tokens)
   nseg <- length(found$segments)
@@ -84,6 +83,21 @@ enforce_leading_commas <- function(tokens, context = NULL) {
   # Commas are collected here and voided in ONE call after the loop, rather
   # than one data.frame assignment per comma - see void_token().
   void_idx <- integer(nseg); nvoid <- 0L
+
+  # Comma insertions accumulate in a plain, preallocated list plus a
+  # parallel key vector - O(1) per push. Growing a NAMED list by key
+  # (insertions[[key]] <- ...) inside the loop forced a linear scan of the
+  # existing names on every push, O(n^2) over the segment count (2583
+  # segments on script.qvs, ~0.63s in this loop). The named-by-key
+  # `insertions` list splice_tokens() expects is built ONCE below, after
+  # both loops that push here, via split()+lapply - never by repeated
+  # [[<-]] on a growing named list. Same upper bound as the change log
+  # above: at most one push per segment from this loop, plus at most one
+  # synthesised leading comma per LOAD block from the head-comma loop
+  # further down.
+  ins_acc <- vector("list", 2L * nseg + 1L)
+  ins_key <- character(2L * nseg + 1L)
+  n_ins <- 0L
 
   # Change log accumulated as plain vectors and turned into a data.frame once.
   # Building one data.frame per iteration and rbind()-ing them was pure
@@ -129,10 +143,11 @@ enforce_leading_commas <- function(tokens, context = NULL) {
     nvoid <- nvoid + 1L
     void_idx[nvoid] <- comma_idx
 
-    key <- as.character(target_idx - 1)
     new_comma <- comma_row
     new_comma$line <- t_line[target_idx]
-    insertions[[key]] <- if (is.null(insertions[[key]])) new_comma else rbind(insertions[[key]], new_comma)
+    n_ins <- n_ins + 1L
+    ins_acc[[n_ins]] <- new_comma
+    ins_key[n_ins] <- as.character(target_idx - 1)
 
     preview <- paste(t_text[target_idx:min(target_idx + 4, n)], collapse = "")
     nch <- nch + 1L
@@ -180,10 +195,11 @@ enforce_leading_commas <- function(tokens, context = NULL) {
     already <- p >= 1L && t_type[p] == "COMMA"
     if (!already) {
       if (head_idx > 1L) {
-        key <- as.character(head_idx - 1L)
         new_comma <- comma_row
         new_comma$line <- t_line[head_idx]
-        insertions[[key]] <- if (is.null(insertions[[key]])) new_comma else rbind(insertions[[key]], new_comma)
+        n_ins <- n_ins + 1L
+        ins_acc[[n_ins]] <- new_comma
+        ins_key[n_ins] <- as.character(head_idx - 1L)
       } else {
         need_head_comma <- TRUE   # only ever block 1's own first segment
         head_line <- t_line[head_idx]
@@ -199,6 +215,14 @@ enforce_leading_commas <- function(tokens, context = NULL) {
       ch_to[nch]   <- t_line[head_idx]
       ch_prev[nch] <- substr(trimws(preview), 1, 40)
     }
+  }
+
+  insertions <- list()
+  if (n_ins > 0L) {
+    grp <- split(seq_len(n_ins), ins_key[seq_len(n_ins)])
+    insertions <- lapply(grp, function(idxs) {
+      if (length(idxs) == 1L) ins_acc[[idxs]] else do.call(rbind, ins_acc[idxs])
+    })
   }
 
   if (nvoid > 0L) tokens <- void_token(tokens, void_idx[seq_len(nvoid)])
