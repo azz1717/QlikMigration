@@ -259,7 +259,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
   # Fragments of a multi-row gap that this pass emptied - see
   # .preceding_ws_run(). Blanked in t_text as we go, then voided in ONE call
   # after the loop (INTERFACES.md: never delete a row, batch the edit).
-  stranded <- integer(0)
+  stranded_acc <- list()
 
   # Line 1 is handled separately, AFTER this loop: if it needs a leading
   # indent and has no WS token at all to rewrite (true of both fixtures - a
@@ -294,7 +294,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
             ch_before[nch] <- before; ch_after[nch] <- " "
             t_text[run] <- ""
             t_text[run[length(run)]] <- " "
-            stranded <- c(stranded, run[-length(run)])
+            stranded_acc[[length(stranded_acc) + 1L]] <- run[-length(run)]
           }
         }
         next
@@ -316,7 +316,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
           ch_line[nch] <- l_line[i]; ch_kind[nch] <- kind_i
           ch_before[nch] <- before; ch_after[nch] <- ""
           t_text[run] <- ""
-          stranded <- c(stranded, run[-length(run)])
+          stranded_acc[[length(stranded_acc) + 1L]] <- run[-length(run)]
         }
       }
       next
@@ -368,8 +368,10 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
     ch_before[nch] <- before; ch_after[nch] <- target
     t_text[run] <- ""
     t_text[run[length(run)]] <- target
-    stranded <- c(stranded, run[-length(run)])
+    stranded_acc[[length(stranded_acc) + 1L]] <- run[-length(run)]
   }
+
+  stranded <- if (length(stranded_acc) > 0L) unlist(stranded_acc) else integer(0)
 
   tokens$text <- t_text
   if (length(stranded) > 0L) tokens <- void_token(tokens, stranded)
