@@ -564,7 +564,7 @@ find_load_segments <- function(tokens) {
 #'                     one sitting right after the LOAD keyword) - the one
 #'                     that needs the two-space alignment pad
 #'   $warnings - character vector for unbalanced blocks
-find_block_structure <- function(tokens) {
+find_block_structure <- function(tokens, segments = NULL) {
   n <- nrow(tokens)
   empty <- data.frame(
     idx = integer(0), line = integer(0), kind = character(0),
@@ -612,7 +612,16 @@ find_block_structure <- function(tokens) {
   # Reuse find_load_segments() rather than re-deriving field boundaries. The
   # FIRST line start in a segment is the field itself; any later one is a
   # line break before that field's expression finished, i.e. a continuation.
-  seg  <- find_load_segments(tokens)
+  # Perf (2026-08-25, stage 3): a caller that has ALREADY run
+  # find_load_segments() on this EXACT (unmutated) `tokens` may pass that
+  # result in directly via `segments`, skipping this second, identical
+  # derivation - e.g. enforce_alias_alignment.R (pass 7), which needs both
+  # scanners on the same unedited tokens. NULL (default) derives exactly as
+  # before. Caller's responsibility: `segments` must come from
+  # find_load_segments(tokens) on this SAME tokens, not a mutated copy -
+  # this function does no staleness check, the same trust contract every
+  # other optional precomputed-structure arg in this codebase uses.
+  seg  <- if (!is.null(segments)) segments else find_load_segments(tokens)
   warn <- c(warn, seg$warnings)
   segs <- seg$segments
   seg_lo <- integer(0); seg_hi <- integer(0)

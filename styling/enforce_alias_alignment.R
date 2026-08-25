@@ -112,7 +112,7 @@ enforce_alias_alignment <- function(tokens, context = NULL) {
                       after = character(0), stringsAsFactors = FALSE)
   if (length(segs) == 0) return(list(tokens = tokens, warnings = warn, changes = empty))
 
-  bs <- find_block_structure(tokens)
+  bs <- find_block_structure(tokens, segments = seg)
   # Keyed by source LINE NUMBER, not token index: a comma-led field's
   # line-start token (bs$lines$idx) is the leading COMMA, not the field's
   # own content token (first_i below) - same physical line, different
