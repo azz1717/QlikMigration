@@ -1,4 +1,4 @@
-"RelPath","LineageStatement","n_consumers","consumer_apps"
+"RelPath","LineageStatement","n_consumers","consumer_apps","outcome","map_rows","verdicts","dev_followup"
 "ESS/CDP/Remote Employment Organisation Indigeneity.QVD","LOAD [Organisation Code], 
 	[Organisation Name], 
 	[Is Indigenous], 
@@ -30,7 +30,7 @@ SELECT ""Organisation Code"",
 	""First Nations Employees Proportion"",
 	""Not For Profit Evidence"",
 	""Delivery Partners Comment""
-FROM ESS.""Remote Employment Organisation Indigeneity""",13,"Remote Employment(10);Remote Employment(2)(1);Remote Employment(2);Remote Employment(9);Remote Employment(with caseload tracking)(1)"
+FROM ESS.""Remote Employment Organisation Indigeneity""","13","Remote Employment(10);Remote Employment(2)(1);Remote Employment(2);Remote Employment(9);Remote Employment(with caseload tracking)(1)","mapped",10,"import-view=10","All 10 fields mapped 1:1 (no aliases). View ESS.Remote Employment Organisation Indigeneity exists in the datalake with every column but is not yet scripted for Cloud qvd generation - add it to the generation list. Lineage names no server (schema-only FROM ESS.x)."
 "NACCHO/Member Name Locations.qvd","[Member Name Locations]:
 LOAD [NACCHO Member Name], 
 	Address, 
@@ -49,13 +49,13 @@ LOAD [NACCHO Member Name],
 	""Address Url For Geocode Succeess Level"",
 	""Mesh Block Code 2016"",
 	""Mesh Block Code 2021""
-FROM ""AZDB-ZEA-PRD-NIAADL01"".NACCHO.""Member Name Locations""",10,"Operational Dashboard 2.0(1);Test Investment MappingBackup20241203;Operational Dashboard 2.0 - PreProd;Operational Dashboard 2.0 V1.2.0;Operational Dashboard 2.0(4)"
+FROM ""AZDB-ZEA-PRD-NIAADL01"".NACCHO.""Member Name Locations""","10","Operational Dashboard 2.0(1);Test Investment MappingBackup20241203;Operational Dashboard 2.0 - PreProd;Operational Dashboard 2.0 V1.2.0;Operational Dashboard 2.0(4)","mapped",9,"import-view=9","All 9 fields mapped 1:1. View NACCHO.Member Name Locations exists with every column but is not yet scripted - add it to the generation list. On-prem source server AZDB-ZEA-PRD-NIAADL01."
 "DataCatalogue/DLColumnDataTypes.QVD","[Data Type]:
     SELECT
     	CONCAT('AZDB-AUE-PRD-NIAADL01', '|', t.user_type_id) AS [User Type Key],
     	t.name                                    AS [Data Type]
 	FROM ""AZDB-AUE-PRD-NIAADL01"".sys.types AS t WITH (NOLOCK)
-	ORDER BY t.name",5,"NIAA Qlik Report Catalogue;NIAA Qlik Report Catalogue (with lineage)(backup before delete from UAT);NIAA Qlik Report Catalogue - Dave Work(1);UAT_App Metadata Tracking(2);NIAA Qlik Report Catalogue(3)"
+	ORDER BY t.name","5","NIAA Qlik Report Catalogue;NIAA Qlik Report Catalogue (with lineage)(backup before delete from UAT);NIAA Qlik Report Catalogue - Dave Work(1);UAT_App Metadata Tracking(2);NIAA Qlik Report Catalogue(3)","mapped",2,"derived-in-generator=1; not-found=1","Fields recovered (1 direct, 1 CONCAT-derived key) but source is the SQL Server system catalog (sys.types) on AZDB-AUE-PRD-NIAADL01, not a datalake table - no view exists or can be imported. Dev: catalogue apps read server metadata directly; Cloud equivalent needs a dedicated metadata view or a rebuild against Qlik Cloud catalog APIs."
 "DataCatalogue/DLColumns.QVD","[Columns]:   
     SELECT
     // Keys
@@ -77,12 +77,12 @@ FROM ""AZDB-ZEA-PRD-NIAADL01"".NACCHO.""Member Name Locations""",10,"Operational
 	LEFT JOIN ""AZDB-AUE-PRD-NIAADL01"".sys.extended_properties AS ep WITH (NOLOCK)
          ON ep.major_id = c.object_id
         AND ep.minor_id = c.column_id         // minor_id <> 0 means column-level EPs
-        AND ep.name     = N'MS_Description'",5,"NIAA Qlik Report Catalogue;NIAA Qlik Report Catalogue (with lineage)(backup before delete from UAT);NIAA Qlik Report Catalogue - Dave Work(1);UAT_App Metadata Tracking(2);NIAA Qlik Report Catalogue(3)"
+        AND ep.name     = N'MS_Description'","5","NIAA Qlik Report Catalogue;NIAA Qlik Report Catalogue (with lineage)(backup before delete from UAT);NIAA Qlik Report Catalogue - Dave Work(1);UAT_App Metadata Tracking(2);NIAA Qlik Report Catalogue(3)","mapped",9,"derived-in-generator=6; not-found=3","Fields recovered (3 direct, 6 expression-derived) but sources are system catalogs (sys.all_columns + sys.extended_properties) on AZDB-AUE-PRD-NIAADL01 - no datalake view exists or can be imported. Same dev follow-up as DLColumnDataTypes: metadata view or catalog-API rebuild."
 "DataCatalogue/DLSchemas.QVD","[Schemas]:      
      	 SELECT 
             CONCAT('AZDB-AUE-PRD-NIAADL01', '|', s.schema_id)    AS [Schema Key],
             s.name                                    AS [Schema Name]
-        FROM ""AZDB-AUE-PRD-NIAADL01"".sys.schemas AS s WITH (NOLOCK)",5,"NIAA Qlik Report Catalogue;NIAA Qlik Report Catalogue (with lineage)(backup before delete from UAT);NIAA Qlik Report Catalogue - Dave Work(1);UAT_App Metadata Tracking(2);NIAA Qlik Report Catalogue(3)"
+        FROM ""AZDB-AUE-PRD-NIAADL01"".sys.schemas AS s WITH (NOLOCK)","5","NIAA Qlik Report Catalogue;NIAA Qlik Report Catalogue (with lineage)(backup before delete from UAT);NIAA Qlik Report Catalogue - Dave Work(1);UAT_App Metadata Tracking(2);NIAA Qlik Report Catalogue(3)","mapped",2,"derived-in-generator=1; not-found=1","Fields recovered (1 direct, 1 CONCAT-derived key) but source is the system catalog sys.schemas on AZDB-AUE-PRD-NIAADL01 - no datalake view. Same dev follow-up as DLColumnDataTypes."
 "NIAA/NIAA Site 2023.qvd","[NIAA Site 2023]:
 LOAD NIAA_Site_Id as [Site Id], 
 	Office_Name as [Office Name], 
@@ -114,7 +114,7 @@ LOAD NIAA_Site_Id as [Site Id],
 	Longitude,
 	""Aurion_Location_Code"",
     ""Mesh_Block_Code_2021""
-FROM ""AZDB-ZEA-PRD-NIAADL01"".NIAA.""NIAA Site 2023""",1,"training"
+FROM ""AZDB-ZEA-PRD-NIAADL01"".NIAA.""NIAA Site 2023""","1","training","mapped",16,"create-view=15; derived-in-generator=1","All 16 fields mapped (15 direct, 1 derived: geomakepoint(Longitude, Latitude)). Base table NIAA.NIAA Site 2023 exists in the datalake with every column but no view over it - needs a view created and scripted. On-prem server AZDB-ZEA-PRD-NIAADL01."
 "ORIC/ORIC Corporations.qvd","[ORIC Corporations]:
 LOAD _id as [ORIC ID], 
 	ICN as [ICN], 
@@ -171,4 +171,4 @@ LOAD _id as [ORIC ID],
 	""Total Assets 2021/22"",
 	""Number of Employees 2021/22"",
 	URL
-FROM ""AZDB-ZEA-PRD-NIAADL01"".DGOV.""ORIC_AboriginalAndTorresStraitIslanderCorporations""",1,"ORIC data extract"
+FROM ""AZDB-ZEA-PRD-NIAADL01"".DGOV.""ORIC_AboriginalAndTorresStraitIslanderCorporations""","1","ORIC data extract","mapped",25,"not-found=22; in-cloud=2; create-view=1","All 25 fields recovered from lineage, but the base table DGOV.ORIC_AboriginalAndTorresStraitIslanderCorporations was restructured after this qvd was built: only ICN and ABN resolve in-cloud (view DGOV.ORIC Corporations) and _id in the base table; the other 22 columns (Corporation, Status, Status Date, Total Income 2019/20, ...) no longer exist under those names. Today's view carries renamed columns (Corporation Name, Status Reason, Registered On, ...). Dev: reconcile old-to-new column names manually, or treat the current DGOV.ORIC Corporations view as the successor dataset."

@@ -417,14 +417,19 @@ truth$line[truth$generator_app == "01 ESS QVD Builder - CDP"  & is.na(truth$line
 truth$line[truth$generator_app == "01 ESS QVD Builder - TWES" & is.na(truth$line)] <- 229L
 
 ## ---------------------------------------------------------------------
-## qvdlist-lineage coverage-expansion job -- UNCHANGED (contributes 0 rows
-## if the scratchpad RDS files from that earlier job are absent).
+## qvdlist-lineage coverage-expansion job -- reads the frozen lineage CSV
+## (retargeting/lineage_qvdlist.csv), successor to the earlier RDS-backed
+## pass (lineage_usable[_reattempt].rds, both now absent from scratch).
 ## ---------------------------------------------------------------------
 truth$truth_source <- "generator-script"
 truth$src_db_override <- NA_character_
-lin_pass1 <- if (file.exists(file.path(scratch, "lineage_usable.rds"))) readRDS(file.path(scratch, "lineage_usable.rds")) else NULL
-lin_pass2 <- if (file.exists(file.path(scratch, "lineage_usable_reattempt.rds"))) readRDS(file.path(scratch, "lineage_usable_reattempt.rds")) else NULL
-lin_all <- do.call(rbind, Filter(Negate(is.null), list(lin_pass1, lin_pass2)))
+lin_csv_path <- file.path(root, "retargeting", "lineage_qvdlist.csv")
+lin_all <- if (file.exists(lin_csv_path)) {
+  d <- read.csv(lin_csv_path, stringsAsFactors = FALSE, colClasses = "character")
+  d$db_schema[d$db_schema == ""] <- NA_character_
+  d$db_table[d$db_table  == ""] <- NA_character_
+  d
+} else NULL
 if (!is.null(lin_all) && nrow(lin_all) > 0) {
   if (is.null(lin_all$source_db_captured)) lin_all$source_db_captured <- NA_character_
   lin_truth <- data.frame(
@@ -466,6 +471,19 @@ cv_name  <- vapply(cl_existing, function(x) x$cv_name,  character(1))
 cv_field <- vapply(cl_existing, function(x) x$cv_field, character(1))
 ev_file  <- vapply(cl_existing, function(x) x$ev_file,  character(1))
 ev       <- vapply(cl_existing, function(x) x$ev,       character(1))
+
+## qvdlist-lineage derived rows (expr-column/multi-source): db_schema/
+## db_table/db_column carry the raw source expression, not a real column --
+## classify_one() cannot resolve these against fixtures/views.csv or
+## DBfixture1.csv, so override to derived-in-generator (mirrors the
+## new-app pipeline's treatment of the same statuses, L588-589).
+lin_derived <- truth$truth_source == "qvdlist-lineage" & truth$status %in% c("expr-column", "multi-source")
+verdict[lin_derived]   <- "derived-in-generator"
+cv_schema[lin_derived] <- NA_character_
+cv_name[lin_derived]   <- NA_character_
+cv_field[lin_derived]  <- NA_character_
+ev_file[lin_derived]   <- "retargeting/lineage_qvdlist.csv"
+ev[lin_derived]        <- sprintf("status %s (qvdlist LineageStatement)", truth$status[lin_derived])
 
 ## ---------------------------------------------------------------------
 ## 5. source_database -- nearest PRECEDING "LIB CONNECT TO '<name>'" per
