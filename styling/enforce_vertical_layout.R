@@ -198,10 +198,22 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
   # even though blank lines produce no row in L at all, so this walks the
   # run's own start backward rather than reusing the forward `j` scan
   # above, which merges through blank gaps on purpose for every OTHER case.
+  # Perf (2026-08-25): run_start/stays_above/j were each recomputed once PER
+  # LINE of a comment run, backward- and forward-walking the same contiguous
+  # block over and over - O(run_length^2) in total, and
+  # .qvl_is_condition_continuation() (a full tokenize_qlik() call) fired once
+  # per line too. Every line in one run shares the same run_start (the run's
+  # own start, by definition of contiguous) and the same j (the first
+  # non-comment line after the run - reaching it from any i inside the run
+  # walks through only the remaining comment lines of that SAME run, since a
+  # contiguous run has no other kind in between), so both are computed ONCE
+  # per run and applied to the whole [run_start, run_end] slice at once.
+  # Logic unchanged - only the number of times it is repeated.
   eff_id <- L$stmt_id
   i <- nlines
   while (i >= 1L) {
     if (L$kind[i] == "comment") {
+      run_end <- i
       run_start <- i
       while (run_start > 1L && L$kind[run_start - 1L] == "comment" &&
              (L$line[run_start] - L$line[run_start - 1L]) == 1L) {
@@ -209,12 +221,14 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
       }
       stays_above <- .qvl_is_condition_continuation(t_text[L$idx[run_start]])
       if (!stays_above) {
-        j <- i + 1L
+        j <- run_end + 1L
         while (j <= nlines && L$kind[j] == "comment") j <- j + 1L
-        if (j <= nlines && L$kind[j] != "section") eff_id[i] <- eff_id[j]
+        if (j <= nlines && L$kind[j] != "section") eff_id[run_start:run_end] <- eff_id[j]
       }
+      i <- run_start - 1L
+    } else {
+      i <- i - 1L
     }
-    i <- i - 1L
   }
 
   ch_line <- integer(nlines);   ch_kind  <- character(nlines)
