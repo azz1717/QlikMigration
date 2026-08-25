@@ -148,6 +148,199 @@
   body_out
 }
 
+# ---- BATCHED styling of many code groups in ONE synthetic script ---------
+#
+# Perf (2026-08-25, perf-sub7): styling each code group on its own scaffold
+# meant ~420 tokenize+7-pass cycles on app-unbuilt/script.qvs, ~5.5s of a
+# 10.59s pipeline - almost all of it fixed per-call cost (find_block_
+# structure, find_load_segments), not real work. Every group is wrapped in
+# the IDENTICAL scaffold, so they can be concatenated into ONE synthetic
+# script - group k becoming top-level statement k - tokenized once, run
+# through passes 1-7 once, and sliced back apart by ordinal.
+#
+# What makes that safe rather than clever:
+#  - the per-group CONTEXT that used to be a scalar per call is now a vector
+#    element per statement (the three passes' context entries in
+#    INTERFACES.md). No pass arithmetic is reimplemented here - the real
+#    passes still do all of it, they just do it for every group at once.
+#  - each group is a complete top-level statement, and every pass's own
+#    scope is the statement/LOAD block (flat indent by line kind, blank
+#    lines by stmt_id, commas and AS columns per LOAD block), so a group's
+#    neighbours in the batch cannot reach into it. The only cross-statement
+#    work pass 6 does - DESIGN 4.8's 2-blank-line gap - lands in the WS
+#    between one statement's `FROM x;` and the next statement's `LOAD`,
+#    which is outside every slice by construction.
+#  - GUARD 1 is enforced twice, before and after: a group whose own body
+#    carries a bare WORD "load"/"from", a depth-0 SEMI, or no LOAD segment
+#    at all is not batchable, and takes the untouched single-group
+#    .csd_style_group() path instead (identical to today by construction,
+#    rather than argued to be identical). Post-styling, a global LOAD/FROM
+#    count or alternation mismatch sends EVERY group down that path -
+#    slices are never guessed at.
+
+# Batch bookkeeping, for measurement and for the cross-check below. Not part
+# of any pass's output - deliberately not folded into $coverage, which
+# verify_substream.R checks.
+.CSD_BATCH_STATS <- new.env(parent = emptyenv())
+.csd_batch_reset <- function() {
+  .CSD_BATCH_STATS$batches <- 0L; .CSD_BATCH_STATS$groups <- 0L
+  .CSD_BATCH_STATS$prescan_fallback <- 0L; .CSD_BATCH_STATS$slice_fallback <- 0L
+  .CSD_BATCH_STATS$global_fallback <- 0L; .CSD_BATCH_STATS$tokenizes <- 0L
+}
+.csd_batch_reset()
+
+#' Style many code fragments at once - the batched equivalent of calling
+#' .csd_style_group() on each in turn, and the only caller of it left on the
+#' fast path.
+#'
+#' @param specs list of list(body_text, context) - exactly the two arguments
+#'   .csd_style_group() takes, one element per code group, in the order the
+#'   caller wants them back.
+#' @return character vector, same length as `specs`: the styled fragment
+#'   text, or NA_character_ where GUARD 1 refuses it - identical in both
+#'   respects to calling .csd_style_group() one at a time.
+.csd_style_groups <- function(specs) {
+  n <- length(specs)
+  out <- rep(NA_character_, n)
+  if (n == 0L) return(out)
+
+  one <- function(k) .csd_style_group(specs[[k]]$body_text, specs[[k]]$context)
+
+  bodies <- vapply(specs, function(s) s$body_text, character(1))
+  # Line map of the synthetic script, built the same way the text is: group
+  # k's LOAD sits alone on `load_line[k]`, its body occupies the next
+  # nl[k]+1 lines, `FROM x;` sits alone on `from_line[k]`, then one blank
+  # line separates it from the next group's LOAD.
+  nl <- nchar(bodies) - nchar(gsub("\n", "", bodies, fixed = TRUE))
+  load_line <- integer(n); from_line <- integer(n)
+  cur <- 1L
+  for (k in seq_len(n)) {
+    load_line[k] <- cur
+    from_line[k] <- cur + 2L + nl[k]
+    cur <- cur + nl[k] + 4L
+  }
+
+  tk <- tokenize_qlik(paste0(.CSD_WRAP_HEAD, bodies, .CSD_WRAP_TAIL, "\n\n",
+                             collapse = ""))
+  .CSD_BATCH_STATS$tokenizes <- .CSD_BATCH_STATS$tokenizes + 1L
+
+  # ---- pre-styling GUARD 1: which groups are batchable at all ----------
+  ld_idx <- which(tk$type == "WORD" & tolower(tk$text) == "load")
+  fr_idx <- which(tk$type == "WORD" & tolower(tk$text) == "from")
+  ld_line <- tk$line[ld_idx]; fr_line <- tk$line[fr_idx]
+  ld_of <- match(load_line, ld_line)   # which LOAD token is group k's own
+  fr_of <- match(from_line, fr_line)
+  # ...and exactly one of each may live inside group k's own line range
+  # (findInterval over the ascending load_line vector IS that range).
+  cnt_ld <- tabulate(findInterval(ld_line, load_line), nbins = n)
+  cnt_fr <- tabulate(findInterval(fr_line, load_line), nbins = n)
+  ok <- !is.na(ld_of) & !is.na(fr_of) & cnt_ld == 1L & cnt_fr == 1L
+
+  # A group whose wrapper produces no LOAD SEGMENT is still styled today
+  # (passes 3 and 7 simply find nothing; 1/2/4/5/6 still run), but it would
+  # silently shift every LATER group's position in the per-block context
+  # vectors, so it is not batchable either.
+  seg_loads <- vapply(find_load_segments(tk)$segments,
+                      function(s) s$load_tok_idx, integer(1))
+  ok[ok] <- ld_idx[ld_of[ok]] %in% seg_loads
+
+  # The SEMI guard .csd_style_group() applies to its own scaffold, applied
+  # here to the same slice of the shared stream - depth measured RELATIVE to
+  # the slice start, so a neighbour's parens cannot change the answer.
+  if (any(ok)) {
+    depth <- cumsum(tk$type == "LPAREN") - cumsum(tk$type == "RPAREN")
+    is_semi <- tk$type == "SEMI"
+    for (k in which(ok)) {
+      a <- ld_idx[ld_of[k]]; b <- fr_idx[fr_of[k]]
+      if (b <= a + 1L) { ok[k] <- FALSE; next }
+      rng <- (a + 1L):(b - 1L)
+      if (any(is_semi[rng] & (depth[rng] - depth[a]) == 0L)) ok[k] <- FALSE
+    }
+  }
+
+  if (!all(ok)) {
+    # Rebuild without the refused groups (their own line ranges, and hence
+    # every test above, are local, so the smaller batch settles at once) and
+    # give each of them the untouched single-group path.
+    .CSD_BATCH_STATS$prescan_fallback <-
+      .CSD_BATCH_STATS$prescan_fallback + sum(!ok)
+    for (k in which(!ok)) out[k] <- one(k)
+    if (any(ok)) out[ok] <- .csd_style_groups(specs[ok])
+    return(out)
+  }
+
+  .CSD_BATCH_STATS$batches <- .CSD_BATCH_STATS$batches + 1L
+  .CSD_BATCH_STATS$groups <- .CSD_BATCH_STATS$groups + n
+
+  # ---- one run of passes 1-7 over the whole batch ----------------------
+  # Group k IS top-level statement k and LOAD block k, so the per-statement
+  # context vectors index straight by k. With n == 1 these collapse to the
+  # scalars .csd_style_group() passes today, and the passes' own scalar
+  # branches take over - same values, same code path.
+  ctx <- list(
+    first_field = vapply(specs, function(s) isTRUE(s$context$first_field), logical(1)),
+    base_depth  = vapply(specs, function(s) {
+      v <- s$context$base_depth
+      if (is.null(v) || length(v) == 0L) 0L else as.integer(v[1])
+    }, integer(1)),
+    target_col  = vapply(specs, function(s) {
+      v <- s$context$target_col
+      if (is.null(v) || length(v) == 0L) NA_integer_ else as.integer(v[1])
+    }, integer(1)))
+
+  tk <- ensure_explicit_aliases(tk)$tokens
+  tk <- enforce_bracket_references(tk)$tokens
+  tk <- enforce_leading_commas(tk, ctx)$tokens
+  tk <- enforce_intraline_spacing(tk)$tokens
+  tk <- enforce_reserved_word_case(tk)$tokens
+  tk <- enforce_vertical_layout(tk, ctx)$tokens
+  tk <- enforce_alias_alignment(tk, ctx)$tokens
+
+  # ---- post-styling GUARD 1, batched: ordinal slice recovery ------------
+  # No pass creates or destroys a LOAD/FROM keyword (pass 5 only recases),
+  # so the k-th LOAD..FROM pair is still group k. That is asserted, not
+  # assumed: any count or alternation mismatch abandons the batch entirely
+  # rather than slicing on a guess.
+  ld <- which(tk$type == "WORD" & tolower(tk$text) == "load")
+  fr <- which(tk$type == "WORD" & tolower(tk$text) == "from")
+  if (length(ld) != n || length(fr) != n || any(fr <= ld + 1L) ||
+      (n > 1L && any(ld[-1L] <= fr[-n]))) {
+    .CSD_BATCH_STATS$global_fallback <- .CSD_BATCH_STATS$global_fallback + n
+    for (k in seq_len(n)) out[k] <- one(k)
+    return(out)
+  }
+
+  for (k in seq_len(n)) {
+    body_out <- paste(tk$text[(ld[k] + 1L):(fr[k] - 1L)], collapse = "")
+    body_out <- sub("^\n", "", body_out)
+    body_out <- sub("\n[ \t]*$", "", body_out)
+    # The same independent textual re-check .csd_style_group() makes on its
+    # own output - a slice off-by-one is caught here, per group.
+    if (grepl("^\\s*LOAD\\b", body_out, ignore.case = TRUE) ||
+        grepl("\\bFROM\\s+x\\s*;?\\s*$", body_out, ignore.case = TRUE)) {
+      .CSD_BATCH_STATS$slice_fallback <- .CSD_BATCH_STATS$slice_fallback + 1L
+      out[k] <- one(k)
+    } else {
+      out[k] <- body_out
+    }
+  }
+
+  # Differential self-test, off by default: recompute every group the old
+  # single-scaffold way and compare. `options(csd.batch.crosscheck = TRUE)`
+  # turns the batching into a checked refactor rather than a trusted one.
+  if (isTRUE(getOption("csd.batch.crosscheck", FALSE))) {
+    for (k in seq_len(n)) {
+      ref <- one(k)
+      if (!identical(out[k], ref)) {
+        warning(sprintf("csd batch crosscheck: group %d of %d differs", k, n),
+                call. = FALSE)
+      }
+    }
+  }
+
+  out
+}
+
 # ---- splitting a run into prose / code groups -----------------------------
 
 #' Per-line token ranges of a child stream, in the SAME order as its own
@@ -197,6 +390,23 @@
 #'   prose_lines, prose_groups, n_unstylable_groups)) - `bucket` is the
 #'   coverage counter key.
 .csd_style_run <- function(run, ctx) {
+  prep <- .csd_prepare_run(run, ctx)
+  if (!is.null(prep$done)) return(prep$done)
+  .csd_finish_run(prep, .csd_style_groups(prep$specs))
+}
+
+#' Everything .csd_style_run() does BEFORE any code group is styled: the
+#' load_block / non-field_run / empty short-circuits, the prose-vs-code
+#' split, each code group's own trailing-separator strip, and GUARD 2's
+#' per-group context. Split out (2026-08-25) so a whole PARENT's worth of
+#' code groups can be collected and styled in one batch - the split is
+#' mechanical, no rule here changed.
+#'
+#' @return either list(done = <the .csd_style_run() return value>) when the
+#'   run needs no group styling at all, or the working state
+#'   .csd_finish_run() consumes, whose `specs` are the .csd_style_groups()
+#'   arguments for this run's code groups in source order.
+.csd_prepare_run <- function(run, ctx) {
   stats <- list(bucket = NA_character_, prose_lines = 0L,
                 prose_groups = 0L, n_unstylable_groups = 0L)
 
@@ -211,7 +421,7 @@
     if (any(run$line_kind == "prose")) {
       stats$bucket <- "load_block_prose_skipped"
       stats$prose_lines <- sum(run$line_kind == "prose")
-      return(list(run = run, stats = stats))
+      return(list(done = list(run = run, stats = stats)))
     }
     lb_ctx <- list(first_field = TRUE, base_depth = 0L, target_col = NULL)
     tk <- run$tokens
@@ -242,12 +452,12 @@
     run$tokens <- stripped$tokens
     run$leading_sep <- stripped$leading_sep
     stats$bucket <- "load_block_styled"
-    return(list(run = run, stats = stats))
+    return(list(done = list(run = run, stats = stats)))
   }
 
   if (!identical(run$kind, "field_run")) {
     stats$bucket <- "unknown_kind_skipped"   # defensive - not reachable today
-    return(list(run = run, stats = stats))
+    return(list(done = list(run = run, stats = stats)))
   }
 
   # The run's OWN outer trailing boundary trivia (ties it to whatever LIVE
@@ -262,7 +472,7 @@
   groups <- .csd_make_groups(body_tokens, line_kind)
   if (length(groups) == 0) {
     stats$bucket <- "field_run_empty"        # defensive - not reachable today
-    return(list(run = run, stats = stats))
+    return(list(done = list(run = run, stats = stats)))
   }
 
   n <- length(groups)
@@ -284,15 +494,19 @@
   # question at extraction, but at THIS stitch: confirmed directly by
   # instrumenting the synthetic field/prose/field run, 2 tabs -> 4 tabs
   # after one extra driver cycle, not by inspection).
-  is_scaffolded_code <- logical(n)
   is_prose_vec <- vapply(groups, `[[`, logical(1), "is_prose")
   first_code_seen <- FALSE
-  last_code_group_styled <- FALSE
-  n_scaffolded <- 0L; n_unstylable <- 0L
+  # Per-group state handed to .csd_finish_run(): the raw slice (its own
+  # fallback text when GUARD 1 refuses), the trailing separator stripped off
+  # it, and which `pieces` slot each styling result belongs in.
+  raw_all <- character(n)
+  grp_trailing <- rep(NA_character_, n)
+  specs <- list(); slots <- integer(0)
 
   for (g in seq_len(n)) {
     grp <- groups[[g]]
     raw <- paste(body_tokens$text[grp$start:grp$end], collapse = "")
+    raw_all[g] <- raw
     if (grp$is_prose) { pieces[g] <- raw; has_own_sep[g] <- TRUE; next }
 
     # A code group's OWN raw slice absorbs the boundary WS leading into
@@ -315,7 +529,7 @@
     # applies.
     grp_tail <- .cs_strip_trailing_sep(body_tokens[grp$start:grp$end, , drop = FALSE])
     raw_body <- paste(grp_tail$tokens$text, collapse = "")
-    grp_trailing <- grp_tail$trailing_sep
+    grp_trailing[g] <- grp_tail$trailing_sep
 
     # GUARD 2: every code group in this run shares the SAME context -
     # only the first one seen can be the run's own true first field.
@@ -323,20 +537,50 @@
       first_field = if (!first_code_seen) isTRUE(ctx$first_field %||% TRUE) else FALSE,
       target_col  = ctx$target_col,
       base_depth  = 0L)
-    styled <- .csd_style_group(raw_body, grp_ctx)
-    if (is.na(styled)) {
-      pieces[g] <- raw
+    slots <- c(slots, g)
+    specs[[length(specs) + 1L]] <- list(body_text = raw_body, context = grp_ctx)
+    first_code_seen <- TRUE
+  }
+
+  list(run = run, stats = stats, n = n, pieces = pieces,
+       has_own_sep = has_own_sep, is_prose_vec = is_prose_vec,
+       raw = raw_all, grp_trailing = grp_trailing,
+       specs = specs, slots = slots)
+}
+
+#' Everything .csd_style_run() does AFTER its code groups are styled: the
+#' per-group styled/unstylable bookkeeping, the stitch loop, the run's own
+#' outer trailing_sep rule and the final re-tokenize. Split out alongside
+#' .csd_prepare_run(); no rule here changed.
+#'
+#' @param prep a .csd_prepare_run() result with no `done` element.
+#' @param styled character vector, one element per `prep$specs` entry, in the
+#'   same order - .csd_style_groups()' return value for them.
+.csd_finish_run <- function(prep, styled) {
+  run <- prep$run; stats <- prep$stats
+  n <- prep$n; pieces <- prep$pieces; has_own_sep <- prep$has_own_sep
+  is_prose_vec <- prep$is_prose_vec
+  is_scaffolded_code <- logical(n)
+  last_code_group_styled <- FALSE
+  n_scaffolded <- 0L; n_unstylable <- 0L
+
+  # `slots` is ascending, so this walks the run's code groups in source
+  # order - `last_code_group_styled` ends on the LAST one, as before.
+  for (j in seq_along(prep$slots)) {
+    g <- prep$slots[j]
+    grp_trailing <- prep$grp_trailing[g]
+    if (is.na(styled[j])) {
+      pieces[g] <- prep$raw[g]
       has_own_sep[g] <- TRUE   # `raw` still carries its own original tail
       n_unstylable <- n_unstylable + 1L
       last_code_group_styled <- FALSE
     } else {
-      pieces[g] <- paste0(styled, if (!is.na(grp_trailing)) grp_trailing else "")
+      pieces[g] <- paste0(styled[j], if (!is.na(grp_trailing)) grp_trailing else "")
       has_own_sep[g] <- !is.na(grp_trailing)
       is_scaffolded_code[g] <- TRUE
       n_scaffolded <- n_scaffolded + 1L
       last_code_group_styled <- TRUE
     }
-    first_code_seen <- TRUE
   }
 
   out <- pieces[1]
@@ -542,7 +786,37 @@ style_comment_substream <- function(tokens) {
   ch_start <- integer(0); ch_end <- integer(0)
   ch_kind  <- character(0); ch_bucket <- character(0)
 
-  for (r in rev(ex$runs)) {
+  # Two phases (2026-08-25, perf-sub7). Phase 1 prepares every run: nothing
+  # in .csd_prepare_run() reads `work`, only the run's own tokens (captured
+  # from the unedited parent at extraction time) and `pctx` (derived from
+  # the unedited parent too), so preparing them all up front is not affected
+  # by the serialization the second loop interleaves. That yields ONE list
+  # of code groups for the WHOLE parent, styled in a single batch, instead
+  # of a scaffold + 7 passes per group. Phase 2 is the original loop
+  # unchanged, in the same reverse order and for the same reason (see this
+  # function's own header) - it just reads its groups' styled text back out
+  # of the batch instead of computing it inline.
+  runs <- rev(ex$runs)
+  preps <- vector("list", length(runs))
+  all_specs <- list()
+  for (i in seq_along(runs)) {
+    r <- runs[[i]]
+    if (r$status != "extracted") next
+    idx <- r$comment_idx[1]
+    ctx <- if (idx <= length(pctx$in_fl) && pctx$in_fl[idx]) {
+      list(target_col = pctx$col_of[idx], first_field = idx < pctx$first_live[idx])
+    } else {
+      list(target_col = NULL, first_field = TRUE)
+    }
+    p <- .csd_prepare_run(r, ctx)
+    preps[[i]] <- p
+    if (is.null(p$done) && length(p$specs) > 0L) all_specs <- c(all_specs, p$specs)
+  }
+  styled_all <- .csd_style_groups(all_specs)
+  spec_off <- 0L
+
+  for (i in seq_along(runs)) {
+    r <- runs[[i]]
     if (r$status != "extracted") {
       # Adam's stage-2 GMR review (2026-08-24): a silent refusal - a
       # plainly field-shaped run left completely raw because .cs_classify_
@@ -561,13 +835,14 @@ style_comment_substream <- function(tokens) {
       })
       next
     }
-    idx <- r$comment_idx[1]
-    ctx <- if (idx <= length(pctx$in_fl) && pctx$in_fl[idx]) {
-      list(target_col = pctx$col_of[idx], first_field = idx < pctx$first_live[idx])
+    p <- preps[[i]]
+    if (!is.null(p$done)) {
+      res <- p$done
     } else {
-      list(target_col = NULL, first_field = TRUE)
+      k <- length(p$specs)
+      res <- .csd_finish_run(p, styled_all[spec_off + seq_len(k)])
+      spec_off <- spec_off + k
     }
-    res <- .csd_style_run(r, ctx)
     work <- serialize_comment_run(work, res$run)
 
     ch_start  <- c(ch_start, r$line_start)
