@@ -87,6 +87,8 @@
 #'   or NA_character_ if GUARD 1 fails - caller must leave the fragment
 #'   unstyled in that case, never guess.
 .csd_style_group <- function(body_text, context) {
+  tk <- tokenize_qlik(paste0(.CSD_WRAP_HEAD, body_text, .CSD_WRAP_TAIL))
+
   # GUARD (idempotence, caught directly on [Grant Managing Region].txt): a
   # depth-0 SEMI inside the body would end the synthetic LOAD statement
   # early, leaving "FROM x;" as a second, ORPHANED top-level statement -
@@ -95,12 +97,25 @@
   # exactly one each) but which is not stable across re-styling. A body
   # that terminates its own statement is not a plain field - left
   # unstylable rather than guessed at.
-  bt <- tokenize_qlik(body_text)
-  depth0_semi <- bt$type == "SEMI" &
-    (cumsum(bt$type == "LPAREN") - cumsum(bt$type == "RPAREN")) == 0L
-  if (any(depth0_semi)) return(NA_character_)
+  # Perf (2026-08-25): reuses THIS tokenize (the wrap scaffold) instead of a
+  # second, separate tokenize_qlik(body_text) call - locates the body's own
+  # slice between the wrap's own LOAD and FROM and runs the identical
+  # depth-0-SEMI test on that slice. When LOAD/FROM aren't found uniquely
+  # here (never observed - .CSD_WRAP_HEAD/.CSD_WRAP_TAIL always contribute
+  # exactly one each - but not assumed impossible), this guard is simply
+  # skipped rather than guessed at: GUARD 1 below still catches that same
+  # shape post-styling exactly as before, so the final result is unchanged
+  # either way.
+  ld0 <- which(tk$type == "WORD" & tolower(tk$text) == "load")
+  fr0 <- which(tk$type == "WORD" & tolower(tk$text) == "from")
+  if (length(ld0) == 1L && length(fr0) == 1L && fr0[1] > ld0[1] + 1L) {
+    body_slice <- (ld0[1] + 1L):(fr0[1] - 1L)
+    slice_type <- tk$type[body_slice]
+    depth0_semi <- slice_type == "SEMI" &
+      (cumsum(slice_type == "LPAREN") - cumsum(slice_type == "RPAREN")) == 0L
+    if (any(depth0_semi)) return(NA_character_)
+  }
 
-  tk <- tokenize_qlik(paste0(.CSD_WRAP_HEAD, body_text, .CSD_WRAP_TAIL))
   tk <- ensure_explicit_aliases(tk)$tokens
   tk <- enforce_bracket_references(tk)$tokens
   tk <- enforce_leading_commas(tk, context)$tokens
