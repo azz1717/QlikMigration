@@ -98,7 +98,11 @@
 #'   behaviour - the block max, per LOAD block, as before. When supplied it
 #'   is TAKEN AS GIVEN (Adam, PLAN section 9 resolved decision) - never widened by
 #'   this call's own eligible fields, even if one of them is wider; outlier
-#'   exclusion (`.eaa_max_field_width`) still applies on top of it.
+#'   exclusion (`.eaa_max_field_width`) still applies on top of it. May also
+#'   be an INTEGER VECTOR (2026-08-25, batched comment styling): one element
+#'   per LOAD block, in load_tok_idx order over ALL segments; an NA element
+#'   (or a block past the vector's end) makes that block derive its own max,
+#'   exactly as NULL does for the whole call.
 #' @return a list with:
 #'   $tokens   - the token stream with AS-column whitespace normalised
 #'   $warnings - find_load_segments()'s warnings, passed through unchanged
@@ -135,6 +139,17 @@ enforce_alias_alignment <- function(tokens, context = NULL) {
   first_i <- vapply(segs, function(s) s$content_idx[1], integer(1))
 
   ch_line <- integer(0); ch_before <- character(0); ch_after <- character(0)
+
+  # VECTOR form (2026-08-25, perf-sub7 batched styling): context$target_col
+  # may carry one element per LOAD BLOCK, in load_tok_idx order over ALL
+  # segments (not just the AS-bearing blocks this loop visits), so the k-th
+  # element always belongs to the k-th LOAD of the stream. An NA element -
+  # and a block past the vector's end - means "compute your own max", the
+  # same as NULL does for the whole call. A scalar still applies to every
+  # block, exactly as before.
+  ctx_col <- if (!is.null(context)) context$target_col else NULL
+  col_is_vec <- !is.null(ctx_col) && length(ctx_col) > 1L
+  blk_order <- if (col_is_vec) unique(load_id) else integer(0)
 
   for (blk in unique(load_id[has_as])) {
     members <- which(load_id == blk & has_as)
@@ -194,8 +209,17 @@ enforce_alias_alignment <- function(tokens, context = NULL) {
     # exactly this: the max below is taken over the NARROW fields only.
     narrow <- cols < .eaa_max_field_width
     if (!any(narrow)) next
-    target_col <- if (!is.null(context) && !is.null(context$target_col)) {
-      as.integer(context$target_col)   # given, not derived - never widened by cols
+    given_col <- NA_integer_
+    if (!is.null(ctx_col)) {
+      if (col_is_vec) {
+        bk <- match(blk, blk_order)
+        if (!is.na(bk) && bk <= length(ctx_col)) given_col <- as.integer(ctx_col[bk])
+      } else {
+        given_col <- as.integer(ctx_col)
+      }
+    }
+    target_col <- if (!is.na(given_col)) {
+      given_col   # given, not derived - never widened by cols
     } else {
       (max(cols[narrow]) %/% .eaa_tab_width + 1L) * .eaa_tab_width
     }

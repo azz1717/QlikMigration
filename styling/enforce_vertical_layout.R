@@ -158,7 +158,10 @@
 #'   stream's own line 1 (that line's blank-line collapse is a separate
 #'   concern from its indent - see the `i == 1L` branch below), so a child
 #'   stream is never quietly treated as top-level just because it is line 1
-#'   of ITS OWN token stream.
+#'   of ITS OWN token stream. May also be an INTEGER VECTOR (2026-08-25,
+#'   batched comment styling): one element per TOP-LEVEL statement, resolved
+#'   per line through find_block_structure()'s own `stmt_id`. A scalar still
+#'   applies to the whole stream, exactly as before.
 #' @return a list with:
 #'   $tokens   - the token stream with vertical whitespace normalised
 #'   $warnings - find_block_structure()'s warnings (unbalanced blocks,
@@ -171,6 +174,13 @@
 enforce_vertical_layout <- function(tokens, context = NULL) {
   base_depth <- 0L
   if (!is.null(context) && !is.null(context$base_depth)) base_depth <- as.integer(context$base_depth)
+  if (length(base_depth) == 0L) base_depth <- 0L
+  # VECTOR form (2026-08-25, perf-sub7 batched styling): one element per
+  # TOP-LEVEL statement, looked up through find_block_structure()'s own
+  # stmt_id below. A scalar keeps today's meaning (one depth for the whole
+  # stream) and is resolved once, here, so the per-line lookup never runs.
+  bd_is_vec <- length(base_depth) > 1L
+  bd_pad <- if (bd_is_vec) NULL else strrep("\t", base_depth)
 
   tokens <- .qvl_join_orphan_semicolons(tokens)
   bs <- find_block_structure(tokens)
@@ -301,7 +311,14 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
       next
     }
 
-    indent <- paste0(strrep("\t", base_depth), .qvl_indent[[kind_i]])
+    pad <- if (bd_is_vec) {
+      sid <- L$stmt_id[i]
+      # stmt_id is 0 for anything preceding the stream's first statement, and
+      # a caller may hand a shorter vector than there are statements; both
+      # fall back to today's un-shifted indent rather than an NA.
+      strrep("\t", if (sid >= 1L && sid <= length(base_depth)) base_depth[sid] else 0L)
+    } else bd_pad
+    indent <- paste0(pad, .qvl_indent[[kind_i]])
     if (kind_i == "field" && isTRUE(L$first_field[i])) indent <- paste0(indent, "  ")
 
     run <- .preceding_ws_run(t_type, L$idx[i])

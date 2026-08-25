@@ -53,6 +53,10 @@
 #'   sits in front of that first segment too, inserting one if not already
 #'   there. Idempotent the same way the rest of the pass is: a second call
 #'   finds the comma already immediately before the segment and does nothing.
+#'   May also be a LOGICAL VECTOR (2026-08-25, batched comment styling): one
+#'   element per LOAD block of this stream, in load_tok_idx order, element k
+#'   governing the k-th block's own first segment. A scalar is NOT recycled
+#'   across blocks - it keeps its single-segment meaning above.
 #' @return a list with:
 #'   $tokens   - the token stream with commas relocated
 #'   $warnings - character vector describing any trailing comma that could
@@ -84,10 +88,12 @@ enforce_leading_commas <- function(tokens, context = NULL) {
   # Change log accumulated as plain vectors and turned into a data.frame once.
   # Building one data.frame per iteration and rbind()-ing them was pure
   # bookkeeping overhead that cost more than the pass's real work.
-  # +1L: room for the context$first_field=FALSE synthesised-comma entry
-  # below, on top of the at-most-nseg relocations the main loop can log.
-  ch_from <- integer(nseg + 1L); ch_to <- integer(nseg + 1L)
-  ch_prev <- character(nseg + 1L); nch <- 0L
+  # +nseg+1L: room for the context$first_field=FALSE synthesised-comma
+  # entries below (at most one per LOAD block, and a block needs at least one
+  # segment, so nseg is an upper bound), on top of the at-most-nseg
+  # relocations the main loop can log.
+  ch_from <- integer(2L * nseg + 1L); ch_to <- integer(2L * nseg + 1L)
+  ch_prev <- character(2L * nseg + 1L); nch <- 0L
 
   # stamped per use instead of constructing a data.frame every iteration
   comma_row <- data.frame(text = ",", type = "COMMA", line = 1L,
@@ -139,13 +145,36 @@ enforce_leading_commas <- function(tokens, context = NULL) {
   # really the list's first field (PLAN sections 3/5/9) - a live-equivalent field
   # always has a leading separator, so synthesise one if none is there yet.
   # NULL/TRUE derives today's behaviour: never touch the first segment.
+  # VECTOR form (2026-08-25, perf-sub7 batched styling): one element per LOAD
+  # block, in load_tok_idx order - element k governs the k-th block's own
+  # first segment. A SCALAR (or NULL) keeps today's meaning exactly: it
+  # governs the stream's FIRST segment only, which for a single-LOAD stream
+  # is the same thing. Deliberately NOT recycled across blocks, so the
+  # top-level whole-file call cannot change behaviour by this edit.
   first_field <- TRUE
-  if (!is.null(context) && !is.null(context$first_field)) first_field <- isTRUE(context$first_field)
+  if (!is.null(context) && !is.null(context$first_field)) first_field <- context$first_field
+  if (length(first_field) == 0L) first_field <- TRUE
+
+  # Which segment each head comma would go in front of. Scalar: segment 1
+  # only (today). Vector: the first segment of each LOAD block whose own
+  # element is FALSE.
+  head_segs <- integer(0)
+  if (nseg > 0L) {
+    if (length(first_field) > 1L) {
+      seg_load <- vapply(found$segments, function(s) s$load_tok_idx, integer(1))
+      blk_first <- which(!duplicated(seg_load))          # ascending token order
+      take <- seq_along(blk_first) <= length(first_field)
+      head_segs <- blk_first[take][!vapply(first_field[seq_len(sum(take))],
+                                           isTRUE, logical(1))]
+    } else if (!isTRUE(first_field)) {
+      head_segs <- 1L
+    }
+  }
 
   need_head_comma <- FALSE
   head_idx <- NA_integer_
-  if (!first_field && nseg > 0L) {
-    head_idx <- found$segments[[1]]$content_idx[1]
+  for (hs in head_segs) {
+    head_idx <- found$segments[[hs]]$content_idx[1]
     p <- head_idx - 1L
     while (p >= 1L && t_type[p] %in% c("WS", "COMMENT")) p <- p - 1L
     already <- p >= 1L && t_type[p] == "COMMA"
@@ -156,7 +185,9 @@ enforce_leading_commas <- function(tokens, context = NULL) {
         new_comma$line <- t_line[head_idx]
         insertions[[key]] <- if (is.null(insertions[[key]])) new_comma else rbind(insertions[[key]], new_comma)
       } else {
-        need_head_comma <- TRUE   # nothing precedes token 1 - splice_tokens()
+        need_head_comma <- TRUE   # only ever block 1's own first segment
+        head_line <- t_line[head_idx]
+                                   # nothing precedes token 1 - splice_tokens()
                                    # has no "insert before everything" key;
                                    # prepend by rbind() after splicing, same
                                    # deferred technique enforce_vertical_
@@ -175,7 +206,7 @@ enforce_leading_commas <- function(tokens, context = NULL) {
 
   if (need_head_comma) {
     tokens <- rbind(
-      data.frame(text = ",", type = "COMMA", line = t_line[head_idx], stringsAsFactors = FALSE),
+      data.frame(text = ",", type = "COMMA", line = head_line, stringsAsFactors = FALSE),
       tokens)
   }
 
