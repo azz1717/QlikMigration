@@ -73,6 +73,7 @@
   if (n == 0) return(tokens)
   t_type <- tokens$type
   t_text <- tokens$text
+  t_line <- tokens$line
   lower  <- tolower(t_text)
   in_select <- in_select_region(t_type, lower)
   PREV <- prev_non_trivia_idx(t_type)
@@ -96,7 +97,7 @@
   for (k in needs_move) {
     target <- PREV[k]
     insertions[[as.character(target)]] <- data.frame(
-      text = ";", type = "SEMI", line = tokens$line[target],
+      text = ";", type = "SEMI", line = t_line[target],
       stringsAsFactors = FALSE)
   }
   tokens <- void_token(tokens, needs_move)
@@ -196,6 +197,16 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
   t_type <- tokens$type
   t_text <- tokens$text
 
+  # Hoist L's columns too: the eff_id run-walk and the per-line loop below
+  # both index L$col[i] repeatedly (~1.0s over 8174 lines on script.qvs) -
+  # local vectors avoid the repeated data.frame $-dispatch. Same values,
+  # same order, same logic.
+  l_kind <- L$kind
+  l_idx <- L$idx
+  l_line <- L$line
+  l_stmt_id <- L$stmt_id
+  l_first_field <- L$first_field
+
   # Effective group for blank-line purposes: a comment inherits the stmt_id
   # of the NEXT non-comment line, so a comment block stays glued to what it
   # describes rather than to what precedes it - UNLESS a ///$tab section
@@ -219,21 +230,21 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
   # contiguous run has no other kind in between), so both are computed ONCE
   # per run and applied to the whole [run_start, run_end] slice at once.
   # Logic unchanged - only the number of times it is repeated.
-  eff_id <- L$stmt_id
+  eff_id <- l_stmt_id
   i <- nlines
   while (i >= 1L) {
-    if (L$kind[i] == "comment") {
+    if (l_kind[i] == "comment") {
       run_end <- i
       run_start <- i
-      while (run_start > 1L && L$kind[run_start - 1L] == "comment" &&
-             (L$line[run_start] - L$line[run_start - 1L]) == 1L) {
+      while (run_start > 1L && l_kind[run_start - 1L] == "comment" &&
+             (l_line[run_start] - l_line[run_start - 1L]) == 1L) {
         run_start <- run_start - 1L
       }
-      stays_above <- .qvl_is_condition_continuation(t_text[L$idx[run_start]])
+      stays_above <- .qvl_is_condition_continuation(t_text[l_idx[run_start]])
       if (!stays_above) {
         j <- run_end + 1L
-        while (j <= nlines && L$kind[j] == "comment") j <- j + 1L
-        if (j <= nlines && L$kind[j] != "section") eff_id[run_start:run_end] <- eff_id[j]
+        while (j <= nlines && l_kind[j] == "comment") j <- j + 1L
+        if (j <= nlines && l_kind[j] != "section") eff_id[run_start:run_end] <- eff_id[j]
       }
       i <- run_start - 1L
     } else {
@@ -260,7 +271,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
   need_line1_indent <- NA_character_
 
   for (i in seq_len(nlines)) {
-    kind_i <- L$kind[i]
+    kind_i <- l_kind[i]
     if (kind_i == "section") next                          # whole line: untouched
 
     # FROM clause (DESIGN §4.9, Adam 2026-08-17): the format spec's opening
@@ -271,15 +282,15 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
     # indent/blank-line machinery entirely: the gap collapses to a literal
     # single space, no newline.
     if (i > 1L) {
-      prev_idx <- L$idx[i - 1L]
-      if (t_type[L$idx[i]] == "LPAREN" && t_type[prev_idx] == "WORD" &&
+      prev_idx <- l_idx[i - 1L]
+      if (t_type[l_idx[i]] == "LPAREN" && t_type[prev_idx] == "WORD" &&
           tolower(t_text[prev_idx]) == "from") {
-        run <- .preceding_ws_run(t_type, L$idx[i])
+        run <- .preceding_ws_run(t_type, l_idx[i])
         if (length(run) > 0L) {
           before <- paste0(t_text[run], collapse = "")
           if (!identical(before, " ")) {
             nch <- nch + 1L
-            ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
+            ch_line[nch] <- l_line[i]; ch_kind[nch] <- kind_i
             ch_before[nch] <- before; ch_after[nch] <- " "
             t_text[run] <- ""
             t_text[run[length(run)]] <- " "
@@ -296,13 +307,13 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
     # already relocated by .qvl_join_orphan_semicolons() before this loop
     # runs, so every case reaching here is exactly "SEMI immediately after
     # one WS token."
-    if (i > 1L && t_type[L$idx[i]] == "SEMI") {
-      run <- .preceding_ws_run(t_type, L$idx[i])
+    if (i > 1L && t_type[l_idx[i]] == "SEMI") {
+      run <- .preceding_ws_run(t_type, l_idx[i])
       if (length(run) > 0L) {
         before <- paste0(t_text[run], collapse = "")
         if (!identical(before, "")) {
           nch <- nch + 1L
-          ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
+          ch_line[nch] <- l_line[i]; ch_kind[nch] <- kind_i
           ch_before[nch] <- before; ch_after[nch] <- ""
           t_text[run] <- ""
           stranded <- c(stranded, run[-length(run)])
@@ -312,16 +323,16 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
     }
 
     pad <- if (bd_is_vec) {
-      sid <- L$stmt_id[i]
+      sid <- l_stmt_id[i]
       # stmt_id is 0 for anything preceding the stream's first statement, and
       # a caller may hand a shorter vector than there are statements; both
       # fall back to today's un-shifted indent rather than an NA.
       strrep("\t", if (sid >= 1L && sid <= length(base_depth)) base_depth[sid] else 0L)
     } else bd_pad
     indent <- paste0(pad, .qvl_indent[[kind_i]])
-    if (kind_i == "field" && isTRUE(L$first_field[i])) indent <- paste0(indent, "  ")
+    if (kind_i == "field" && isTRUE(l_first_field[i])) indent <- paste0(indent, "  ")
 
-    run <- .preceding_ws_run(t_type, L$idx[i])
+    run <- .preceding_ws_run(t_type, l_idx[i])
 
     if (length(run) == 0L) {
       # Only possible for line 1 with no leading whitespace at all.
@@ -339,7 +350,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
     # kind - the section's own line above is already skipped entirely, so
     # only "coming out of one" needs handling here.
     preserve_blanks <- kind_i == "directive" ||
-      (i > 1L && L$kind[i - 1L] %in% c("section", "directive"))
+      (i > 1L && l_kind[i - 1L] %in% c("section", "directive"))
 
     target <- if (i == 1L) {
       indent   # nothing precedes line 1 - collapse any leading blank lines
@@ -353,7 +364,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
     if (identical(before, target)) next
 
     nch <- nch + 1L
-    ch_line[nch] <- L$line[i]; ch_kind[nch] <- kind_i
+    ch_line[nch] <- l_line[i]; ch_kind[nch] <- kind_i
     ch_before[nch] <- before; ch_after[nch] <- target
     t_text[run] <- ""
     t_text[run[length(run)]] <- target
@@ -368,7 +379,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
       data.frame(text = need_line1_indent, type = "WS", line = 1L, stringsAsFactors = FALSE),
       tokens)
     nch <- nch + 1L
-    ch_line[nch] <- L$line[1]; ch_kind[nch] <- L$kind[1]
+    ch_line[nch] <- l_line[1]; ch_kind[nch] <- l_kind[1]
     ch_before[nch] <- ""; ch_after[nch] <- need_line1_indent
   }
 
