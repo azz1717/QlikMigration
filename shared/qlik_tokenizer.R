@@ -580,7 +580,13 @@ find_block_structure <- function(tokens, segments = NULL) {
   if (n == 0) return(list(lines = empty, warnings = character(0)))
 
   ty    <- tokens$type
-  lower <- tolower(tokens$text)
+  # Hoist text/line once: both are otherwise re-fetched from the data.frame
+  # (grepl/startsWith below, then per-element in the warn branches and the
+  # final line= column) - repeated $-dispatch on the same two columns for no
+  # reason. Same values, same order, no logic change.
+  t_text <- tokens$text
+  t_line <- tokens$line
+  lower <- tolower(t_text)
   warn  <- character(0)
 
   # --- line starts -------------------------------------------------------
@@ -588,7 +594,7 @@ find_block_structure <- function(tokens, segments = NULL) {
   # previous content token. VOID rows carry no text, so they must be
   # transparent here or a voided token would break the chain and hide a
   # genuine line start.
-  has_nl  <- ty == "WS" & grepl("\n", tokens$text, fixed = TRUE)
+  has_nl  <- ty == "WS" & grepl("\n", t_text, fixed = TRUE)
   content <- which(!(ty %in% c("WS", "VOID")))
   if (length(content) == 0) return(list(lines = empty, warnings = warn))
 
@@ -608,7 +614,7 @@ find_block_structure <- function(tokens, segments = NULL) {
   # only 62 start their line - without this the odd one out would classify
   # as an ordinary statement and get indented, moving both the "I" and the
   # marker Qlik keys its editor section tabs off.
-  sect_tok   <- which(ty == "COMMENT" & startsWith(tokens$text, "///$"))
+  sect_tok   <- which(ty == "COMMENT" & startsWith(t_text, "///$"))
   is_section <- logical(nls)
   if (length(sect_tok) > 0) {
     owner <- findInterval(sect_tok, ls_idx)
@@ -718,12 +724,12 @@ find_block_structure <- function(tokens, segments = NULL) {
       if (length(stack) == 0L) {
         warn <- c(warn, sprintf(
           "Line %d: '%s' closes a %s block that was never opened - layout left flat here.",
-          tokens$line[i], tokens$text[i], closer))
+          t_line[i], t_text[i], closer))
       } else {
         if (tail(stack, 1L) != closer) {
           warn <- c(warn, sprintf(
             "Line %d: '%s' closes a %s block but the innermost open block is %s.",
-            tokens$line[i], tokens$text[i], closer, tail(stack, 1L)))
+            t_line[i], t_text[i], closer, tail(stack, 1L)))
         }
         stack <- stack[-length(stack)]
       }
@@ -790,7 +796,7 @@ find_block_structure <- function(tokens, segments = NULL) {
 
   list(
     lines = data.frame(
-      idx = ls_idx, line = tokens$line[ls_idx], kind = kind,
+      idx = ls_idx, line = t_line[ls_idx], kind = kind,
       starts_stmt = starts_stmt, stmt_id = stmt_id, depth = depth_out,
       first_field = first_field,
       stringsAsFactors = FALSE),
