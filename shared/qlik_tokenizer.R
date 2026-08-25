@@ -381,13 +381,20 @@ find_load_segments <- function(tokens) {
   # it is invisible until a caller does vapply(..., integer(1)) and gets
   # "values must be type 'integer', but FUN(X[[1]]) result is type 'double'".
   # That cost the spacing pass a debugging cycle. Keep the L suffixes.
+  # Hoist columns once: repeated `tokens$col[i]` pays R's $-dispatch cost on
+  # every element of these scan loops. Local vectors are indexed instead;
+  # same iteration logic, same results.
+  t_type <- tokens$type
+  t_text <- tokens$text
+  t_line <- tokens$line
+
   i <- 1L
   in_select <- FALSE
 
   while (i <= n) {
-    ty <- tokens$type[i]
+    ty <- t_type[i]
 
-    if (ty == "WORD" && tolower(tokens$text[i]) == "select") {
+    if (ty == "WORD" && tolower(t_text[i]) == "select") {
       in_select <- TRUE
       i <- i + 1L
       next
@@ -398,8 +405,8 @@ find_load_segments <- function(tokens) {
       next
     }
 
-    if (ty == "WORD" && tolower(tokens$text[i]) == "load") {
-      load_line <- tokens$line[i]
+    if (ty == "WORD" && tolower(t_text[i]) == "load") {
+      load_line <- t_line[i]
       start <- i + 1L
 
       # find end of field list: first depth-0 end-keyword, or a depth-0 ';'
@@ -407,11 +414,11 @@ find_load_segments <- function(tokens) {
       j <- start
       end <- NA_integer_
       while (j <= n) {
-        tj <- tokens$type[j]
+        tj <- t_type[j]
         if (tj == "LPAREN") depth <- depth + 1L
         else if (tj == "RPAREN") depth <- depth - 1L
         else if (depth == 0L && tj == "SEMI") { end <- j; break }
-        else if (depth == 0L && tj == "WORD" && tolower(tokens$text[j]) %in% end_keywords) { end <- j; break }
+        else if (depth == 0L && tj == "WORD" && tolower(t_text[j]) %in% end_keywords) { end <- j; break }
         j <- j + 1L
       }
       if (is.na(end)) {
@@ -427,7 +434,7 @@ find_load_segments <- function(tokens) {
       k <- start
       bounds <- list()
       while (k < end) {
-        tk <- tokens$type[k]
+        tk <- t_type[k]
         if (tk == "LPAREN") depth <- depth + 1L
         else if (tk == "RPAREN") depth <- depth - 1L
         else if (tk == "COMMA" && depth == 0L) {
@@ -443,7 +450,7 @@ find_load_segments <- function(tokens) {
         if (s_from > s_to) next  # empty segment (e.g. trailing comma)
 
         idxs <- s_from:s_to
-        content_idx <- idxs[!(tokens$type[idxs] %in% c("WS", "COMMENT", "VOID"))]
+        content_idx <- idxs[!(t_type[idxs] %in% c("WS", "COMMENT", "VOID"))]
         if (length(content_idx) == 0) next  # comment-only / blank segment
 
         # look for a depth-0 "AS" among this segment's own tokens
@@ -451,10 +458,10 @@ find_load_segments <- function(tokens) {
         as_idx <- NA_integer_
         d <- 0L
         for (p in idxs) {
-          tp <- tokens$type[p]
+          tp <- t_type[p]
           if (tp == "LPAREN") d <- d + 1L
           else if (tp == "RPAREN") d <- d - 1L
-          else if (d == 0L && tp == "WORD" && tolower(tokens$text[p]) == "as") { has_as <- TRUE; as_idx <- p; break }
+          else if (d == 0L && tp == "WORD" && tolower(t_text[p]) == "as") { has_as <- TRUE; as_idx <- p; break }
         }
         # the alias target's own content tokens (right of AS) - normally a
         # single field/alias reference, but kept general in case of trivia
@@ -466,7 +473,7 @@ find_load_segments <- function(tokens) {
           has_as = has_as,
           as_idx = as_idx,
           alias_content_idx = alias_content_idx,
-          line = tokens$line[s_from],
+          line = t_line[s_from],
           load_tok_idx = i
         )
       }
