@@ -1,0 +1,684 @@
+///$tab Main
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$#,##0.00;-$#,##0.00';
+SET TimeFormat='h:mm:ss TT';
+SET DateFormat='D/M/YYYY';
+SET TimestampFormat='D/M/YYYY h:mm:ss[.fff] TT';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-AUS';
+SET CreateSearchIndexOnReload=0;
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET NumericalAbbreviation='3:k;6:M;9B;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+// directory lib://AppData/DEV/AzureDataLake/GPS/; 
+directory lib://AppDataProd/AzureDataLake/GPS/; 
+set CurrentFinYear=Yearname(Today(),0,7);
+
+
+set eFormat= '$' & if(sum($1) >0,
+				pick(ceil(log10(sum($1))/3),
+                  num(sum($1),'#,##0.0'),
+                  num(sum($1)/1E3,'#,##0.0k'),
+                  num(sum($1)/1E6,'#,##0.00m'),
+                  num(sum($1)/1E9,'#,##0.00b')
+                  ),0);
+
+//Todo
+//Fix managing region, duplicates in tables
+//DESE activities not in fusion causing the manging office to duplicate. Solution ; move managing region calc to load script?
+// maybe rationalise offices in description. Talk  to Nicole
+
+//Changes
+//Fixed acquittal amounts and counts on summary sheet
+//fixed amounts and colours on open acquittals by groups sheet.
+//restricted  milestones on the details sheet to milestones linked to an acquittal
+//removed milestone processing not used in the table. the code is commented out and should be deleted if not required.
+//added tool tip to data quality bar chart showing error.
+
+
+
+///$tab Update Date
+[Load Date]:
+LOAD
+    "Data Source Code",
+    "Siebel Cut Off Date Time",
+    "Warehouse Load Time"
+FROM [lib://AppDataProd/AzureDataLake/GPS/GPS Data Warehouse Load Time.qvd]
+(qvd);
+///$tab Acquittal
+[Activity Acquittal Amount Temp]:
+LOAD
+    "Grant Activity.Grant Activity Id%" as [Grant Activity Id%],
+    "Grant Activity.Activity Id" As [Temp Activity Id]
+FROM [lib://AppDataProd/AzureDataLake/FUSION/Grant Activity.qvd]
+(qvd);
+LEFT JOIN
+LOAD
+	[Grant Activity Funding.Grant Activity Id%] AS [Grant Activity Id%],
+ 	[Grant Activity Funding.Financial Year Id%] AS [Financial Year Id%],
+	[Grant Activity Funding.Funding Amount] as [Total Value (ex GST)],
+    [Grant Activity Funding.Funds Released] as [Funds Released (ex GST)]
+ FROM [lib://AppData/PROD\AzureDataLake\FUSION\Grant Activity Funding.qvd]
+(qvd);
+LEFT JOIN
+LOAD
+    "Financial Year.Financial Year Id%" AS [Financial Year Id%],
+    "Financial Year.Financial Year" AS [Activity Financial Year]
+FROM [lib://AppData/PROD/AzureDataLake/FUSION/Financial Year.qvd]
+(qvd);
+
+[Grant Activity Acquittal Temp]:
+Load *,
+	 if([Temp Acquittal Office] like '*North*', mid( [Temp Acquittal Office], Index(  [Temp Acquittal Office],'North',1)), [Temp Acquittal Office]) as "Acquittal Office";
+Load *,
+	 IF([Acquittal Due Date] <= today(), 
+     	IF([Acquittal Status] <> 'Complete' , TODAY(),[Acquittal Completion Date] ) - [Acquittal Due Date]) as "Acquittal Days to Completion",
+    IF([Acquittal Due Date] > TODAY()-30 and [Acquittal Due Date] < TODAY(), 1, 0) AS 'Acquittal Due in Last 30 Days',
+    IF([Acquittal Due Date] < TODAY() + 30 and [Acquittal Due Date] > TODAY(), 1, 0) AS 'Acquittal Due in Next 30 Days',
+    IF([Acquittal Status] like '*Complete*' and [Acquittal Completion Date] > TODAY(0)- 8 and [Acquittal Completion Date] < TODAY(), 1,0) as 'Acquittal Completed in Last 7 Days',  
+    if(match([Review Status] , 'Draft','Scheduled'/*'In Progress', */) and [Acquittal Status Change Date] > Today(0)-8 , 1, 0)  as 'Acquittal Created in Last 7 Days',
+    trim(Left( [Abbrev Milestone Group],Index( [Abbrev Milestone Group],'20',1)-2 )) as "Temp Acquittal Office"
+;
+LOAD [Grant Activity Acquittal.Activity Id] as [Activity Id], 
+	[Grant Activity Acquittal.Milestone Id] as [Milestone Id], 
+	[Grant Activity Acquittal.Review Id] as [Review Id], 
+    [Grant Activity Acquittal.Activity Id]&Replace([Grant Activity Acquittal.Review Financial Year],'-20','-') as [Activity Acquittal Amount%],
+	[Grant Activity Acquittal.Review Title],
+	Replace([Grant Activity Acquittal.Review Financial Year],'-20','-') as [Acquittal Financial Year],
+//	[Grant Activity Acquittal.Acquittal Status] as [Acquittal Status],
+//     IF([Grant Activity Acquittal.Review Status] = 'Complete Pending Activities' , 'Complete', 
+//     	IF([Grant Activity Acquittal.Review Status] = 'In Progress' OR [Grant Activity Acquittal.Review Status] ='Planned' 
+// 			OR [Grant Activity Acquittal.Review Status]= 'Received - In Progress' OR [Grant Activity Acquittal.Review Status]= 'Scheduled' 
+// 			OR [Grant Activity Acquittal.Review Status]= 'Submitted' , 'Due', 
+//         	[Grant Activity Acquittal.Review Status] ))  as [Acquittal Status],
+//      if([Grant Activity Acquittal.Review Status] like 'Complete*'   , 'Complete', 
+// 		if([Grant Activity Acquittal.Review Due Date] > Today(),'Future', 'Due')) as [Acquittal Status],
+	[Grant Activity Acquittal.Review Stage] as [Acquittal Status],
+    [Grant Activity Acquittal.Review Status] as [Review Status],
+	[Grant Activity Acquittal.Review Due Date] as [Acquittal Due Date],
+//     IF([Grant Activity Acquittal.Review Due Date] > today(), NULL(), IF([Grant Activity Acquittal.Review Status] = 'Complete' 
+//		OR [Grant Activity Acquittal.Review Status] = 'Complete Pending Activities', [Grant Activity Acquittal.Review Status Change Date], TODAY()) - [Grant Activity Acquittal.Review Due Date]) 
+		//as "Acquittal Days to Completion",
+//     IF([Grant Activity Acquittal.Review Due Date] > TODAY()-30 and [Grant Activity Acquittal.Review Due Date] < TODAY(), 1, 0) AS 'Acquittal Due in Last 30 Days',
+//     IF([Grant Activity Acquittal.Review Due Date] < TODAY() + 30 and [Grant Activity Acquittal.Review Due Date] > TODAY(), 1, 0) AS 'Acquittal Due in Next 30 Days',
+	[Grant Activity Acquittal.Review Start Date],
+	[Grant Activity Acquittal.Review End Date],
+	[Grant Activity Acquittal.Milestone Review Grouping Name] as [Milestone Review Grouping Name],
+	[Grant Activity Acquittal.Review Status Change Date] as [Acquittal Status Change Date],
+    IF([Grant Activity Acquittal.Review Status] like '*Complete*', [Grant Activity Acquittal.Review Status Change Date]) as [Acquittal Completion Date],
+    Yearname(IF([Grant Activity Acquittal.Review Status] like '*Complete*', [Grant Activity Acquittal.Review Status Change Date]),0,7) as [Acquittal Completion Financial Year],
+    
+    NUM([Grant Activity Acquittal.Acquittal Amount]) as [Acquittal Total Value (ex GST)],
+//    IF(NUM([Grant Activity Acquittal.Acquittal Amount]) <= 0, 1, 0) as [Acquittal Amount Not Entered],
+	[Grant Activity Acquittal.Review Item Justification],
+	[Grant Activity Acquittal.Review Result Findings] as [Review Result Findings],
+	[Grant Activity Acquittal.Review Result Type] as [Review Result Type],
+	[Grant Activity Acquittal.Review Authorised By],
+	[Grant Activity Acquittal.Review Type],
+	[Grant Activity Acquittal.Review Subtype],
+    replace(mid( [Grant Activity Acquittal.Milestone Review Grouping Name], Index( [Grant Activity Acquittal.Milestone Review Grouping Name],'Acquittal',1)+10 ), '&' ,'and') as "Abbrev Milestone Group"
+//	[Grant Activity Acquittal.Activity End Date]
+FROM [lib://AppData\PROD\AzureDataLake\GPS\Grant Activity Acquittal.qvd] (qvd)
+
+Where not match([Grant Activity Acquittal.Review Status], 'Cancelled') ;
+
+LEFT JOIN
+LOAD
+[Temp Activity Id]&[Activity Financial Year] as [Activity Acquittal Amount%],
+NUM([Total Value (ex GST)]) as [Activity Acquittal Total Value (ex GST)]
+Resident [Activity Acquittal Amount Temp];
+
+
+
+
+// [Grant Acquittal Trend]:
+// Load distinct [Review Id], 
+// 	date(MonthEnd(ActiveDateAcq), 'MMM-YY') as RevOverdueMonthYear
+//     where ActiveDateAcq > today(2) - 730
+// //     and [Acquittal Status] = 'Due'
+// //     and [Trend Acquittal Due Date] < ActiveDateAcq
+//     ;
+// LOAD [Review Id],
+// 		[Acquittal Due Date] as [Trend Acquittal Due Date],
+//         if(isnull([Acquittal Completion Date]), today(2), [Acquittal Completion Date]) as [Trend Acquittal Status Change Date],
+//         //[Acquittal Status Change Date] as [Trend Acquittal Status Change Date],
+//         [Acquittal Status] as [Trend Acquittal Status],
+// 		[Acquittal Due Date] + IterNo()-1  as ActiveDateAcq,
+//         IterNo()-1 as [Acquittal Days],
+//         [Acquittal Status]
+//     //    (Floor((IterNo()-1)/30) * 30)+30 as [AquittalBins]
+//             While [Acquittal Due Date] + IterNo()-1 <= IF([Acquittal Status] = 'Complete', [Acquittal Status Change Date], TODAY(2))
+//             ;
+// LOAD *
+// Resident [Grant Activity Acquittal Temp];
+
+[Grant Activity Acquittal]:
+LOAD DISTINCT *, 
+	IF(ISNULL([Acquittal Total Value (ex GST)]), [Activity Acquittal Total Value (ex GST)],[Acquittal Total Value (ex GST)]) as [Acquittal Forecast Value (ex GST)]
+Resident [Grant Activity Acquittal Temp];
+
+
+
+Drop Table [Activity Acquittal Amount Temp];
+
+
+LOAD
+    "Grant Activity Acquittal Item.Review Id" As [Review Id],
+    "Grant Activity Acquittal Item.Review Title",
+    "Grant Activity Acquittal Item.Review Item Number" as [Review Item Number],
+    "Grant Activity Acquittal Item.Review Item Question" as [Review Item Question],
+    "Grant Activity Acquittal Item.Review Item Answer" as [Review Item Answer],
+    "Grant Activity Acquittal Item.Review Item Justification" as [Review Item Justification]
+FROM [lib://AppData/PROD/AzureDataLake/GPS/Grant Activity Acquittal Item.qvd]
+(qvd);
+
+
+//Create Master calendar based on reviews/Acquittals
+OverdueRevAcquittalDates:
+//create a date for each day the review is not complete
+    Load *,
+    	[Rev End Date] - [Rev Due Date] as "No of Days Open",
+    Date([Rev Due Date] + IterNo() - 1) as RevOverdueDate
+           	While [Rev Due Date] + IterNo() - 1 <= [Rev End Date];
+            // Today();
+    Load
+     "Review Id",
+      [Acquittal Due Date] as [Rev Due Date],
+     //set overdue flag
+     //If("Review Due Date"< today()  and  not "Review Status" like 'Complete*', 'Y', 'N') as "Overdue Acquittal",
+     // check if review is completed
+     If([Acquittal Due Date]< today()  and  not "Review Status" like 'Complete*', Today(), 
+     	if("Review Status" like 'Complete*',  [Acquittal Status Change Date] )) as [Rev End Date] 
+Resident [Grant Activity Acquittal Temp]  //[Dim Review]
+//where "Review Status" <> 'Complete' Or  if("Review Status" = 'Complete', "Review Status Change Date") -  "Review Due Date" > 0;
+;
+MinMax:
+Load min(RevOverdueDate) as MinDate,
+	Max([Rev End Date]) as MaxDate
+Resident OverdueRevAcquittalDates;
+
+Let vMinDate = Peek('MinDate',0,'Min_Max');
+Let vMaxDate = Peek('MaxDate',0, 'Min_Max');
+Drop Table MinMax;
+
+Temp1:
+Load 
+Date($(vMinDate) + RowNo() - 1) AS RDay
+AutoGenerate (1)
+WHILE $(vMinDate) + IterNo() -1 <= $(vMaxDate);
+
+
+
+RevFortnightEnding:
+Load 
+RDay as RevOverdueDate,
+'Q' & CEIL(NUM(MONTH([RDay]))/3) AS RevOverdueQuarter,
+ Dual('Q'&Num(Ceil(Num(Month(AddMonths(RDay,1-7)))/3)),Num(Ceil(NUM(Month(AddMonths(RDay,1-7)))/3),00)) AS Fiscal_Quarter,
+Year(Date(RDay)) as RevOverdueYear,
+MonthName(RDay) as RevOverdueMonthYear,
+week(RDay) as RevOverdueWeek,
+weekend(RDay,0,4) as RevOverdueWeekEnd,
+weekyear(RDay) as RevOverdueWeekYear,
+yearname(RDay,0,7) as FinancialYear,
+If(Mod(Week(RDay,0,7),2)=0, date(WeekEnd(RDay,1,7)), date(WeekEnd(RDay,0,7))) as RevFortnightEnding
+Resident Temp1;
+
+DROP table Temp1;
+Drop Table [Grant Activity Acquittal Temp];
+
+///$tab Activity
+[Grant Activity Temp]:
+LOAD
+    "Grant Activity.Grant Activity Id%" as [Grant Activity Id%],
+    "Grant Activity.Source Organisation Id%" As [Activity Source Organisation Id%],
+    IF("Grant Activity.Activity Id" = '4-ENJBSQ2', 'a6c824bf-afc1-e611-80f1-c4346bc5977c',"Grant Activity.PMC Region Id%") as [PMC Region Id%],
+	[Grant Activity.Programme Component Id%] AS [Programme Component Id%],
+	IF(LEn([Grant Activity.Programme Id%]) = 0, 'ae0b9448-9f69-e611-80e6-c4346bc43f98',[Grant Activity.Programme Id%])  AS [Programme Id%],
+//   [Grant Activity.Programme Id%]  AS [Programme Id%],
+	[Grant Activity.Sub Programme] AS [Sub Program],
+	[Grant Activity.Grant Activity] AS [Activity Title],
+//    "Grant Activity.Grant Activity Status",
+    "Grant Activity.Activity Id" As [Activity Id],
+    "Grant Activity.Activity Description" As [Long Description],
+    DATE("Grant Activity.Activity Start Date", 'DD/MM/YYYY') as [Activity Start Date],
+    DATE("Grant Activity.Activity End Date", 'DD/MM/YYYY') as [Activity End Date],
+    yearname("Grant Activity.Activity End Date", 0,7) as [Activity End Date Fin Year],
+    IF("Grant Activity.Activity Start Date" > Today()-30 and "Grant Activity.Activity Start Date"  < today(), 1,0) as [Activity started in last 30 days],
+    IF("Grant Activity.Activity End Date" > Today()-30 and "Grant Activity.Activity End Date" < today(), 1,0) as [Activity ended in last 30 days],
+//    "Grant Activity.Funding Approved Date",
+//    "Grant Activity.Funding Approved By",
+    "Grant Activity.Source System Id%",
+//    "Grant Activity.Source Activity Status",
+    "Grant Activity.Activity Manager" As [Activity Manager],
+    lower(Trim("Grant Activity.Activity Manager")) as  [Activity Manager Key],  
+    "Grant Activity.Approved On Date",
+//    "Grant Activity.Draft Coded By Id%",
+//    "Grant Activity.Draft Coded By",
+//    "Grant Activity.Draft Approver Reject Code",
+//    "Grant Activity.Draft Approver Reject",
+//    "Grant Activity.Current Performance Outcome Id%",
+//    "Grant Activity.Current Performance Outcome",
+//    "Grant Activity.Source Status Group Code",
+	[Grant Activity.Source Status Group] AS [Activity Status],
+//    "Grant Activity.Mandatory Submission",
+    "Grant Activity.Current Ceasing Activity Assessment Id%",
+    "Grant Activity.Current Ceasing Activity Assessment"
+//    "Grant Activity.Has Review"
+FROM [lib://AppDataProd/AzureDataLake/FUSION/Grant Activity.qvd]
+(qvd);
+//WHERE LEN([Grant Activity.Programme Id%]) <> 0;
+Left Join
+LOAD
+    "Source Organisation.Source Organisation Id%" As [Activity Source Organisation Id%],
+    "Source Organisation.Organisation Id%" AS [Activity Organisation Id%]
+//    "Source Organisation.Source System Id%",
+//    "Source Organisation.Source System",
+//     "Source Organisation.Source Organisation Name",
+//     "Source Organisation.Legal Entity Id",
+//     "Source Organisation.Trading Name",
+//     "Source Organisation.ABN",
+//     "Source Organisation.Address Line",
+//     "Source Organisation.State",
+//     "Source Organisation.Postcode",
+//     "Source Organisation.Email Address",
+//     "Source Organisation.Legal Name",
+//     "Source Organisation.Legal Entity Type",
+//     "Source Organisation.Source Organisation Status"
+FROM [lib://AppDataProd/AzureDataLake/FUSION/Source Organisation.qvd]
+(qvd);
+Left Join
+LOAD
+    "Organisation.Organisation Id%" AS [Activity Organisation Id%],
+    Organisation.Organisation AS [Activity Organisation],
+//    "Organisation.Entity Type Code",
+//    "Organisation.Entity Type",
+    Organisation.ABN as [Activity ABN],
+//    "Organisation.ASIC Number",
+//    "Organisation.Email Address",
+//    Organisation.City,
+//    Organisation.State,
+//    Organisation.Postcode,
+//    "Organisation.ORP Approved Date",
+    "Organisation.ORP Expiry Date" as [Activity ORP Expiry Date],
+    IF(ISNULL([Organisation.ORP Risk Rating]), 'Not Rated',IF([Organisation.ORP Expiry Date]<Today(), 'Expired', [Organisation.ORP Risk Rating])) AS [Activity Organisation Risk Profile],  
+
+//    If(IsNull([Organisation.ORP Risk Rating]), 'Not Rated', [Organisation.ORP Risk Rating]) AS [Activity Organisation Risk Profile],
+//    "Organisation.Risk Exemption Date",
+//    "Organisation.Risk Exemption Justification",
+    "Organisation.Risk Exemption Reason" as [Actitivy Risk Exemption Reason],
+//    "Organisation.Indigenous Status",
+     If(IsNull([Organisation.Indigeneity]) or [Organisation.Indigeneity] = 'Unknown' , 'No', [Organisation.Indigeneity]) AS [Organisation Indigeneity]
+//    "Organisation.Indigeneity Effective Date",
+//    Organisation.Status
+FROM [lib://AppDataProd/AzureDataLake/FUSION/Organisation.qvd]
+(qvd);
+Left Join
+LOAD
+	[Programme.Programme Id%] AS [Programme Id%],
+	Replace([Programme.Programme],'2.','1.') AS [Program]
+
+ FROM [lib://AppData/PROD\AzureDataLake\FUSION\Programme.qvd]
+(qvd);
+Left Join
+LOAD
+	[Programme Component.Programme Component Id%] as [Programme Component Id%],
+	[Programme Component.Programme Id%] AS [Programme Id%],
+	[Programme Component.Programme Component],
+// 	[Programme Component.ECJDM Applicable],
+// 	[Programme Component.Appropriation Type],
+ 	[Programme Component.Outcome Element] AS [Outcome Element]
+// 	[Programme Component.Status],
+// 	[Programme Component.Alternate Name 1],
+// 	[Programme Component.Alternate Name 2],
+// 	[Programme Component.Alternate Name 3],
+// 	[Programme Component.Alternate Name 4],
+// 	[Programme Component.Alternate Name 5]
+ FROM [lib://AppData/PROD\AzureDataLake\FUSION\Programme Component.qvd]
+(qvd);
+LEFT Join
+LOAD
+    "RGU Team / Section" AS [RGU Team],
+    "RGU Location" AS [RGU Location],
+    Lower(trim("Name in Grants System")) AS [Activity Manager Key]
+FROM [lib://AppData/PROD/AzureDataLake/SSR/RGU Staff.qvd]
+(qvd);
+
+
+[Grant Activity Funding]:
+LOAD
+// 	[Grant Activity Funding.Grant Activity Funding Id%],
+	[Grant Activity Funding.Grant Activity Id%] AS [Grant Activity Id%],
+ 	[Grant Activity Funding.Financial Year Id%] AS [Financial Year Id%],
+// 	[Grant Activity Funding.Source Status Group],
+// 	[Grant Activity Funding.Activity Funding],
+	[Grant Activity Funding.Funding Amount] as [Total Value (ex GST)],
+    [Grant Activity Funding.Funds Released] as [Funds Released (ex GST)]
+// 	[Grant Activity Funding.Activity Funding Status]
+ FROM [lib://AppData/PROD\AzureDataLake\FUSION\Grant Activity Funding.qvd]
+(qvd);
+Left Join
+LOAD
+    "Financial Year.Financial Year Id%" AS [Financial Year Id%],
+    "Financial Year.Financial Year" AS [Activity Funding Financial Year]
+FROM [lib://AppData/PROD/AzureDataLake/FUSION/Financial Year.qvd]
+(qvd);
+
+[Grant Activity]:
+LOAD
+[Grant Activity Id%],
+[Activity Id],
+//[PMC Region Id%],
+[Activity Organisation Id%],
+[Activity Organisation],
+[Activity ABN],
+[Organisation Indigeneity],
+[Activity Organisation Risk Profile],
+[Activity ORP Expiry Date],
+[Activity Title],
+[Activity Status],
+IF([Outcome Element] = 'ABA', 'Aboriginals Benefit Account', [Program]) as [Program],
+[Sub Program],
+[Activity Start Date],
+[Activity End Date],
+[Activity End Date] - [Activity Start Date] as [Activity Duration],
+[Activity Manager],
+If(isnull([RGU Team]), 'Not in GMU', [RGU Team]) as [RGU Team],
+If(isnull([RGU Location]), 'Not in GMU', [RGU Location]) as [RGU Location],
+[Activity started in last 30 days],
+[Activity ended in last 30 days],
+[Activity End Date Fin Year]
+
+Resident [Grant Activity Temp];
+
+LatestFinYear:
+Load *,
+	'20' & LatestFinYear-1 & '-'& LatestFinYear as 'Latest Funding Financial Year';
+Load [Grant Activity Id%],
+max(right([Activity Funding Financial Year], 2)) as LatestFinYear
+Resident [Grant Activity Funding]
+group by [Grant Activity Id%];
+
+//WHERE [Activity Status] = 'Current';
+Drop Table [Grant Activity Temp];
+
+// TempAcquittalTest:
+// Load [Grant Activity Id%] as [Grant Activity Id%2],
+// 	[Activity Id],  // AS [Act Id]
+//     replace([Activity End Date Fin Year], '-20', '-') as [Activity End Date Fin Year2],
+//     [Activity End Date] as [Activity End Date2]
+//     Resident [Grant Activity];
+// left Join
+// Load [Grant Activity Id%] as [Grant Activity Id%2],
+// 	[Activity Funding Financial Year] as [Activity Funding Financial Year2],
+//     num(left([Activity Funding Financial Year],4)) + 1 &'-' & num(right([Activity Funding Financial Year],2)+1) as [Expected Acquittal Fin Year]
+// Resident [Grant Activity Funding]
+// where num(left([Activity Funding Financial Year],4)) > 2015;
+
+
+// AcquittalTest:
+// Load *, AutoNumber( [Activity Id]&[Match Acquittal Fin Year]) as Key;
+// Load [Activity Id],
+// 	[Activity Funding Financial Year2],
+//     [Activity End Date Fin Year2],
+//     [Activity End Date2],
+//     [Expected Acquittal Fin Year],
+// 	if([Activity End Date Fin Year2] <> [Activity Funding Financial Year2], [Expected Acquittal Fin Year],
+//     	if (match(month([Activity End Date2]),'Apr','May','Jun'), [Expected Acquittal Fin Year],
+//         	[Activity End Date Fin Year2])) as [Match Acquittal Fin Year],
+    
+//    num(month([Activity End Date2])) as mth
+// resident TempAcquittalTest;
+
+
+
+
+// left Join
+// load AutoNumber([Activity Id] & [Acquittal Financial Year2]) as Key,
+// //[Due Fin Year]
+// 		[Acquittal Financial Year2],
+//         [Acquittal Due Date2],
+//         [Due Fin Year]
+//         ;
+// Load [Activity Id], //& [Acquittal Financial Year]) as Key ,
+// 	[Acquittal Financial Year] as [Acquittal Financial Year2],
+//     [Acquittal Due Date] as [Acquittal Due Date2],
+//     replace(yearname([Acquittal Due Date],0,7), '-20', '-') as [Due Fin Year]
+//         Resident  [Grant Activity Acquittal];
+	
+	
+// drop table TempAcquittalTest;
+
+
+
+///$tab Region
+RegionMap:
+Mapping Load  *
+INLINE [Region, Group
+	Adelaide - GMU, Central
+	Alice Springs - GMU,Central
+    Arnhem Land & Groote Eylandt, Central
+    Darwin - GMU,	Central
+    Central Australia,	Central
+    Top End & Tiwi Islands,	Central
+    Brisbane - GMU,	Eastern
+    Cairns - GMU,	Eastern
+    Dubbo - GMU,	Eastern
+    Mount Isa - GMU,	Eastern
+    Orange - GMU,	Eastern
+    Parramatta - GMU,	Eastern
+    Tamworth - GMU,	Eastern
+    Townsville - GMU,	Eastern
+    Eastern NSW,	Eastern
+    Eastern New South Wales, Eastern
+    Western New South Wales, Eastern
+    North Queensland,	Eastern
+    South Queensland,	Eastern
+    Eastern New South Wales,  Eastern
+    Western NSW,	Eastern
+    Broome - GMU,	National Office
+    Canberra - GMU,	National Office
+    Coffs Harbour - GMU,	National Office
+    National Office,	National Office
+    Adelaide - GMU,	West and South
+    Melbourne - GMU,	West and South
+    Perth - GMU,	West and South
+    Greater Western Australia,	West and South
+    Kimberley, West and South
+    South Australia,	West and South
+    Victoria & Tasmania,	West and South
+    GMU Central Support - GMU, National Office
+];
+
+[Grant Managing Region]:
+
+LOAD
+    "Grant Activity Id%",
+    "NIAA Region Id%" AS [PMC Region Id%],
+    "GMU Region Id%",
+    "Engegement Officer",
+    "Source System"
+FROM [lib://AppData/PROD/AzureDataLake/GPS/Grant Managing Region.qvd]
+(qvd);
+
+[NIAA Region]:
+Load *,
+	applymap('RegionMap',[NIAA Region]) as Group;
+LOAD
+    "PMC Region.PMC Region Id%" AS [PMC Region Id%],
+//    "PMC Region.PMC Region Code",
+    IF(match("PMC Region.PMC Region Abbr", 'FNQLD', 'GNQLD'), "PMC Region.PMC Region") AS [NIAA Sub Region],
+    IF(match("PMC Region.PMC Region Abbr", 'FNQLD', 'GNQLD'), "PMC Region.PMC Region Abbr") AS [NIAA Sub Region Abbr],
+    IF(match("PMC Region.PMC Region Abbr", 'FNQLD', 'GNQLD'), 'North Queensland', "PMC Region.PMC Region") AS [NIAA Region],
+    IF(match("PMC Region.PMC Region Abbr", 'FNQLD', 'GNQLD'), 'NQ', "PMC Region.PMC Region Abbr") AS "PMC Region.PMC Region Abbr",
+    
+    "PMC Region.State",
+//    "PMC Region.Regional Manager",
+//    "PMC Region.Regional Manager Email",
+//    "PMC Region.Regional Manager Business Phone",
+//    "PMC Region.Regional Manager Mobile"
+
+IF("PMC Region.PMC Region Abbr" = 'GWA' or "PMC Region.PMC Region Abbr" = 'KIM' or "PMC Region.PMC Region Abbr" = 'SA' or "PMC Region.PMC Region Abbr" = 'VIC/TAS', 'West & South Group',
+IF("PMC Region.PMC Region Abbr" = 'CA' or "PMC Region.PMC Region Abbr" = 'TETI' or "PMC Region.PMC Region Abbr" = 'ALGE', 'Central Group',
+IF("PMC Region.PMC Region Abbr" = 'ENSW' or "PMC Region.PMC Region Abbr" = 'WNSW' or "PMC Region.PMC Region Abbr" = 'SQLD' 
+	or "PMC Region.PMC Region Abbr" = 'FNQLD' or "PMC Region.PMC Region Abbr" = 'GNQLD', 'Eastern Group','National'))) as "NIAA Region Group"
+
+
+
+FROM [lib://AppDataProd/AzureDataLake/FUSION/PMC Region.qvd]
+(qvd);
+
+[GMU Region]:
+
+LOAD
+    "PMC Region.PMC Region Id%" AS [GMU Region Id%],
+	
+    
+    "PMC Region.State" as [GMU State],
+
+IF("PMC Region.PMC Region Abbr" = 'GWA' or "PMC Region.PMC Region Abbr" = 'KIM' or "PMC Region.PMC Region Abbr" = 'SA' or "PMC Region.PMC Region Abbr" = 'VIC/TAS', 'West & South Group',
+IF("PMC Region.PMC Region Abbr" = 'CA' or "PMC Region.PMC Region Abbr" = 'TETI' or "PMC Region.PMC Region Abbr" = 'ALGE', 'Central Group',
+IF("PMC Region.PMC Region Abbr" = 'ENSW' or "PMC Region.PMC Region Abbr" = 'WNSW' or "PMC Region.PMC Region Abbr" = 'SQLD' or "PMC Region.PMC Region Abbr" = 'FNQLD' 
+	or "PMC Region.PMC Region Abbr" = 'GNQLD', 'Eastern Group','National'))) as "GMU Region Group"
+
+
+FROM [lib://AppDataProd/AzureDataLake/FUSION/PMC Region.qvd]
+(qvd);
+///$tab Milestone
+[Grant Activity Milestone]:
+
+Let vDaysoverdue = 'IF([Grant Activity Milestone.Milestone Expected Due Date] <= today(), Today() - [Grant Activity Milestone.Milestone Expected Due Date])' ;
+Let vEndDate = text('2014-06-30');
+
+
+//left keep([Grant Activity Acquittal])
+LOAD 	$(vDaysoverdue) as [Number of Days Milestone Overdue]		
+		,[Grant Activity Milestone.Activity Id] 
+      ,Replace(YearName([Grant Activity Milestone.Milestone Expected Due Date],0,7), '-20','-') as "Milestone Financial Year"
+      ,[Grant Activity Milestone.Activity PBS Program] as [Activity PBS Outcome]
+      ,[Grant Activity Milestone.Managing Office - Activity] AS [Milestone Managing Office%]
+      ,[Grant Activity Milestone.Milestone Id] AS [Milestone Id]
+      ,[Grant Activity Milestone.Milestone Status] AS [Grant Activity Milestone.Milestone Status]
+      ,IF([Grant Activity Milestone.Milestone Expected Due Date] > Today(), 'Overdue',  [Grant Activity Milestone.Milestone Stage]) AS [Grant Activity Milestone.Milestone Stage]
+      ,[Grant Activity Milestone.Milestone Completed Indicator] AS [Milestone Completed Indicator]
+      ,[Grant Activity Milestone.Milestone Payment Mode] AS [Milestone Payment Mode]
+      ,[Grant Activity Milestone.Milestone Received] AS [Grant Activity Milestone.Milestone Received]
+      ,[Grant Activity Milestone.Milestone Short Description] AS [Grant Activity Milestone.Milestone Short Description]
+      ,[Grant Activity Milestone.Milestone Long Description] AS [Milestone Long Description]
+      ,[Grant Activity Milestone.Milestone Completion Description] AS [Milestone Completion Description] 
+      ,[Grant Activity Milestone.Milestone Type] AS [Milestone Type]
+       ,(Floor(([Grant Activity Milestone.Milestone Completion Date] - [Grant Activity Milestone.Milestone Expected Due Date])/30) * 30)+30 as [Days to Complete]
+      ,[Grant Activity Milestone.Milestone Expected Due Date] AS [Milestones Expected Due Date]
+      ,[Grant Activity Milestone.Financial Year Name] AS [Grant Activity Milestone.Financial Year Name]
+      ,[Grant Activity Milestone.Milestone Action Required] AS [Grant Activity Milestone.Milestone Action Required]
+      ,[Grant Activity Milestone.Milestone Completion Date] AS [Milestone Completion Date]
+      ,[Grant Activity Milestone.Activity IMPACT PO Id] AS [Grant Activity Milestone.Activity IMPACT PO Id]
+      ,[Grant Activity Milestone.Milestone Auto Release Indicator] AS [Grant Activity Milestone.Milestone Auto Release Indicator]
+      ,[Grant Activity Milestone.Milestone Date Driven Indicator] AS [Grant Activity Milestone.Milestone Date Driven Indicator]
+      ,[Grant Activity Milestone.Milestone Actual Amount Ex GST] AS [Milestone Actual Amount Ex GST],
+     IF([Grant Activity Milestone.Milestone Expected Due Date] > Today(), 0, 1) AS [Overdue by Date],
+      IF([Grant Activity Milestone.Milestone Expected Due Date] <= Today(), 
+        IF([Grant Activity Milestone.Milestone Stage] = 'Future','Overdue - Not received',
+        	IF([Grant Activity Milestone.Milestone Stage] = 'Overdue', 'Overdue - Not received',
+        	IF([Grant Activity Milestone.Milestone Stage] = 'Received', 'Overdue - Received'))),
+      IF([Grant Activity Milestone.Milestone Expected Due Date] > Today(),
+        	IF([Grant Activity Milestone.Milestone Stage] = 'Future', 'Future - Not received',
+        		IF([Grant Activity Milestone.Milestone Stage] = 'Overdue', 'Future - Not received',
+        			IF([Grant Activity Milestone.Milestone Stage] = 'Received',  'Future - Received'))))
+         ) AS [Stage],
+      IF([Grant Activity Milestone.Milestone Expected Due Date] < Today() + 30 and [Grant Activity Milestone.Milestone Expected Due Date] > Today(), 1, 0) AS [Due in next 30 Days],
+      IF([Grant Activity Milestone.Milestone Expected Due Date] < Today() + 180 and [Grant Activity Milestone.Milestone Expected Due Date] > Today(), 1, 0) AS [Due in next 6 Months],
+      IF([Grant Activity Milestone.Milestone Expected Due Date] < Today() + 60 and [Grant Activity Milestone.Milestone Expected Due Date] > Today() + 30, 1, 0) AS [Due in next 60 Days],
+      IF([Grant Activity Milestone.Milestone Completion Date] > Today() - 30 and [Grant Activity Milestone.Milestone Expected Due Date] < Today(), 1, 0) AS [Completed in last 30 Days],
+      IF($(vDaysoverdue) <= 30, 1,0) AS [Due in last 30 Days]
+
+FROM [lib://AppData/PROD/AzureDataLake/SSR/Grant Activity Milestone.qvd]
+(qvd)
+WHERE [Grant Activity Milestone.Activity Execution State] = 'Executed' and [Grant Activity Milestone.Milestone Status] = 'Current' 
+AND Match([Grant Activity Milestone.Activity Status], 'Approved' , 'Varied' , 'Ready for Approval')
+and ([Grant Activity Milestone.Activity PBS Program] <>  'DPMC SOETM Services for Other Entities and Trust Monies')
+and ([Grant Activity Milestone.Milestone Type] like '*Acquittal*' or [Grant Activity Milestone.Milestone Long Description] like '*Acquittal*');
+
+NoConcatenate
+[Milestone Count]:
+Load Count([Milestone Id]) as [Milestone Count],
+	[Grant Activity Milestone.Activity Id] As [Activity Id]
+Resident [Grant Activity Milestone]
+group by [Grant Activity Milestone.Activity Id]; 
+ 
+ Let vLastYear = NUM(Year(Today())-1);
+ [Milestone Overdue Month]:
+ LOAD
+ [Milestone Id],
+ [Milestone Payment Mode] as [Overdue Payment Mode],
+	DATE(Outstanding, 'dd/MM/yyyy') as "Milestone Outstanding",
+	Replace(YearName(Outstanding,0,7), '-20','-') as "Overdue Milestone Financial Year"
+  FROM [lib://AppData/PROD/AzureDataLake/SSR/Milestone Overdue Month.qvd]
+ (qvd);
+
+
+
+
+///$tab Quality
+[Grant Activity Acquittal Error]:
+LOAD
+    "Grant Activity Acquittal Error.Review Id" as [Review Id],
+    "Grant Activity Acquittal Error.Error" as [Review Error],
+    "Grant Activity Acquittal Error.Error Number" as [Error Number]
+FROM [lib://AppData/PROD/AzureDataLake/GPS/Grant Activity Acquittal Error.qvd]
+(qvd);
+
+//Check for missing acquittals by comparing the number of financial years with the number of reviews 
+FinYearCount:
+Load [Grant Activity Id%],
+count([Activity Funding Financial Year]) as FundingYrCount
+Resident [Grant Activity Funding]
+where num(left([Activity Funding Financial Year],4)) > 2016
+//Exclude next financial year
+and  num(left([Activity Funding Financial Year],4)) <= num(left(yearname(now(2),0,7),4))
+group by [Grant Activity Id%];
+left Join
+Load [Grant Activity Id%],
+[Activity Id]
+Resident [Grant Activity];
+
+
+
+[Acquittal Count]:
+Load "Activity Id",
+Count("Review Id") as ReviewCount
+Resident [Grant Activity Acquittal]
+Group By "Activity Id";
+
+Stg_MissingAcquittals:
+Load [Activity Id],
+	FundingYrCount
+resident FinYearCount;
+left Join 
+Load [Activity Id],
+	ReviewCount
+Resident [Acquittal Count]
+ ;
+
+MissingAcquittals:
+Load [Activity Id],
+	FundingYrCount,
+    ReviewCount,
+    if(FundingYrCount > alt(ReviewCount,0), 'Check', 'Ok') as "Potential Missing Acquittal"
+Resident Stg_MissingAcquittals;
+	
+
+
+drop tables [Acquittal Count], FinYearCount, Stg_MissingAcquittals;
+
+
+
+///$tab Exit
+exit script;
