@@ -65,14 +65,18 @@ enforce_reserved_word_case <- function(tokens) {
   is_word   <- t_type == "WORD"
   in_select <- in_select_region(t_type, lower)
   nxt       <- next_non_trivia_idx(t_type)
+  prv       <- prev_non_trivia_idx(t_type)
   call_pos  <- !is.na(nxt) & t_type[nxt] == "LPAREN"
+  # A word immediately right of AS is an exposed field name (alias position)
+  # - case-sensitive in Qlik - and must never be recased, keyword-spelled or not.
+  alias_pos <- !is.na(prv) & lower[prv] == "as"
 
   # A word in both lists (Left, Right, Replace, Keep, Join, First...) is a
   # prefix AND a function. Both end up uppercased either way, so precedence
   # only decides how the change is LABELLED - and "Replace(" is a function
   # call, not a prefix. Classify by call position first so the change log and
   # the warning below both describe what the token actually is.
-  eligible <- is_word & !in_select
+  eligible <- is_word & !in_select & !alias_pos
   fn_hit <- eligible & call_pos & lower %in% QLIK_FUNCTIONS
   kw_hit <- eligible & lower %in% QLIK_KEYWORDS & !fn_hit
 
@@ -90,6 +94,13 @@ enforce_reserved_word_case <- function(tokens) {
   # keyword-spelled tokens recased inside a LOAD field list, other than the
   # ones that genuinely live there
   warn <- character(0)
+  alias_hit <- is_word & !in_select & alias_pos &
+    (lower %in% QLIK_KEYWORDS | lower %in% QLIK_FUNCTIONS) & t_text != upper
+  for (i in which(alias_hit)) {
+    warn <- c(warn, sprintf(
+      "Line %d: keyword-spelled alias '%s' left unchanged (alias position)",
+      t_line[i], t_text[i]))
+  }
   found <- find_load_segments(tokens)
   warn <- c(warn, found$warnings)
   if (length(found$segments) > 0) {
