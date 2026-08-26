@@ -1,0 +1,211 @@
+"qvd_path","n_consumers","n_consumers_in_stream","n_consumers_stale_named","in_map","n_fields","n_resolved","n_view_work","n_not_found","n_derived","n_non_niaa","n_retired","pct_resolved"
+"fusion/organisation.qvd",126,28,8,TRUE,30,30,0,0,0,0,0,100
+"fusion/grant activity funding.qvd",112,19,4,TRUE,9,9,0,0,0,0,0,100
+"fusion/grant activity.qvd",110,20,6,TRUE,60,60,0,0,0,0,0,100
+"gps/grant activity milestone.qvd",81,6,5,TRUE,31,31,0,0,0,0,0,100
+"fusion/grant application.qvd",77,21,8,TRUE,55,55,0,0,0,0,0,100
+"fusion/source organisation.qvd",75,22,12,TRUE,17,17,0,0,0,0,0,100
+"fusion/grant round.qvd",74,21,7,TRUE,5,5,0,0,0,0,0,100
+"gps/grant application.qvd",68,14,5,TRUE,31,27,0,0,4,0,0,87.1
+"gps/grant activity performance.qvd",66,5,5,TRUE,25,25,0,0,0,0,0,100
+"fusion/grant activity location attribution.qvd",65,5,6,TRUE,6,6,0,0,0,0,0,100
+"iam/niaa staff.qvd",65,14,10,TRUE,20,20,0,0,0,0,0,100
+"fusion/performance report assessment.qvd",59,5,5,TRUE,41,41,0,0,0,0,0,100
+"fusion/financial year.qvd",57,6,1,TRUE,4,4,0,0,0,0,0,100
+"fusion/site visit assessment.qvd",56,5,5,TRUE,49,49,0,0,0,0,0,100
+"gps/grant activity missing milestone.qvd",56,5,5,TRUE,26,26,0,0,0,0,0,100
+"gps/grant activity derived history.qvd",54,9,2,TRUE,3,3,0,0,0,0,0,100
+"fusion/grant activity location.qvd",52,5,1,TRUE,30,30,0,0,0,0,0,100
+"gps/grant activity acquittal.qvd",52,5,1,TRUE,28,28,0,0,0,0,0,100
+"fusion/site visit location.qvd",50,5,5,TRUE,25,25,0,0,0,0,0,100
+"gps/grant activity performance derived history.qvd",50,4,5,TRUE,2,2,0,0,0,0,0,100
+"gps/grant activity performance item.qvd",49,5,5,TRUE,9,9,0,0,0,0,0,100
+"niaa/oric register.qvd",49,7,2,TRUE,7,7,0,0,0,0,0,100
+"gps/organisaiton indigeniety.qvd",48,7,2,TRUE,7,7,0,0,0,0,0,100
+"niaa/acnc register.qvd",48,7,2,TRUE,4,4,0,0,0,0,0,100
+"fusion/ctg outcome.qvd",47,5,1,TRUE,7,7,0,0,0,0,0,100
+"gps/grant activity.qvd",46,5,2,TRUE,24,24,0,0,0,0,0,100
+"fusion/grant acquittal.qvd",42,5,1,TRUE,67,67,0,0,0,0,0,100
+"gps/grant activity milestone derived history.qvd",42,5,1,TRUE,2,2,0,0,0,0,0,100
+"geospatial/state 2016.qvd",42,5,1,TRUE,6,0,0,0,2,4,0,0
+"fusion/grant management unit.qvd",41,2,1,TRUE,11,11,0,0,0,0,0,100
+"fusion/niaa region.qvd",41,2,1,TRUE,12,12,0,0,0,0,0,100
+"gps/grant activity missing milestone derived history.qvd",41,5,1,TRUE,2,2,0,0,0,0,0,100
+"gps/grant activity acquittal derived history.qvd",40,5,1,TRUE,3,3,0,0,0,0,0,100
+"gps/grant application derived history.qvd",40,4,1,TRUE,4,4,0,0,0,0,0,100
+"geospatial/ced 2021.qvd",40,4,1,TRUE,9,0,0,0,0,9,0,0
+"fusion/grant acquittal recommendation.qvd",39,5,1,TRUE,28,28,0,0,0,0,0,100
+"fusion/organisation risk profile derived history.qvd",39,5,1,TRUE,3,3,0,0,0,0,0,100
+"fusion/organisation risk profile task.qvd",39,5,1,TRUE,24,24,0,0,0,0,0,100
+"fusion/organisation risk profile.qvd",39,5,1,TRUE,46,46,0,0,0,0,0,100
+"fusion/pmc region.qvd",39,6,3,TRUE,9,9,0,0,0,0,0,100
+"geospatial/ec 2020.qvd",39,4,1,TRUE,3,0,0,0,0,3,0,0
+"geospatial/ra 2016.qvd",39,4,1,TRUE,6,0,0,0,0,6,0,0
+"geospatial/sa2 2016.qvd",39,4,1,TRUE,13,0,0,0,0,13,0,0
+"geospatial/sa3 2016.qvd",39,4,1,TRUE,10,0,0,0,0,10,0,0
+"geospatial/sa4 2016.qvd",39,4,1,TRUE,8,0,0,0,0,8,0,0
+"fusion/ceasing activity assessment.qvd",38,3,1,TRUE,76,76,0,0,0,0,0,100
+"gps/grant application assessment details.qvd",38,11,5,TRUE,14,14,0,0,0,0,0,100
+"gps/grant application assessment score.qvd",37,10,5,TRUE,9,9,0,0,0,0,0,100
+"geospatial/mb 2021 - nt admin region 2023.qvd",37,4,1,TRUE,3,0,0,0,0,3,0,0
+"data quality/data quality.qvd",36,3,1,TRUE,11,0,11,0,0,0,0,0
+"fusion/ceasing activity funding.qvd",36,3,1,TRUE,4,4,0,0,0,0,0,100
+"geospatial/nt admin region 2023.qvd",36,4,1,TRUE,8,0,0,0,1,7,0,0
+"gps/grant application compliance assessment.qvd",35,10,4,TRUE,9,9,0,0,0,0,0,100
+"gps/grant application delivery locations.qvd",35,10,4,TRUE,4,4,0,0,0,0,0,100
+"fusion/opportunity programme funding.qvd",34,4,1,TRUE,9,9,0,0,0,0,0,100
+"gps/grant application information detail.qvd",33,10,4,TRUE,6,6,0,0,0,0,0,100
+"fusion/activity risk assessment.qvd",31,3,1,TRUE,49,49,0,0,0,0,0,100
+"gps/grant application status.qvd",28,6,0,TRUE,11,11,0,0,0,0,0,100
+"fusion/funding decision.qvd",26,3,4,TRUE,183,182,0,0,1,0,0,99.5
+"fusion/programme.qvd",26,3,0,TRUE,4,4,0,0,0,0,0,100
+"geospatial/iare 2016.qvd",25,5,0,TRUE,8,0,0,0,0,8,0,0
+"geospatial/ireg 2016.qvd",25,5,0,TRUE,6,0,0,0,0,6,0,0
+"geospatial/pmc 2018.qvd",25,5,0,TRUE,3,0,0,0,0,3,0,0
+"geospatial/sa1 - abs.qvd",25,5,0,TRUE,21,21,0,0,0,0,0,100
+"fusion/programme component.qvd",24,2,0,TRUE,10,10,0,0,0,0,0,100
+"fusion/fusion location.qvd",23,1,1,TRUE,13,13,0,0,0,0,0,100
+"fusion/opportunity - fusion location.qvd",23,1,1,TRUE,2,2,0,0,0,0,0,100
+"fusion/site visit assessment action item.qvd",23,0,1,TRUE,64,64,0,0,0,0,0,100
+"geospatial/niaa region 2020.qvd",23,5,0,TRUE,3,0,0,0,0,3,0,0
+"geospatial/sa1 - pmc region.qvd",23,4,0,TRUE,3,3,0,0,0,0,0,100
+"fusion/opportunity - target group.qvd",22,0,1,TRUE,2,2,0,0,0,0,0,100
+"fusion/target group.qvd",22,0,1,TRUE,6,6,0,0,0,0,0,100
+"geospatial/iloc 2016.qvd",22,4,0,TRUE,10,0,0,0,0,10,0,0
+"gps/grant managing region.qvd",21,0,0,TRUE,7,6,0,0,1,0,0,85.7
+"fusion/grant activity review.qvd",18,0,4,TRUE,24,24,0,0,0,0,0,100
+"geospatial/niaa subregion 2021.qvd",18,4,0,TRUE,3,0,0,0,0,3,0,0
+"ess/cdp/cdp activity referral placement.qvd",17,6,3,TRUE,25,25,0,0,0,0,0,100
+"ess/cdp/cdp caseload.qvd",16,6,3,TRUE,23,23,0,0,0,0,0,100
+"geospatial/sa1 - niaa subregion.qvd",16,4,0,TRUE,4,4,0,0,0,0,0,100
+"ess/cdp/cdp caseload month end.qvd",15,5,2,TRUE,8,8,0,0,0,0,0,100
+"ess/cdp/cdp job seeker.qvd",15,5,3,TRUE,30,30,0,0,0,0,0,100
+"fusion/grant application note.qvd",15,6,0,TRUE,6,6,0,0,0,0,0,100
+"ssr/grant activity milestone.qvd",15,0,0,TRUE,39,39,0,0,0,0,0,100
+"ess/cdp/cdp age group.qvd",14,5,3,TRUE,4,4,0,0,0,0,0,100
+"ess/cdp/cdp barrier job plan activity link.qvd",14,5,3,TRUE,3,3,0,0,0,0,0,100
+"ess/cdp/cdp barrier job plan assistance link.qvd",14,5,3,TRUE,3,3,0,0,0,0,0,100
+"ess/cdp/cdp barrier.qvd",14,5,3,TRUE,18,18,0,0,0,0,0,100
+"ess/cdp/cdp job plan activity detail.qvd",14,5,3,TRUE,7,7,0,0,0,0,0,100
+"ess/cdp/cdp job plan activity.qvd",14,5,3,TRUE,13,13,0,0,0,0,0,100
+"ess/cdp/cdp job plan assistance.qvd",14,5,3,TRUE,8,8,0,0,0,0,0,100
+"ess/cdp/cdp job plan.qvd",14,5,3,TRUE,10,10,0,0,0,0,0,100
+"ess/cdp/cdp job seeker appointment.qvd",14,5,3,TRUE,19,19,0,0,0,0,0,100
+"ess/cdp/cdp job seeker assessment.qvd",14,5,3,TRUE,10,10,0,0,0,0,0,100
+"ess/cdp/cdp job seeker characteristics.qvd",14,5,3,TRUE,26,26,0,0,0,0,0,100
+"ess/cdp/cdp jsci classification.qvd",14,5,3,TRUE,10,10,0,0,0,0,0,100
+"ess/cdp/cdp activity attendance monthly rollup.qvd",13,4,2,TRUE,6,6,0,0,0,0,0,100
+"ess/cdp/remote employment organisation indigeneity.qvd",13,4,1,TRUE,10,10,0,0,0,0,0,100
+"ess/cdp/cdp nbrj code table.qvd",12,1,2,TRUE,13,13,0,0,0,0,0,100
+"gar/grant activity review item.qvd",12,0,4,TRUE,7,7,0,0,0,0,0,100
+"gar/grant activity review kpi.qvd",12,0,4,TRUE,12,12,0,0,0,0,0,100
+"gar/grant activity review.qvd",12,0,4,TRUE,7,7,0,0,0,0,0,100
+"aurion/niaa site locations.qvd",11,0,4,TRUE,16,16,0,0,0,0,0,100
+"fusion/source system.qvd",11,0,0,TRUE,4,4,0,0,0,0,0,100
+"ess/cdp/cdp caseload last 7 days.qvd",10,1,1,TRUE,6,6,0,0,0,0,0,100
+"ess/cdp/cdp ccrj code table.qvd",10,1,1,TRUE,9,9,0,0,0,0,0,100
+"naccho/member name locations.qvd",10,0,3,TRUE,9,9,0,0,0,0,0,100
+"fusion/grant activity indicative risk.qvd",9,0,0,TRUE,7,7,0,0,0,0,0,100
+"ssr/milestone overdue month.qvd",8,0,0,TRUE,3,3,0,0,0,0,0,100
+"qlikdirs.qvd",8,1,3,FALSE,,,,,,,,
+"qlikqvdfields.qvd",8,1,3,FALSE,,,,,,,,
+"qlikqvds.qvd",8,1,3,FALSE,,,,,,,,
+"fusion/grant activity kpi assessment.qvd",7,0,0,TRUE,13,13,0,0,0,0,0,100
+"fusion/grant application process.qvd",7,0,0,TRUE,6,6,0,0,0,0,0,100
+"fusion/framework code.qvd",6,0,0,TRUE,7,7,0,0,0,0,0,100
+"fusion/grant activity coding - framework code.qvd",6,0,0,TRUE,4,4,0,0,0,0,0,100
+"fusion/grant activity coding.qvd",6,0,0,TRUE,21,21,0,0,0,0,0,100
+"fusion/grant activity milestone.qvd",6,0,0,TRUE,27,27,0,0,0,0,0,100
+"gps/grant activity performance indicator.qvd",6,0,0,TRUE,7,7,0,0,0,0,0,100
+"ess/cdp/raes payment.qvd",6,0,0,TRUE,42,42,0,0,0,0,0,100
+"aurion/organisation staff.qvd",5,1,0,TRUE,28,28,0,0,0,0,0,100
+"datacatalogue/dlcolumndatatypes.qvd",5,1,2,TRUE,2,0,0,1,1,0,0,0
+"datacatalogue/dlcolumns.qvd",5,1,2,TRUE,9,0,0,3,6,0,0,0
+"datacatalogue/dlschemas.qvd",5,1,2,TRUE,2,0,0,1,1,0,0,0
+"datacatalogue/object hierarchy.qvd",5,1,0,TRUE,14,14,0,0,0,0,0,100
+"ess/iep/iep_activity.qvd",4,1,0,TRUE,38,6,0,17,15,0,0,15.8
+"gps/grant activity acquittal item.qvd",4,0,1,TRUE,6,6,0,0,0,0,0,100
+"gps/grant activity contact.qvd",4,0,0,TRUE,13,13,0,0,0,0,0,100
+"geospatial/sa1 - state.qvd",4,0,0,TRUE,3,3,0,0,0,0,0,100
+"migration statistics field.qvd",4,1,0,FALSE,,,,,,,,
+"migration statistics load.qvd",4,1,0,FALSE,,,,,,,,
+"migration statistics table.qvd",4,1,0,FALSE,,,,,,,,
+"ess/iep/iep_job_seeker.qvd",3,1,0,TRUE,15,11,0,0,4,0,0,73.3
+"ess/iep/iep_placement.qvd",3,1,0,TRUE,53,9,0,26,18,0,0,17
+"fusion/programme sub component.qvd",3,0,0,TRUE,15,15,0,0,0,0,0,100
+"gps/grant activity acquittal error.qvd",3,0,0,TRUE,3,3,0,0,0,0,0,100
+"geospatial/ced 2016.qvd",3,0,0,TRUE,4,0,0,0,0,4,0,0
+"ess/raes/application community mapping 202509.qvd",3,1,0,FALSE,,,,,,,,
+"crm/interaction party.qvd",2,0,0,TRUE,7,7,0,0,0,0,0,100
+"ess/cdp/cdp job seeker history.qvd",2,1,1,TRUE,7,7,0,0,0,0,0,100
+"ess/cdp/cdp job seeker month end.qvd",2,1,1,TRUE,3,3,0,0,0,0,0,100
+"ess/iep/iep_claim_payments.qvd",2,0,0,TRUE,21,4,0,0,17,0,0,19
+"ess/iep/iep_locations.qvd",2,0,0,TRUE,7,0,0,2,5,0,0,0
+"ess/iep/iep_outcome.qvd",2,0,0,TRUE,20,0,0,13,7,0,0,0
+"ess/iep/iep_provider.qvd",2,0,0,TRUE,34,0,0,29,5,0,0,0
+"gps/grant application eligibility assessment.qvd",2,1,0,TRUE,9,9,0,0,0,0,0,100
+"niaa/agil location.qvd",2,1,0,TRUE,10,10,0,0,0,0,0,100
+"geospatial/iloc 2021.qvd",2,1,1,TRUE,14,0,0,0,0,14,0,0
+"geospatial/sa1 - iloc.qvd",2,0,0,TRUE,7,7,0,0,0,0,0,100
+"qlikqvdlineage.qvd",2,0,2,FALSE,,,,,,,,
+"app.qvd",1,0,1,FALSE,,,,,,,,
+"appname.qvd",1,0,1,FALSE,,,,,,,,
+"appobject.qvd",1,0,1,FALSE,,,,,,,,
+"appstream.qvd",1,0,1,FALSE,,,,,,,,
+"ess/cdp/cdp activity attendance result.qvd",1,1,1,TRUE,14,14,0,0,0,0,0,100
+"ess/cdp/cdp activity attendance.qvd",1,1,1,TRUE,12,12,0,0,0,0,0,100
+"ess/cdp/cdp activity.qvd",1,0,0,TRUE,24,24,0,0,0,0,0,100
+"ess/cdp/cdp job seeker geocoded.qvd",1,0,0,TRUE,114,114,0,0,0,0,0,100
+"ess/cdp/cdp site contract.qvd",1,1,1,TRUE,30,30,0,0,0,0,0,100
+"ess/cdp/temp/twes claim.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/temp/twes commencement history.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/temp/twes crp.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/temp/twes esat.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/temp/twes job seeker.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/temp/twes jsci.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/temp/twes site contract.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/temp/twes transition plan.qvd",1,1,0,FALSE,,,,,,,,
+"ess/cdp/twes claim.qvd",1,1,0,TRUE,25,25,0,0,0,0,0,100
+"ess/cdp/twes crp.qvd",1,1,0,TRUE,14,14,0,0,0,0,0,100
+"ess/cdp/twes esat.qvd",1,1,0,TRUE,12,12,0,0,0,0,0,100
+"ess/cdp/twes job seeker.qvd",1,1,0,TRUE,4,4,0,0,0,0,0,100
+"ess/cdp/twes jsci.qvd",1,1,0,TRUE,8,8,0,0,0,0,0,100
+"ess/cdp/twes site contract.qvd",1,1,0,TRUE,34,34,0,0,0,0,0,100
+"ess/cdp/twes transition plan.qvd",1,1,0,TRUE,22,22,0,0,0,0,0,100
+"ess/iep/temp/cdp_contract_referral_placement.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/cdp_job_seeker.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_activity_contact.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_activity_expenditure.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_activity.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_claim_payments.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_job_seeker.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_locations.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_outcome.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_placement.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/iep_provider.qvd",1,1,0,FALSE,,,,,,,,
+"ess/iep/temp/qvd_list.qvd",1,1,0,FALSE,,,,,,,,
+"fusion/activity approval verification.qvd",1,0,0,TRUE,42,41,0,0,1,0,0,97.6
+"fusion/activity risk history.qvd",1,0,0,TRUE,18,18,0,0,0,0,0,100
+"fusion/grant activity kpi.qvd",1,0,0,TRUE,16,16,0,0,0,0,0,100
+"fusion/grant application funding allocation.qvd",1,0,0,TRUE,7,7,0,0,0,0,0,100
+"fusion/grant application funding.qvd",1,0,0,TRUE,9,9,0,0,0,0,0,100
+"fusion/opportunity.qvd",1,1,0,TRUE,129,129,0,0,0,0,0,100
+"fusion/system user.qvd",1,0,0,TRUE,116,116,0,0,0,0,0,100
+"gps/gps contact.qvd",1,0,0,TRUE,21,21,0,0,0,0,0,100
+"gps/grant organisation.qvd",1,0,1,TRUE,70,70,0,0,0,0,0,100
+"grants/njpt activity linking.qvd",1,0,0,FALSE,,,,,,,,
+"niaa/niaa site 2023.qvd",1,0,0,TRUE,16,0,15,0,1,0,0,0
+"oric/oric corporations.qvd",1,0,0,TRUE,25,2,1,22,0,0,0,8
+"published grants/published grants.qvd",1,0,0,TRUE,44,0,44,0,0,0,0,0
+"geospatial/cdp 2018.qvd",1,1,0,TRUE,6,0,0,0,0,6,0,0
+"geospatial/iloc 2021 - niaa subregion 2022.qvd",1,0,0,TRUE,4,0,0,0,0,4,0,0
+"geospatial/lga 2018.qvd",1,1,0,TRUE,7,0,0,0,0,7,0,0
+"geospatial/lga 2023.qvd",1,0,1,TRUE,10,0,0,0,0,10,0,0
+"geospatial/mb - ec.qvd",1,0,0,TRUE,3,3,0,0,0,0,0,100
+"geospatial/mb - sa1.qvd",1,0,0,FALSE,,,,,,,,
+"geospatial/mb 2021.qvd",1,0,0,TRUE,20,20,0,0,0,0,0,100
+"geospatial/niaa 2018.qvd",1,0,0,TRUE,3,0,0,0,0,3,0,0
+"geospatial/niaa region 2022.qvd",1,1,1,TRUE,4,0,0,0,1,3,0,0
+"geospatial/niaa subregion 2022.qvd",1,0,0,TRUE,5,0,0,0,1,4,0,0
+"forms_rjed/rjed application job detail tracker history.qvd",1,0,0,TRUE,28,28,0,0,0,0,0,100
+"forms_rjed/rjed application tracker history.qvd",1,0,0,TRUE,61,61,0,0,0,0,0,100
