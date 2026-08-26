@@ -609,7 +609,8 @@ derived_statuses <- c("expr-column","multi-source","parse-error","no-source-bloc
 ## per-app run counters, for the G5 report
 run_counters <- list()
 
-process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc_lookup = NULL) {
+process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc_lookup = NULL,
+                                ev_suffix = NULL) {
   d <- read_lineage(path)
   n_in <- nrow(d)
   d$line <- suppressWarnings(as.integer(d$line))
@@ -734,6 +735,7 @@ process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc
   }
 
   out_df <- if (length(parts)) do.call(rbind, parts) else NULL
+  if (!is.null(ev_suffix) && !is.null(out_df) && nrow(out_df) > 0) out_df$ev <- paste0(out_df$ev, ev_suffix)
   if (temp_split && !is.null(out_df) && nrow(out_df) > 0) {
     canon <- rp_relativize_vec(out_df$qvd_path_raw)
     out_df$qvd_path_temp <- canon
@@ -769,6 +771,15 @@ out_fusion <- process_new_lineage("FUSION", file.path(root,"retargeting","lineag
                                    "retargeting/lineage_fusion.csv")
 out_geo    <- process_new_lineage("Geospatial", file.path(root,"retargeting","lineage_geospatial.csv"),
                                    "retargeting/lineage_geospatial.csv")
+## Dead-code stores (Adam, 2026-08-26): tables defined AFTER the Geospatial
+## generator's Exit Script -- never executed today, but their qvds sit on
+## disk with live consumers (16-23 each). Field structure read from the dead
+## tabs; qualified names anchored on a consumer app's own read of
+## "NIAA Region 2020.NIAA Region Code" (app-unbuilt/script.qvs:1195).
+out_geo_dead <- process_new_lineage("Geospatial-deadcode",
+                                    file.path(root,"retargeting","lineage_geospatial_deadcode.csv"),
+                                    "retargeting/lineage_geospatial_deadcode.csv",
+                                    ev_suffix = " (DEAD CODE after Exit Script: qvd on disk is stale, written by an earlier generator version)")
 out_iep01  <- process_new_lineage("IEP01", file.path(root,"retargeting","lineage_iep01.csv"),
                                    "retargeting/lineage_iep01.csv", temp_split = TRUE)
 out_iep01s <- process_new_lineage("IEP01s", file.path(root,"retargeting","lineage_iep01s.csv"),
@@ -780,7 +791,7 @@ qsrc_lookup <- build_qsrc_lookup(do.call(rbind, Filter(Negate(is.null),
 out_gps <- process_new_lineage("GPS", file.path(root,"retargeting","lineage_gps.csv"),
                                 "retargeting/lineage_gps.csv", qsrc_lookup = qsrc_lookup)
 
-out_newapps <- do.call(rbind, Filter(Negate(is.null), list(out_fusion, out_geo, out_iep01, out_iep01s, out_gps)))
+out_newapps <- do.call(rbind, Filter(Negate(is.null), list(out_fusion, out_geo, out_geo_dead, out_iep01, out_iep01s, out_gps)))
 
 cat(sprintf("\nQualified-name (3-part FROM clause) db_schema/db_table un-split: %d row(s).\n", n_qualified_fix))
 cat(sprintf("Path-normalization fallback ('AppData/PROD/', no AzureDataLake segment -- Geospatial only): %d row(s).\n", n_geo_fallback))
