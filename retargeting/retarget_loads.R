@@ -14,21 +14,19 @@
 
 # ---- locate and source shared helpers -----------------------------------
 
-.rl_script_dir <- function() {
-  a <- commandArgs(trailingOnly = FALSE)
-  f <- sub("^--file=", "", a[grepl("^--file=", a)])
-  if (length(f) == 1 && nzchar(f)) return(dirname(normalizePath(f, winslash = "/")))
-  getwd()
-}
-.rl_repo_root <- function() {
-  d <- .rl_script_dir()
-  # this file lives at <root>/retargeting/retarget_loads.R
-  if (basename(d) == "retargeting") return(dirname(d))
-  getwd()
-}
-.RL_ROOT <- .rl_repo_root()
+# Top-level on purpose: score_retarget.R needs this same bootstrap before it
+# can source anything shared, and docs/verify_docs.R's duplicate-body check
+# compares functions across files — the shared helpers live in
+# retarget_shared.R instead.
+.rl_argv <- commandArgs(trailingOnly = FALSE)
+.rl_file <- sub("^--file=", "", .rl_argv[grepl("^--file=", .rl_argv)])
+.RL_DIR  <- if (length(.rl_file) == 1 && nzchar(.rl_file))
+  dirname(normalizePath(.rl_file, winslash = "/")) else getwd()
+# this file lives at <root>/retargeting/retarget_loads.R
+.RL_ROOT <- if (basename(.RL_DIR) == "retargeting") dirname(.RL_DIR) else getwd()
 source(file.path(.RL_ROOT, "shared", "qlik_tokenizer.R"))
 source(file.path(.RL_ROOT, "shared", "csv_read.R"))
+source(file.path(.RL_ROOT, "retargeting", "retarget_shared.R"))
 
 # ---- small text helpers --------------------------------------------------
 
@@ -120,46 +118,7 @@ rl_check_alias_guard <- function(before_tokens, after_tokens) {
 }
 
 # ---- LOAD statement discovery --------------------------------------------
-
-# For every LOAD keyword whose field list terminates on a depth-0 WORD
-# "from" (per find_load_segments' own end-keyword scan), return the FROM
-# path token index alongside its own segments. LOADs terminating on
-# resident/inline/autogenerate/where/; (no FROM) are not returned.
-rl_find_from_loads <- function(tokens) {
-  n <- nrow(tokens)
-  fls <- find_load_segments(tokens)
-  if (length(fls$segments) == 0) return(list())
-  load_ids <- unique(vapply(fls$segments, function(s) s$load_tok_idx, integer(1)))
-  nxt <- next_non_trivia_idx(tokens$type)
-  out <- list()
-  for (lid in load_ids) {
-    segs_here <- Filter(function(s) s$load_tok_idx == lid, fls$segments)
-    max_end <- max(vapply(segs_here, function(s) s$end, integer(1)))
-    end_kw_idx <- max_end + 1L
-    if (end_kw_idx > n) next
-    if (tokens$type[end_kw_idx] != "WORD" || tolower(tokens$text[end_kw_idx]) != "from") next
-    path_idx <- nxt[end_kw_idx]
-    if (is.na(path_idx)) next
-    if (!(tokens$type[path_idx] %in% c("BRACKET", "DQUOTE"))) next
-    out[[length(out) + 1L]] <- list(
-      load_tok_idx = lid, from_idx = end_kw_idx, path_idx = path_idx,
-      segments = segs_here)
-  }
-  out
-}
-
-# The Name: label immediately preceding a LOAD keyword, or "".
-rl_table_label <- function(tokens, load_idx, prevnt) {
-  c1 <- prevnt[load_idx]
-  if (is.na(c1)) return("")
-  if (tokens$type[c1] == "OTHER" && tokens$text[c1] == ":") {
-    c2 <- prevnt[c1]
-    if (!is.na(c2) && tokens$type[c2] %in% c("WORD", "BRACKET", "DQUOTE")) {
-      return(undelimit(tokens$text[c2], tokens$type[c2]))
-    }
-  }
-  ""
-}
+# rt_find_from_loads() / rt_table_label() come from retarget_shared.R.
 
 # Terminating depth-0 SEMI index for the statement whose FROM path token is
 # at path_idx (scans forward tracking paren depth across the format spec
@@ -227,19 +186,6 @@ rl_find_bare_lib_spans <- function(tokens, prevnt) {
   out
 }
 
-# ---- CSV writing (base R, no packages) -----------------------------------
-
-.rl_write_csv <- function(df, path) {
-  if (nrow(df) == 0) {
-    # still write a header-only file
-    con <- file(path, open = "w", encoding = "UTF-8")
-    on.exit(close(con))
-    writeLines(paste(sprintf('"%s"', names(df)), collapse = ","), con, useBytes = TRUE)
-    return(invisible(NULL))
-  }
-  write.csv(df, path, row.names = FALSE, fileEncoding = "UTF-8", na = "")
-}
-
 # ---- core retargeting -----------------------------------------------------
 
 #' @param tokens token stream (data.frame text,type,line)
@@ -296,14 +242,14 @@ retarget_tokens <- function(tokens, map_df) {
   }
 
   # ---- FROM-bearing LOADs -----------------------------------------------
-  from_loads <- rl_find_from_loads(tokens)
+  from_loads <- rt_find_from_loads(tokens)
   for (ld in from_loads) {
     pi <- ld$path_idx
     raw <- tokens$text[pi]
     if (.rl_count_ci(raw, "lib://") == 0) next
     handled_path_idx <- c(handled_path_idx, pi)
 
-    label <- rl_table_label(tokens, ld$load_tok_idx, prevnt)
+    label <- rt_table_label(tokens, ld$load_tok_idx, prevnt)
     body <- undelimit(raw, tokens$type[pi])
     cls <- .rl_classify_path(body)
 
@@ -556,8 +502,8 @@ rl_main <- function() {
   writeLines(out_lines, con, useBytes = TRUE)
   close(con)
 
-  if (!is.na(report_path)) .rl_write_csv(result$report, report_path)
-  if (!is.na(fields_report_path)) .rl_write_csv(result$fields, fields_report_path)
+  if (!is.na(report_path)) rt_write_csv(result$report, report_path)
+  if (!is.na(fields_report_path)) rt_write_csv(result$fields, fields_report_path)
 
   cat(sprintf("Wrote %s (%d lib:// occurrences covered, %d rewritten loads)\n",
               out_path, n_independent,
