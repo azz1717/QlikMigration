@@ -1,0 +1,10 @@
+DEV NOTES
+Retargeted 18/20 qvd loads.
+LEFT AS-IS (will trip at reload; leads below):
+  line 356  SSR/RGU Staff.qvd  — no map entry; no lead — nothing changed, solution needs hunting
+  line 506  GPS/Grant Managing Region.qvd  — on-prem qvd combined FUSION.Grant Activity; FUSION.Source System; derived-in-generator — rebuild from those
+VIEWS NOT YET SCRIPTED FOR CLOUD (loads rewritten; qvds appear once these are added to the generation list):
+  GPS.Data Warehouse Load Time
+  FUSION.PMC Region
+  GPS.Grant Activity Milestone - Old
+  GPS.Grant Activity Acquittal Error

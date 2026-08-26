@@ -493,6 +493,143 @@ retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
   list(tokens = tokens, report = report, fields = fields)
 }
 
+# ---- DEV NOTES (developer-facing summary) ---------------------------------
+# Adam's directive: ultra-concise, developer-facing signal only - nothing
+# Qlik's own data load editor already surfaces at reload (missing
+# fields/variables/files). Built entirely from the report data.frame that
+# retarget_tokens() already produced, plus the same map_df/store_prefix the
+# run used, so it never touches the on-disk report/fields CSVs.
+
+# Recover the raw text of a bracketed/quoted report `old_path`/`new_path`
+# value with its outer delimiter stripped - report rows keep only text, not
+# token type, so this mirrors undelimit()'s two delimiter kinds by looking
+# at the first/last character instead.
+.rl_strip_raw_delim <- function(raw) {
+  if (nchar(raw) < 2) return(raw)
+  first <- substr(raw, 1, 1); last <- substr(raw, nchar(raw), nchar(raw))
+  body <- substr(raw, 2, nchar(raw) - 1)
+  if (first == '"' && last == '"') return(gsub('""', '"', body, fixed = TRUE))
+  if (first == "[" && last == "]") return(body)
+  raw
+}
+
+# The AzureDataLake-relative key (e.g. "SSR/RGU Staff.qvd") for a report
+# row's `old_path` - every status this is called for was only reached from
+# the cls$scope == "azure" branch in retarget_tokens(), so this always
+# succeeds.
+.rl_key_from_old_path <- function(raw) {
+  .rl_classify_path(.rl_strip_raw_delim(raw))$key
+}
+
+# Distinct "schema.object" pairs (or "derived-in-generator" for an NA pair)
+# from the map rows for `key`, in map-file order.
+.rl_multisource_pairs <- function(map_df, key) {
+  rows <- map_df[tolower(map_df$onprem_qvd) == tolower(key), , drop = FALSE]
+  pairs <- unique(rows[, c("source_schema", "source_object")])
+  out <- vapply(seq_len(nrow(pairs)), function(i) {
+    s <- pairs$source_schema[i]; o <- pairs$source_object[i]
+    if (is.na(s) || is.na(o)) "derived-in-generator" else paste0(s, ".", o)
+  }, character(1))
+  unique(out)
+}
+
+# The cloud path a wildcard LOAD's single map row would have retargeted to,
+# had it not been LOAD *.
+.rl_wildcard_target <- function(map_df, key, store_prefix) {
+  rows <- map_df[tolower(map_df$onprem_qvd) == tolower(key), , drop = FALSE]
+  sprintf("[%s%s/%s.qvd]", store_prefix, rows$source_schema[1], rows$source_object[1])
+}
+
+# report$detail for field-mismatch/unusable-verdict/wildcard rows may carry
+# a trailing "; depends-on-variable: ..." fragment (rl_join_detail) that is
+# reload-time noise here (Qlik already reports an unresolved variable) - cut
+# it off.
+.rl_strip_var_suffix <- function(detail) sub("; depends-on-variable:.*$", "", detail)
+
+# The one-line "lead" for an untouched (not-in-map/multi-source/
+# field-mismatch/wildcard/unusable-verdict) report row.
+.rl_lead_for_row <- function(row, map_df, store_prefix) {
+  key <- .rl_key_from_old_path(row$old_path)
+  if (row$status == "not-in-map") {
+    return("no map entry; no lead — nothing changed, solution needs hunting")
+  }
+  if (row$status == "multi-source") {
+    pairs <- .rl_multisource_pairs(map_df, key)
+    return(sprintf("on-prem qvd combined %s — rebuild from those",
+                    paste(pairs, collapse = "; ")))
+  }
+  if (row$status == "field-mismatch") {
+    return(sprintf("field(s) %s not in the map; no lead for them",
+                    .rl_strip_var_suffix(row$detail)))
+  }
+  if (row$status == "wildcard") {
+    tgt <- .rl_wildcard_target(map_df, key, store_prefix)
+    return(sprintf("LOAD * cannot be field-renamed; map target is %s — retarget by hand", tgt))
+  }
+  if (row$status == "unusable-verdict") {
+    parts <- strsplit(.rl_strip_var_suffix(row$detail), "; ", fixed = TRUE)[[1]]
+    formatted <- vapply(parts, function(p) {
+      ci <- regexpr(":", p, fixed = TRUE)
+      if (ci < 0) return(p)
+      paste0(substr(p, 1, ci - 1), " (", substr(p, ci + 1, nchar(p)), ")")
+    }, character(1))
+    verdicts <- unique(sub("^.*\\(([^)]*)\\)$", "\\1", formatted))
+    return(sprintf("field(s) %s unresolvable — %s means the cloud view lacks them",
+                    paste(formatted, collapse = "; "), paste(verdicts, collapse = ", ")))
+  }
+  stop("rl_lead_for_row: unexpected status: ", row$status)
+}
+
+# schema.object for the target view a "retargeted-pending-import" row's
+# new_path points at (parsed back out of the same sprintf shape the rewrite
+# built it with).
+.rl_view_from_new_path <- function(new_path, store_prefix) {
+  inner <- substr(new_path, 2, nchar(new_path) - 1)
+  rest <- substr(inner, nchar(store_prefix) + 1, nchar(inner))
+  rest <- sub("\\.qvd$", "", rest)
+  slash <- regexpr("/", rest, fixed = TRUE)
+  paste0(substr(rest, 1, slash - 1), ".", substr(rest, slash + 1, nchar(rest)))
+}
+
+# Build the DEV NOTES block (character vector, one element per line).
+rl_build_dev_notes <- function(report, map_df, store_prefix) {
+  qvd_load_status <- c("retargeted", "retargeted-pending-import", "not-in-map",
+                        "multi-source", "field-mismatch", "wildcard", "unusable-verdict")
+  rewritten_status <- c("retargeted", "retargeted-pending-import")
+  untouched_status <- c("not-in-map", "multi-source", "field-mismatch",
+                         "wildcard", "unusable-verdict")
+
+  scoped <- report[report$status %in% qvd_load_status, , drop = FALSE]
+  n_rewritten <- sum(scoped$status %in% rewritten_status)
+
+  lines <- c("DEV NOTES", sprintf("Retargeted %d/%d qvd loads.", n_rewritten, nrow(scoped)))
+
+  untouched <- scoped[scoped$status %in% untouched_status, , drop = FALSE]
+  if (nrow(untouched) > 0) {
+    lines <- c(lines, "LEFT AS-IS (will trip at reload; leads below):")
+    for (i in seq_len(nrow(untouched))) {
+      row <- untouched[i, ]
+      lines <- c(lines, sprintf("  line %d  %s  — %s", row$line,
+                                 .rl_key_from_old_path(row$old_path),
+                                 .rl_lead_for_row(row, map_df, store_prefix)))
+    }
+  }
+
+  pending <- scoped[scoped$status == "retargeted-pending-import", , drop = FALSE]
+  if (nrow(pending) > 0) {
+    views <- character(0)
+    for (i in seq_len(nrow(pending))) {
+      v <- .rl_view_from_new_path(pending$new_path[i], store_prefix)
+      if (!(v %in% views)) views <- c(views, v)
+    }
+    lines <- c(lines,
+      "VIEWS NOT YET SCRIPTED FOR CLOUD (loads rewritten; qvds appear once these are added to the generation list):",
+      sprintf("  %s", views))
+  }
+
+  lines
+}
+
 # ---- self-test ------------------------------------------------------------
 
 rl_selftest <- function() {
@@ -530,6 +667,7 @@ rl_main <- function() {
   report_path <- NA_character_
   fields_report_path <- NA_character_
   store_prefix <- .RL_STORE_PREFIX
+  notes_path <- NA_character_
 
   i <- 1L
   while (i <= length(args)) {
@@ -538,12 +676,13 @@ rl_main <- function() {
     if (a == "--report") { report_path <- args[i + 1L]; i <- i + 2L; next }
     if (a == "--fields-report") { fields_report_path <- args[i + 1L]; i <- i + 2L; next }
     if (a == "--store") { store_prefix <- args[i + 1L]; i <- i + 2L; next }
+    if (a == "--notes") { notes_path <- args[i + 1L]; i <- i + 2L; next }
     pos <- c(pos, a)
     i <- i + 1L
   }
 
   if (length(pos) < 2) {
-    cat("Usage: Rscript retarget_loads.R <styled_in.qvs> <out.qvs> [--map retargeting/qvd_field_map.csv] [--report <report.csv>] [--fields-report <fields.csv>] [--store <prefix>]\n")
+    cat("Usage: Rscript retarget_loads.R <styled_in.qvs> <out.qvs> [--map retargeting/qvd_field_map.csv] [--report <report.csv>] [--fields-report <fields.csv>] [--store <prefix>] [--notes <file>]\n")
     cat("       Rscript retarget_loads.R --selftest\n")
     quit(status = 1)
   }
@@ -593,6 +732,14 @@ rl_main <- function() {
   cat(sprintf("Wrote %s (%d lib:// occurrences covered, %d rewritten loads)\n",
               out_path, n_independent,
               sum(result$report$status %in% c("retargeted", "retargeted-pending-import"))))
+
+  notes_lines <- rl_build_dev_notes(result$report, map_df, store_prefix)
+  cat(paste(notes_lines, collapse = "\n"), "\n", sep = "")
+  if (!is.na(notes_path)) {
+    con <- file(notes_path, open = "w", encoding = "UTF-8")
+    writeLines(notes_lines, con, useBytes = TRUE)
+    close(con)
+  }
   invisible(NULL)
 }
 
