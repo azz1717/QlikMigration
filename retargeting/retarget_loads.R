@@ -572,6 +572,23 @@ retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
   stop("rl_lead_for_row: unexpected status: ", row$status)
 }
 
+# The generated-views evidence (fixtures/views.csv) is a dated EXTRACT, not
+# live cloud state — the 05 trial proved it can lag reality (all 4 "pending"
+# qvds existed and loaded). Update this date whenever the extract is
+# refreshed; a live Curated Data Store DataFiles listing would supersede it.
+.RL_VIEWS_EXTRACT_DATE <- "2026-08-20"
+
+# schema.object for the target view a "retargeted-pending-import" row's
+# new_path points at (parsed back out of the same sprintf shape the rewrite
+# built it with).
+.rl_view_from_new_path <- function(new_path, store_prefix) {
+  inner <- substr(new_path, 2, nchar(new_path) - 1)
+  rest <- substr(inner, nchar(store_prefix) + 1, nchar(inner))
+  rest <- sub("\\.qvd$", "", rest)
+  slash <- regexpr("/", rest, fixed = TRUE)
+  paste0(substr(rest, 1, slash - 1), ".", substr(rest, slash + 1, nchar(rest)))
+}
+
 # Build the DEV NOTES block (character vector, one element per line).
 rl_build_dev_notes <- function(report, map_df, store_prefix) {
   qvd_load_status <- c("retargeted", "retargeted-pending-import", "not-in-map",
@@ -592,6 +609,19 @@ rl_build_dev_notes <- function(report, map_df, store_prefix) {
     lines <- c(lines, sprintf("  line %d  %s — %s", row$line,
                                .rl_key_from_old_path(row$old_path),
                                .rl_lead_for_row(row, map_df, store_prefix)))
+  }
+
+  pending <- scoped[scoped$status == "retargeted-pending-import", , drop = FALSE]
+  if (nrow(pending) > 0) {
+    views <- character(0)
+    for (i in seq_len(nrow(pending))) {
+      v <- .rl_view_from_new_path(pending$new_path[i], store_prefix)
+      if (!(v %in% views)) views <- c(views, v)
+    }
+    lines <- c(lines, sprintf(
+      "Retargeted, but target qvd was not being generated as at %s — may not load:",
+      .RL_VIEWS_EXTRACT_DATE),
+      sprintf("  %s", views))
   }
 
   lines
