@@ -10,6 +10,8 @@
 #   Rscript retargeting/retarget_loads.R <styled_in.qvs> <out.qvs>
 #       [--map retargeting/qvd_field_map.csv]
 #       [--report <report.csv>] [--fields-report <fields.csv>]
+#       [--store <prefix>]   (full "lib://...:DataFiles/.../" prefix, must
+#                              end in '/'; overrides .RL_STORE_PREFIX below)
 #   Rscript retargeting/retarget_loads.R --selftest
 
 # ---- locate and source shared helpers -----------------------------------
@@ -27,6 +29,12 @@
 source(file.path(.RL_ROOT, "shared", "qlik_tokenizer.R"))
 source(file.path(.RL_ROOT, "shared", "csv_read.R"))
 source(file.path(.RL_ROOT, "retargeting", "retarget_shared.R"))
+
+# Qlik Cloud connection ("lib://...") name is environment config (the tenant
+# connection is provisioned per-environment, it is not part of the qvd field
+# map data), so it lives as a constant + CLI override here, not in
+# qvd_field_map.csv.
+.RL_STORE_PREFIX <- "lib://Curated Data Store:DataFiles/10 Landing Area/"
 
 # ---- small text helpers --------------------------------------------------
 
@@ -186,14 +194,83 @@ rl_find_bare_lib_spans <- function(tokens, prevnt) {
   out
 }
 
+# ---- $(...) variable-expansion spans --------------------------------------
+
+# Qlik $(name) / $([name]) variable expansion is resolved at reload time, not
+# a qvd field reference - tokens inside the parens must never be collected as
+# read fields and must never be rewritten. Detected as: a token whose type is
+# OTHER and text is "$", whose next non-trivia token is LPAREN; the span runs
+# to the matching RPAREN (paren depth tracked, since the expansion body can
+# itself contain parens). Returns a list of spans, one per expansion, each
+# with: dollar_idx, lparen_idx, rparen_idx, span_idx (every token index in
+# the span, inclusive) and content (the undelimited expansion body, e.g.
+# "vDaysoverdue" for both "$(vDaysoverdue)" and "$([vDaysoverdue])").
+rl_find_dollar_spans <- function(tokens) {
+  n <- nrow(tokens)
+  nxt <- next_non_trivia_idx(tokens$type)
+  out <- list()
+  for (i in seq_len(n)) {
+    if (tokens$type[i] != "OTHER" || tokens$text[i] != "$") next
+    pi <- nxt[i]
+    if (is.na(pi) || tokens$type[pi] != "LPAREN") next
+    depth <- 1L
+    j <- pi + 1L
+    close_idx <- NA_integer_
+    while (j <= n) {
+      ty <- tokens$type[j]
+      if (ty == "LPAREN") depth <- depth + 1L
+      else if (ty == "RPAREN") {
+        depth <- depth - 1L
+        if (depth == 0L) { close_idx <- j; break }
+      }
+      j <- j + 1L
+    }
+    if (is.na(close_idx)) next
+    content_idx <- if (close_idx > pi + 1L) (pi + 1L):(close_idx - 1L) else integer(0)
+    content <- if (length(content_idx))
+      paste(undelimit(tokens$text[content_idx], tokens$type[content_idx]), collapse = "")
+    else ""
+    out[[length(out) + 1L]] <- list(dollar_idx = i, lparen_idx = pi, rparen_idx = close_idx,
+                                     span_idx = i:close_idx, content = content)
+  }
+  out
+}
+
+# Distinct "depends-on-variable: ..." detail fragment for the dollar spans
+# whose opening "$" falls within range_idx (a load statement's token range),
+# or "" if none. Multiple variable names are comma-joined.
+rl_dollar_var_detail <- function(dollar_spans, range_idx) {
+  if (length(dollar_spans) == 0 || length(range_idx) == 0) return("")
+  nms <- character(0)
+  for (sp in dollar_spans) {
+    if (sp$dollar_idx %in% range_idx) nms <- c(nms, sp$content)
+  }
+  nms <- unique(nms)
+  if (length(nms) == 0) return("")
+  paste0("depends-on-variable: ", paste(nms, collapse = ", "))
+}
+
+# Join two report `detail` fragments with "; ", omitting either side if empty.
+rl_join_detail <- function(existing, extra) {
+  if (!nzchar(existing)) return(extra)
+  if (!nzchar(extra)) return(existing)
+  paste(existing, extra, sep = "; ")
+}
+
 # ---- core retargeting -----------------------------------------------------
 
 #' @param tokens token stream (data.frame text,type,line)
 #' @param map_df qvd_field_map.csv contents (character columns)
+#' @param store_prefix full "lib://...:DataFiles/.../" cloud prefix (ending
+#'   in '/') used to build every rewritten FROM path; defaults to
+#'   .RL_STORE_PREFIX, overridable via --store.
 #' @return list(tokens = edited tokens, report = data.frame, fields = data.frame)
-retarget_tokens <- function(tokens, map_df) {
+retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
   n <- nrow(tokens)
   prevnt <- prev_non_trivia_idx(tokens$type)
+  dollar_spans <- rl_find_dollar_spans(tokens)
+  in_dollar_span <- rep(FALSE, n)
+  for (sp in dollar_spans) in_dollar_span[sp$span_idx] <- TRUE
 
   report_rows <- list()
   field_rows <- list()
@@ -253,9 +330,16 @@ retarget_tokens <- function(tokens, map_df) {
     body <- undelimit(raw, tokens$type[pi])
     cls <- .rl_classify_path(body)
 
+    # whole-statement token range (LOAD ... through the terminating depth-0
+    # SEMI, or through the FROM path if no SEMI is found) - used to attribute
+    # any $(...) variable-expansion spans to this load's report row.
+    semi_idx <- rl_statement_semi(tokens, pi)
+    stmt_range <- if (!is.na(semi_idx)) ld$load_tok_idx:semi_idx else ld$load_tok_idx:pi
+    var_detail <- rl_dollar_var_detail(dollar_spans, stmt_range)
+
     if (cls$scope != "azure") {
       add_report(tokens$line[pi], "load", label, raw, .rl_scope_status(cls$scope),
-                 "", 0L, 0L, "")
+                 "", 0L, 0L, rl_join_detail("", var_detail))
       next
     }
 
@@ -264,7 +348,7 @@ retarget_tokens <- function(tokens, map_df) {
 
     if (nrow(rows) == 0) {
       add_report(tokens$line[pi], "load", label, raw, "not-in-map", "",
-                 0L, 0L, "")
+                 0L, 0L, rl_join_detail("", var_detail))
       next
     }
 
@@ -273,7 +357,7 @@ retarget_tokens <- function(tokens, map_df) {
       detail <- paste(apply(src_pairs, 1, function(r) paste(r[1], r[2], sep = "/")),
                        collapse = "; ")
       add_report(tokens$line[pi], "load", label, raw, "multi-source", "",
-                 0L, 0L, detail)
+                 0L, 0L, rl_join_detail(detail, var_detail))
       next
     }
 
@@ -288,17 +372,17 @@ retarget_tokens <- function(tokens, map_df) {
     }, logical(1)))
     if (has_wildcard) {
       add_report(tokens$line[pi], "load", label, raw, "wildcard", "",
-                 0L, 0L, "LOAD field list contains wildcard *")
+                 0L, 0L, rl_join_detail("LOAD field list contains wildcard *", var_detail))
       next
     }
 
     field_names_set <- unique(rows$onprem_field)
 
-    semi_idx <- rl_statement_semi(tokens, pi)
     post_from_range <- if (!is.na(semi_idx) && semi_idx > pi + 1L) (pi + 1L):(semi_idx - 1L) else integer(0)
 
     reads <- list()  # each: idx, name, kind
     collect <- function(idx, kind_region) {
+      if (in_dollar_span[idx]) return(invisible(NULL))
       pv <- prevnt[idx]
       if (!is.na(pv) && tokens$type[pv] == "WORD" && tolower(tokens$text[pv]) == "as") return(invisible(NULL))
       ty <- tokens$type[idx]
@@ -333,7 +417,7 @@ retarget_tokens <- function(tokens, map_df) {
 
     if (length(unmatched) > 0) {
       add_report(tokens$line[pi], "load", label, raw, "field-mismatch", "",
-                 n_reads, 0L, paste(unique(unmatched), collapse = "; "))
+                 n_reads, 0L, rl_join_detail(paste(unique(unmatched), collapse = "; "), var_detail))
       next
     }
 
@@ -342,14 +426,13 @@ retarget_tokens <- function(tokens, map_df) {
       detail <- paste(unique(vapply(bad_verdict, function(m) paste0(m$name, ":", m$verdict), character(1))),
                        collapse = "; ")
       add_report(tokens$line[pi], "load", label, raw, "unusable-verdict", "",
-                 n_reads, 0L, detail)
+                 n_reads, 0L, rl_join_detail(detail, var_detail))
       next
     }
 
     # ---- REWRITE ---------------------------------------------------------
     schema <- rows$source_schema[1]; object <- rows$source_object[1]
-    new_path <- sprintf("[lib://Curated data Store:DataFiles/10 Landing Area/%s/%s.qvd]",
-                         schema, object)
+    new_path <- sprintf("[%s%s/%s.qvd]", store_prefix, schema, object)
     tokens$text[pi] <- new_path
     tokens$type[pi] <- "BRACKET"
 
@@ -364,7 +447,7 @@ retarget_tokens <- function(tokens, map_df) {
     any_import <- any(vapply(matched, function(m) identical(m$verdict, "import-view"), logical(1)))
     status <- if (any_import) "retargeted-pending-import" else "retargeted"
     add_report(tokens$line[pi], "load", label, raw, status, new_path,
-               n_reads, length(matched), "")
+               n_reads, length(matched), rl_join_detail("", var_detail))
   }
 
   # ---- COMMENT occurrences (reported only) ------------------------------
@@ -446,6 +529,7 @@ rl_main <- function() {
   map_path <- file.path(.RL_ROOT, "retargeting", "qvd_field_map.csv")
   report_path <- NA_character_
   fields_report_path <- NA_character_
+  store_prefix <- .RL_STORE_PREFIX
 
   i <- 1L
   while (i <= length(args)) {
@@ -453,12 +537,13 @@ rl_main <- function() {
     if (a == "--map") { map_path <- args[i + 1L]; i <- i + 2L; next }
     if (a == "--report") { report_path <- args[i + 1L]; i <- i + 2L; next }
     if (a == "--fields-report") { fields_report_path <- args[i + 1L]; i <- i + 2L; next }
+    if (a == "--store") { store_prefix <- args[i + 1L]; i <- i + 2L; next }
     pos <- c(pos, a)
     i <- i + 1L
   }
 
   if (length(pos) < 2) {
-    cat("Usage: Rscript retarget_loads.R <styled_in.qvs> <out.qvs> [--map retargeting/qvd_field_map.csv] [--report <report.csv>] [--fields-report <fields.csv>]\n")
+    cat("Usage: Rscript retarget_loads.R <styled_in.qvs> <out.qvs> [--map retargeting/qvd_field_map.csv] [--report <report.csv>] [--fields-report <fields.csv>] [--store <prefix>]\n")
     cat("       Rscript retarget_loads.R --selftest\n")
     quit(status = 1)
   }
@@ -481,7 +566,7 @@ rl_main <- function() {
   full_text <- paste(tokens$text, collapse = "")
   n_independent <- .rl_count_ci(full_text, "lib://")
 
-  result <- retarget_tokens(tokens, map_df)
+  result <- retarget_tokens(tokens, map_df, store_prefix = store_prefix)
 
   n_covered <- nrow(result$report)
   if (n_covered != n_independent) {

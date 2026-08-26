@@ -50,13 +50,13 @@ PICK(CEIL(LOG10(SUM($1)) / 3),
 		  [Data Source Code]			 AS [Data Source Code]
 		, [Siebel Cut Off Date Time]	 AS [Siebel Cut Off Date Time]
 		, [Warehouse Load Time]			 AS [Warehouse Load Time]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/GPS/Data Warehouse Load Time.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/GPS/Data Warehouse Load Time.qvd] (qvd);
 ///$tab Acquittal
 	[Activity Acquittal Amount Temp]:
 	LOAD
 		  [Grant Activity Id]	 AS [Grant Activity Id%]
 		, [Activity Id]			 AS [Temp Activity Id]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Grant Activity.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Grant Activity.qvd] (qvd);
 
 
 	LEFT JOIN
@@ -65,14 +65,14 @@ PICK(CEIL(LOG10(SUM($1)) / 3),
 		, [Financial Year Id]	 AS [Financial Year Id%]
 		, [Funding Amount]		 AS [Total Value (ex GST)]
 		, [Funds Released]		 AS [Funds Released (ex GST)]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Grant Activity Funding.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Grant Activity Funding.qvd] (qvd);
 
 
 	LEFT JOIN
 	LOAD
 		  [Financial Year Id]	 AS [Financial Year Id%]
 		, [Financial Year]		 AS [Activity Financial Year]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Financial Year.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Financial Year.qvd] (qvd);
 
 
 	[Grant Activity Acquittal Temp]:
@@ -127,7 +127,7 @@ PICK(CEIL(LOG10(SUM($1)) / 3),
 		, [Review Subtype]																			 AS [Grant Activity Acquittal.Review Subtype]
 		, REPLACE(MID([Milestone Review Grouping Name], INDEX([Milestone Review Grouping Name], 'Acquittal', 1) + 10), '&', 'and') AS [Abbrev Milestone Group]
 //		, [Grant Activity Acquittal.Activity End Date]																		 AS [Grant Activity Acquittal.Activity End Date]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/GPS/Grant Activity Acquittal.qvd] (qvd)
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/GPS/Grant Activity Acquittal.qvd] (qvd)
 	WHERE NOT MATCH([Review Status], 'Cancelled') ;
 
 
@@ -174,7 +174,7 @@ PICK(CEIL(LOG10(SUM($1)) / 3),
 		, [Review Item Question]		 AS [Review Item Question]
 		, [Review Item Answer]		 AS [Review Item Answer]
 		, [Review Item Justification]	 AS [Review Item Justification]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/GPS/Grant Activity Acquittal Item.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/GPS/Grant Activity Acquittal Item.qvd] (qvd);
 
 
 //Create Master calendar based on reviews/Acquittals
@@ -274,7 +274,7 @@ LET vMaxDate = PEEK('MaxDate', 0, 'Min_Max');
 		, [Current Ceasing Activity Assessment Id]														 AS [Grant Activity.Current Ceasing Activity Assessment Id%]
 		, [Current Ceasing Activity Assessment]															 AS [Grant Activity.Current Ceasing Activity Assessment]
 //		, [Grant Activity.Has Review]																					 AS [Grant Activity.Has Review]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Grant Activity.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Grant Activity.qvd] (qvd);
 //WHERE LEN([Grant Activity.Programme Id%]) <> 0;
 
 
@@ -295,7 +295,7 @@ LET vMaxDate = PEEK('MaxDate', 0, 'Min_Max');
 //		, [Source Organisation.Legal Name]				 AS [Source Organisation.Legal Name]
 //		, [Source Organisation.Legal Entity Type]		 AS [Source Organisation.Legal Entity Type]
 //		, [Source Organisation.Source Organisation Status]	 AS [Source Organisation.Source Organisation Status]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Source Organisation.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Source Organisation.qvd] (qvd);
 
 
 	LEFT JOIN
@@ -321,14 +321,14 @@ LET vMaxDate = PEEK('MaxDate', 0, 'Min_Max');
 		, IF(ISNULL([Indigeneity]) OR [Indigeneity] = 'Unknown', 'No', [Indigeneity]) AS [Organisation Indigeneity]
 //		, [Organisation.Indigeneity Effective Date]	 AS [Organisation.Indigeneity Effective Date]
 //		, [Organisation.Status]					 AS [Organisation.Status]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Organisation.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Organisation.qvd] (qvd);
 
 
 	LEFT JOIN
 	LOAD
 		  [Programme Id]						 AS [Programme Id%]
 		, REPLACE([Programme], '2.', '1.')	 AS [Program]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Programme.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Programme.qvd] (qvd);
 
 
 	LEFT JOIN
@@ -345,7 +345,7 @@ LET vMaxDate = PEEK('MaxDate', 0, 'Min_Max');
 //		, [Programme Component.Alternate Name 3]		 AS [Programme Component.Alternate Name 3]
 //		, [Programme Component.Alternate Name 4]		 AS [Programme Component.Alternate Name 4]
 //		, [Programme Component.Alternate Name 5]		 AS [Programme Component.Alternate Name 5]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Programme Component.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Programme Component.qvd] (qvd);
 
 
 	LEFT JOIN
@@ -366,14 +366,14 @@ LET vMaxDate = PEEK('MaxDate', 0, 'Min_Max');
 		, [Funding Amount]		 AS [Total Value (ex GST)]
 		, [Funds Released]		 AS [Funds Released (ex GST)]
 //		, [Grant Activity Funding.Activity Funding Status]	 AS [Grant Activity Funding.Activity Funding Status]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Grant Activity Funding.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Grant Activity Funding.qvd] (qvd);
 
 
 	LEFT JOIN
 	LOAD
 		  [Financial Year Id]	 AS [Financial Year Id%]
 		, [Financial Year]		 AS [Activity Funding Financial Year]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/Financial Year.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/Financial Year.qvd] (qvd);
 
 
 	[Grant Activity]:
@@ -527,7 +527,7 @@ LET vMaxDate = PEEK('MaxDate', 0, 'Min_Max');
 			IF([PMC Region Abbr] = 'CA' OR [PMC Region Abbr] = 'TETI' OR [PMC Region Abbr] = 'ALGE', 'Central Group',
 			IF([PMC Region Abbr] = 'ENSW' OR [PMC Region Abbr] = 'WNSW' OR [PMC Region Abbr] = 'SQLD'
 			OR [PMC Region Abbr] = 'FNQLD' OR [PMC Region Abbr] = 'GNQLD', 'Eastern Group', 'National'))) AS [NIAA Region Group]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/PMC Region.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/PMC Region.qvd] (qvd);
 
 
 	[GMU Region]:
@@ -538,7 +538,7 @@ LET vMaxDate = PEEK('MaxDate', 0, 'Min_Max');
 			IF([PMC Region Abbr] = 'CA' OR [PMC Region Abbr] = 'TETI' OR [PMC Region Abbr] = 'ALGE', 'Central Group',
 			IF([PMC Region Abbr] = 'ENSW' OR [PMC Region Abbr] = 'WNSW' OR [PMC Region Abbr] = 'SQLD' OR [PMC Region Abbr] = 'FNQLD'
 			OR [PMC Region Abbr] = 'GNQLD', 'Eastern Group', 'National')))	 AS [GMU Region Group]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/FUSION/PMC Region.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/FUSION/PMC Region.qvd] (qvd);
 ///$tab Milestone
 	[Grant Activity Milestone]:
 	LET vDaysoverdue = 'IF([Grant Activity Milestone.Milestone Expected Due Date] <= today(), Today() - [Grant Activity Milestone.Milestone Expected Due Date])' ;
@@ -547,49 +547,49 @@ LET vEndDate = TEXT('2014-06-30');
 
 //		  LEFT KEEP([Grant Activity Acquittal])
 	LOAD $([vDaysoverdue]) AS [Number of Days Milestone Overdue]
-		, [Grant Activity Milestone.Activity Id]														 AS [Grant Activity Milestone.Activity Id]
-		, REPLACE(YEARNAME([Grant Activity Milestone.Milestone Expected Due Date], 0, 7), '-20', '-')	 AS [Milestone Financial Year]
-		, [Grant Activity Milestone.Activity PBS Program]												 AS [Activity PBS Outcome]
-		, [Grant Activity Milestone.Managing Office - Activity]											 AS [Milestone Managing Office%]
-		, [Grant Activity Milestone.Milestone Id]														 AS [Milestone Id]
-		, [Grant Activity Milestone.Milestone Status]													 AS [Grant Activity Milestone.Milestone Status]
-		, IF([Grant Activity Milestone.Milestone Expected Due Date] > TODAY(), 'Overdue', [Grant Activity Milestone.Milestone Stage]) AS [Grant Activity Milestone.Milestone Stage]
-		, [Grant Activity Milestone.Milestone Completed Indicator]										 AS [Milestone Completed Indicator]
-		, [Grant Activity Milestone.Milestone Payment Mode]												 AS [Milestone Payment Mode]
-		, [Grant Activity Milestone.Milestone Received]													 AS [Grant Activity Milestone.Milestone Received]
-		, [Grant Activity Milestone.Milestone Short Description]										 AS [Grant Activity Milestone.Milestone Short Description]
-		, [Grant Activity Milestone.Milestone Long Description]											 AS [Milestone Long Description]
-		, [Grant Activity Milestone.Milestone Completion Description]									 AS [Milestone Completion Description]
-		, [Grant Activity Milestone.Milestone Type]														 AS [Milestone Type]
-		, (FLOOR(([Grant Activity Milestone.Milestone Completion Date] - [Grant Activity Milestone.Milestone Expected Due Date]) / 30) * 30) + 30 AS [Days to Complete]
-		, [Grant Activity Milestone.Milestone Expected Due Date]										 AS [Milestones Expected Due Date]
-		, [Grant Activity Milestone.Financial Year Name]												 AS [Grant Activity Milestone.Financial Year Name]
-		, [Grant Activity Milestone.Milestone Action Required]											 AS [Grant Activity Milestone.Milestone Action Required]
-		, [Grant Activity Milestone.Milestone Completion Date]											 AS [Milestone Completion Date]
-		, [Grant Activity Milestone.Activity IMPACT PO Id]												 AS [Grant Activity Milestone.Activity IMPACT PO Id]
-		, [Grant Activity Milestone.Milestone Auto Release Indicator]									 AS [Grant Activity Milestone.Milestone Auto Release Indicator]
-		, [Grant Activity Milestone.Milestone Date Driven Indicator]									 AS [Grant Activity Milestone.Milestone Date Driven Indicator]
-		, [Grant Activity Milestone.Milestone Actual Amount Ex GST]										 AS [Milestone Actual Amount Ex GST]
-		, IF([Grant Activity Milestone.Milestone Expected Due Date] > TODAY(), 0, 1)					 AS [Overdue by Date]
-		, IF([Grant Activity Milestone.Milestone Expected Due Date] <= TODAY(),
-			IF([Grant Activity Milestone.Milestone Stage] = 'Future', 'Overdue - Not received',
-			IF([Grant Activity Milestone.Milestone Stage] = 'Overdue', 'Overdue - Not received',
-			IF([Grant Activity Milestone.Milestone Stage] = 'Received', 'Overdue - Received'))),
-			IF([Grant Activity Milestone.Milestone Expected Due Date] > TODAY(),
-			IF([Grant Activity Milestone.Milestone Stage] = 'Future', 'Future - Not received',
-			IF([Grant Activity Milestone.Milestone Stage] = 'Overdue', 'Future - Not received',
-			IF([Grant Activity Milestone.Milestone Stage] = 'Received', 'Future - Received'))))
+		, [Activity Id]														 AS [Grant Activity Milestone.Activity Id]
+		, REPLACE(YEARNAME([Milestone Expected Due Date], 0, 7), '-20', '-')	 AS [Milestone Financial Year]
+		, [Activity PBS Program]												 AS [Activity PBS Outcome]
+		, [Managing Office - Activity]											 AS [Milestone Managing Office%]
+		, [Milestone Id]														 AS [Milestone Id]
+		, [Milestone Status]													 AS [Grant Activity Milestone.Milestone Status]
+		, IF([Milestone Expected Due Date] > TODAY(), 'Overdue', [Milestone Stage]) AS [Grant Activity Milestone.Milestone Stage]
+		, [Milestone Completed Indicator]										 AS [Milestone Completed Indicator]
+		, [Milestone Payment Mode]												 AS [Milestone Payment Mode]
+		, [Milestone Received]													 AS [Grant Activity Milestone.Milestone Received]
+		, [Milestone Short Description]										 AS [Grant Activity Milestone.Milestone Short Description]
+		, [Milestone Long Description]											 AS [Milestone Long Description]
+		, [Milestone Completion Description]									 AS [Milestone Completion Description]
+		, [Milestone Type]														 AS [Milestone Type]
+		, (FLOOR(([Milestone Completion Date] - [Milestone Expected Due Date]) / 30) * 30) + 30 AS [Days to Complete]
+		, [Milestone Expected Due Date]										 AS [Milestones Expected Due Date]
+		, [Financial Year Name]												 AS [Grant Activity Milestone.Financial Year Name]
+		, [Milestone Action Required]											 AS [Grant Activity Milestone.Milestone Action Required]
+		, [Milestone Completion Date]											 AS [Milestone Completion Date]
+		, [Activity IMPACT PO Id]												 AS [Grant Activity Milestone.Activity IMPACT PO Id]
+		, [Milestone Auto Release Indicator]									 AS [Grant Activity Milestone.Milestone Auto Release Indicator]
+		, [Milestone Date Driven Indicator]									 AS [Grant Activity Milestone.Milestone Date Driven Indicator]
+		, [Milestone Actual Amount Ex GST]										 AS [Milestone Actual Amount Ex GST]
+		, IF([Milestone Expected Due Date] > TODAY(), 0, 1)					 AS [Overdue by Date]
+		, IF([Milestone Expected Due Date] <= TODAY(),
+			IF([Milestone Stage] = 'Future', 'Overdue - Not received',
+			IF([Milestone Stage] = 'Overdue', 'Overdue - Not received',
+			IF([Milestone Stage] = 'Received', 'Overdue - Received'))),
+			IF([Milestone Expected Due Date] > TODAY(),
+			IF([Milestone Stage] = 'Future', 'Future - Not received',
+			IF([Milestone Stage] = 'Overdue', 'Future - Not received',
+			IF([Milestone Stage] = 'Received', 'Future - Received'))))
 			)																							 AS [Stage]
-		, IF([Grant Activity Milestone.Milestone Expected Due Date] < TODAY() + 30 AND [Grant Activity Milestone.Milestone Expected Due Date] > TODAY(), 1, 0) AS [Due in next 30 Days]
-		, IF([Grant Activity Milestone.Milestone Expected Due Date] < TODAY() + 180 AND [Grant Activity Milestone.Milestone Expected Due Date] > TODAY(), 1, 0) AS [Due in next 6 Months]
-		, IF([Grant Activity Milestone.Milestone Expected Due Date] < TODAY() + 60 AND [Grant Activity Milestone.Milestone Expected Due Date] > TODAY() + 30, 1, 0) AS [Due in next 60 Days]
-		, IF([Grant Activity Milestone.Milestone Completion Date] > TODAY() - 30 AND [Grant Activity Milestone.Milestone Expected Due Date] < TODAY(), 1, 0) AS [Completed in last 30 Days]
+		, IF([Milestone Expected Due Date] < TODAY() + 30 AND [Milestone Expected Due Date] > TODAY(), 1, 0) AS [Due in next 30 Days]
+		, IF([Milestone Expected Due Date] < TODAY() + 180 AND [Milestone Expected Due Date] > TODAY(), 1, 0) AS [Due in next 6 Months]
+		, IF([Milestone Expected Due Date] < TODAY() + 60 AND [Milestone Expected Due Date] > TODAY() + 30, 1, 0) AS [Due in next 60 Days]
+		, IF([Milestone Completion Date] > TODAY() - 30 AND [Milestone Expected Due Date] < TODAY(), 1, 0) AS [Completed in last 30 Days]
 		, IF($([vDaysoverdue]) <= 30, 1, 0)																 AS [Due in last 30 Days]
-	FROM [lib://AppData/PROD/AzureDataLake/SSR/Grant Activity Milestone.qvd] (qvd)
-	WHERE [Grant Activity Milestone.Activity Execution State] = 'Executed' AND [Grant Activity Milestone.Milestone Status] = 'Current'
-	AND MATCH([Grant Activity Milestone.Activity Status], 'Approved', 'Varied', 'Ready for Approval')
-	AND ([Grant Activity Milestone.Activity PBS Program] <> 'DPMC SOETM Services for Other Entities and Trust Monies')
-	AND ([Grant Activity Milestone.Milestone Type] LIKE '*Acquittal*' OR [Grant Activity Milestone.Milestone Long Description] LIKE '*Acquittal*');
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/GPS/Grant Activity Milestone - Old.qvd] (qvd)
+	WHERE [Activity Execution State] = 'Executed' AND [Milestone Status] = 'Current'
+	AND MATCH([Activity Status], 'Approved', 'Varied', 'Ready for Approval')
+	AND ([Activity PBS Program] <> 'DPMC SOETM Services for Other Entities and Trust Monies')
+	AND ([Milestone Type] LIKE '*Acquittal*' OR [Milestone Long Description] LIKE '*Acquittal*');
 
 
 	NOCONCATENATE
@@ -606,7 +606,7 @@ LET vLastYear = NUM(YEAR(TODAY()) - 1);
 		, [Milestone Payment Mode]								 AS [Overdue Payment Mode]
 		, DATE([Outstanding], 'dd/MM/yyyy')						 AS [Milestone Outstanding]
 		, REPLACE(YEARNAME([Outstanding], 0, 7), '-20', '-')	 AS [Overdue Milestone Financial Year]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/GPS/Milestone Overdue Month.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/GPS/Milestone Overdue Month.qvd] (qvd);
 
 
 
@@ -617,7 +617,7 @@ LET vLastYear = NUM(YEAR(TODAY()) - 1);
 		  [Review Id]	 AS [Review Id]
 		, [Error]		 AS [Review Error]
 		, [Error Number]	 AS [Error Number]
-	FROM [lib://Curated data Store:DataFiles/10 Landing Area/GPS/Grant Activity Acquittal Error.qvd] (qvd);
+	FROM [lib://Curated Data Store:DataFiles/10 Landing Area/GPS/Grant Activity Acquittal Error.qvd] (qvd);
 
 
 //Check for missing acquittals by comparing the number of financial years with the number of reviews 
