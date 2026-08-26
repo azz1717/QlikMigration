@@ -572,12 +572,6 @@ retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
   stop("rl_lead_for_row: unexpected status: ", row$status)
 }
 
-# The generated-views evidence (fixtures/views.csv) is a dated EXTRACT, not
-# live cloud state — the 05 trial proved it can lag reality (all 4 "pending"
-# qvds existed and loaded). Update this date whenever the extract is
-# refreshed; a live Curated Data Store DataFiles listing would supersede it.
-.RL_VIEWS_EXTRACT_DATE <- "2026-08-20"
-
 # schema.object for the target view a "retargeted-pending-import" row's
 # new_path points at (parsed back out of the same sprintf shape the rewrite
 # built it with).
@@ -618,9 +612,11 @@ rl_build_dev_notes <- function(report, map_df, store_prefix) {
       v <- .rl_view_from_new_path(pending$new_path[i], store_prefix)
       if (!(v %in% views)) views <- c(views, v)
     }
-    lines <- c(lines, sprintf(
-      "Retargeted, but target qvd was not being generated as at %s — may not load:",
-      .RL_VIEWS_EXTRACT_DATE),
+    # Definitive since the schema-level rule (2026-08-26): Cloud iterates whole
+    # schemas (fixtures/loaded_schemas.csv), so a view in an unloaded schema
+    # has no qvd until the schema is added to the load configuration.
+    lines <- c(lines,
+      "Retargeted, but target schema is not in the cloud load configuration — will not load until it is added:",
       sprintf("  %s", views))
   }
 

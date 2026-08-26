@@ -81,6 +81,8 @@ qvdlist <- read.csv(file.path(root,"fixtures","qvdlist.csv"), stringsAsFactors =
                      check.names = FALSE, colClasses = "character")
 views <- read.csv(file.path(root,"fixtures","views.csv"), stringsAsFactors = FALSE,
                    check.names = FALSE, colClasses = "character")
+loaded_schemas <- read.csv(file.path(root,"fixtures","loaded_schemas.csv"), stringsAsFactors = FALSE,
+                            check.names = FALSE, colClasses = "character")
 
 ## on-prem qvd relpaths, normalised (case-insens, forward slashes, no ext-case)
 qvd_norm <- toupper(gsub("\\\\","/", trimws(qvdlist$RelPath)))
@@ -94,7 +96,12 @@ qvd_exists <- function(relpath) toupper(gsub("\\\\","/", relpath)) %in% qvd_norm
 ## ---------------------------------------------------------------------
 views$tbl_col_key <- paste(up(views$TABLE_SCHEMA), up(views$TABLE_NAME), up(views$COLUMN_NAME), sep = KSEP)
 cand1_idx <- split(seq_len(nrow(views)), views$tbl_col_key)
-view_identity_set <- unique(paste(up(views$VIEW_SCHEMA), up(views$VIEW_NAME), sep = KSEP))
+## NEW tier-1 authority (Adam 2026-08-26): Qlik Cloud materializes every view
+## of every LOADED schema, not just the fixtures/views.csv filtered extract.
+## loaded_schema_set is the tier-1 gate below for the self-referential (idx2)
+## view lookup -- views.csv is still read/used for the cross-view (idx1)
+## candidate lookup, unaffected by this correction.
+loaded_schema_set <- unique(up(loaded_schemas$Schema))
 
 db1v <- db1[up(db1$TABLE_TYPE) == "VIEW", , drop = FALSE]
 db1v$key <- paste(up(db1v$TABLE_SCHEMA), up(db1v$TABLE_NAME), up(db1v$COLUMN_NAME), sep = KSEP)
@@ -133,16 +140,15 @@ classify_one <- function(scol, sobj, scolm) {
   idx2 <- cand2_idx[[rk]]
   if (!is.null(idx2) && length(idx2) > 0) {
     pick <- idx2[1]
-    view_id_key <- paste(up(db1v$TABLE_SCHEMA[pick]), up(db1v$TABLE_NAME[pick]), sep = KSEP)
     ev_file <- "fixtures/DBfixture1.csv"
-    if (view_id_key %in% view_identity_set) {
+    if (up(db1v$TABLE_SCHEMA[pick]) %in% loaded_schema_set) {
       return(list(verdict = "in-cloud", cv_schema = db1v$TABLE_SCHEMA[pick], cv_name = db1v$TABLE_NAME[pick],
                   cv_field = db1v$COLUMN_NAME[pick], ev_file = ev_file,
-                  ev = sprintf("VIEW %s.%s has %s (already scripted)", db1v$TABLE_SCHEMA[pick], db1v$TABLE_NAME[pick], db1v$COLUMN_NAME[pick])))
+                  ev = sprintf("VIEW %s.%s has %s (schema loaded)", db1v$TABLE_SCHEMA[pick], db1v$TABLE_NAME[pick], db1v$COLUMN_NAME[pick])))
     } else {
       return(list(verdict = "import-view", cv_schema = db1v$TABLE_SCHEMA[pick], cv_name = db1v$TABLE_NAME[pick],
                   cv_field = db1v$COLUMN_NAME[pick], ev_file = ev_file,
-                  ev = sprintf("VIEW %s.%s has %s (not yet scripted)", db1v$TABLE_SCHEMA[pick], db1v$TABLE_NAME[pick], db1v$COLUMN_NAME[pick])))
+                  ev = sprintf("VIEW %s.%s has %s (schema not loaded)", db1v$TABLE_SCHEMA[pick], db1v$TABLE_NAME[pick], db1v$COLUMN_NAME[pick])))
     }
   }
 
