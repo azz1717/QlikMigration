@@ -12,6 +12,21 @@
 root    <- "C:/Rtools"
 scratch <- "C:/Users/Adam/AppData/Local/Temp/claude/C--Rtools/94f114db-c53f-4955-a811-2a2668b905cd/scratchpad"
 
+source(file.path(root, "retargeting", "map_upkeep.R"))
+
+## ---------------------------------------------------------------------
+## Optional CLI overrides (M5, PLAN-fleet.md section 6). Every default is
+## the exact path this script has always hardcoded, so a bare run is
+## byte-for-byte what it was; map_refresh.R passes --db/--schemas/--out
+## through so a rebuild can be pointed at a fresher extract, or at a
+## scratch copy, without editing the script.
+## ---------------------------------------------------------------------
+.bq_args <- commandArgs(trailingOnly = TRUE)
+map_check_flags(.bq_args, c("--db", "--schemas", "--out"))
+db_path      <- map_opt(.bq_args, "--db",      file.path(root, "fixtures", "DBfixture1.csv"))
+schemas_path <- map_opt(.bq_args, "--schemas", file.path(root, "fixtures", "loaded_schemas.csv"))
+out_path     <- map_opt(.bq_args, "--out",     file.path(root, "retargeting", "qvd_field_map.csv"))
+
 up <- function(x) toupper(trimws(x))
 KSEP <- "\u0001"
 
@@ -23,21 +38,12 @@ KSEP <- "\u0001"
 ## '/AppData/PROD/' is used for those and counted (n_geo_fallback) -- any
 ## path matching NEITHER marker is a hard STOP, not a guess.
 ## ---------------------------------------------------------------------
+## The rule itself is qvd_relativize() in retargeting/map_upkeep.R (promoted
+## 2026-09-10, M5 -- map_add.R needs the identical normalisation and
+## docs/verify_docs.R's twin check forbids a second copy). Only the
+## fallback COUNTER stays here, since it is this script's own report line.
 n_geo_fallback <- 0L
-rp_relativize_one <- function(x) {
-  if (is.na(x) || x == "") return(x)
-  y <- gsub("\\\\", "/", x)
-  if (!grepl("^lib://", y, ignore.case = TRUE)) return(y)
-  m <- regexpr("AzureDataLake/", y, ignore.case = TRUE)
-  if (m[1] > 0) return(substring(y, m[1] + attr(m, "match.length")))
-  m2 <- regexpr("AppData/PROD/", y, ignore.case = TRUE)
-  if (m2[1] > 0) {
-    n_geo_fallback <<- n_geo_fallback + 1L
-    return(substring(y, m2[1] + attr(m2, "match.length")))
-  }
-  stop("STOP (Directive 1): path does not strip cleanly at '/AzureDataLake/' or the 'AppData/PROD/' fallback: ", x)
-}
-rp_relativize_vec <- function(xs) vapply(xs, rp_relativize_one, character(1), USE.NAMES = FALSE)
+rp_relativize_vec <- function(xs) qvd_relativize(xs, function() n_geo_fallback <<- n_geo_fallback + 1L)
 canon_key <- function(xs) toupper(rp_relativize_vec(xs))
 
 ## ---------------------------------------------------------------------
@@ -45,14 +51,9 @@ canon_key <- function(xs) toupper(rp_relativize_vec(xs))
 ## (generator_app, qvd_path_raw, qvd_field, db_connection, db_schema,
 ## db_table, db_column, src_qvd_path, src_qvd_field, status, line).
 ## ---------------------------------------------------------------------
-req_lineage_cols <- c("generator_app","qvd_path_raw","qvd_field","db_connection","db_schema",
-                       "db_table","db_column","src_qvd_path","src_qvd_field","status","line")
-read_lineage <- function(p) {
-  if (!file.exists(p)) stop("STOP: lineage file missing: ", p)
-  d <- read.csv(p, stringsAsFactors = FALSE, check.names = FALSE, colClasses = "character")
-  if (!identical(names(d), req_lineage_cols)) stop("STOP: unexpected schema in ", p, " -- got: ", paste(names(d), collapse = ","))
-  d
-}
+## Schema constant + reader live in retargeting/map_upkeep.R (MAP_LINEAGE_COLS,
+## read_lineage_csv) since M5 -- map_add.R writes the same schema and must
+## check it the same way.
 
 ## ---------------------------------------------------------------------
 ## 1. Existing 487 literal-app rows (same union lineage_cloud_join.R used).
@@ -66,7 +67,7 @@ lineage_paths <- c(
   file.path(root, "retargeting", "lineage_aurion.csv")
 )
 legacy_cols <- c("generator_app","qvd_path_raw","qvd_field","db_schema","db_table","db_column","status","line")
-lineage_all <- do.call(rbind, lapply(lineage_paths, function(p) read_lineage(p)[, legacy_cols]))
+lineage_all <- do.call(rbind, lapply(lineage_paths, function(p) read_lineage_csv(p)[, legacy_cols]))
 existing <- lineage_all[lineage_all$status == "mapped", , drop = FALSE]
 existing$qvd_path_temp <- NA_character_
 existing$project <- "literal"
@@ -75,13 +76,13 @@ cat(sprintf("Existing literal-app 'mapped' rows: %d (expect 487)\n", nrow(existi
 ## ---------------------------------------------------------------------
 ## fixtures
 ## ---------------------------------------------------------------------
-db1 <- read.csv(file.path(root,"fixtures","DBfixture1.csv"), stringsAsFactors = FALSE,
+db1 <- read.csv(db_path, stringsAsFactors = FALSE,
                  check.names = FALSE, colClasses = "character")
 qvdlist <- read.csv(file.path(root,"fixtures","qvdlist.csv"), stringsAsFactors = FALSE,
                      check.names = FALSE, colClasses = "character")
 views <- read.csv(file.path(root,"fixtures","views.csv"), stringsAsFactors = FALSE,
                    check.names = FALSE, colClasses = "character")
-loaded_schemas <- read.csv(file.path(root,"fixtures","loaded_schemas.csv"), stringsAsFactors = FALSE,
+loaded_schemas <- read.csv(schemas_path, stringsAsFactors = FALSE,
                             check.names = FALSE, colClasses = "character")
 
 ## on-prem qvd relpaths, normalised (case-insens, forward slashes, no ext-case)
@@ -616,10 +617,15 @@ derived_statuses <- c("expr-column","multi-source","parse-error","no-source-bloc
 run_counters <- list()
 
 process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc_lookup = NULL,
-                                ev_suffix = NULL) {
-  d <- read_lineage(path)
+                                ev_suffix = NULL, truth_source = "generator-script") {
+  d <- read_lineage_csv(path)
   n_in <- nrow(d)
   d$line <- suppressWarnings(as.integer(d$line))
+  ## status "manual" (PLAN-fleet.md section 6's word for a hand-added
+  ## lineage_manual.csv row) is a synonym of "mapped": it routes three-tier
+  ## through classify_one() like any other resolved row. No frozen lineage
+  ## file uses it, so this is a no-op for every existing input.
+  d$status[d$status == "manual"] <- "mapped"
 
   conn_blank <- is.na(d$db_connection) | d$db_connection == ""
   is_niaadl  <- !conn_blank & up(d$db_connection) == up("AzureDbProdNIAADL")
@@ -646,7 +652,7 @@ process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc
       source_database = sub$db_connection, source_schema = sub$db_schema, source_object = sub$db_table,
       source_column = sub$db_column, ev_file = ev_file,
       ev = sprintf("non-NIAA source connection: %s", sub$db_connection),
-      truth_source = "generator-script", stringsAsFactors = FALSE)
+      truth_source = truth_source, stringsAsFactors = FALSE)
   }
 
   n_qsrc_matched <- 0L; n_qsrc_unmatched <- 0L
@@ -676,7 +682,7 @@ process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc
       source_app = sub$generator_app, qvd_path_raw = sub$qvd_path_raw, qvd_path_temp = NA_character_,
       onprem_field = sub$qvd_field, verdict = verdicts, cv_schema = cvs, cv_name = cvn, cv_field = cvf,
       source_database = sdb, source_schema = ssch, source_object = sobj, source_column = scol,
-      ev_file = evf, ev = evx, truth_source = "generator-script", stringsAsFactors = FALSE)
+      ev_file = evf, ev = evx, truth_source = truth_source, stringsAsFactors = FALSE)
   }
 
   if (any(is_derived)) {
@@ -688,7 +694,7 @@ process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc
       source_database = ifelse(is.na(sub$db_connection) | sub$db_connection == "", NA_character_, sub$db_connection),
       source_schema = sub$db_schema, source_object = sub$db_table, source_column = sub$db_column,
       ev_file = ev_file, ev = sprintf("status %s at line %s", sub$status, sub$line),
-      truth_source = "generator-script", stringsAsFactors = FALSE)
+      truth_source = truth_source, stringsAsFactors = FALSE)
   }
 
   if (any(is_3t)) {
@@ -705,7 +711,7 @@ process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc
       source_column = sub$db_column,
       ev_file = vapply(cl, function(x) x$ev_file, character(1)),
       ev      = vapply(cl, function(x) x$ev,      character(1)),
-      truth_source = "generator-script", stringsAsFactors = FALSE)
+      truth_source = truth_source, stringsAsFactors = FALSE)
   }
 
   n_ss_excluded <- 0L; n_ss_instantiated <- 0L
@@ -736,7 +742,7 @@ process_new_lineage <- function(app_key, path, ev_file, temp_split = FALSE, qsrc
         source_column = cols$COLUMN_NAME,
         ev_file = vapply(cl2, function(x) x$ev_file, character(1)),
         ev      = vapply(cl2, function(x) x$ev,      character(1)),
-        truth_source = "generator-script", stringsAsFactors = FALSE)
+        truth_source = truth_source, stringsAsFactors = FALSE)
     }
   }
 
@@ -799,13 +805,29 @@ out_gps <- process_new_lineage("GPS", file.path(root,"retargeting","lineage_gps.
 
 out_newapps <- do.call(rbind, Filter(Negate(is.null), list(out_fusion, out_geo, out_geo_dead, out_iep01, out_iep01s, out_gps)))
 
+## ---------------------------------------------------------------------
+## lineage_manual.csv (M5, PLAN-fleet.md section 6, trigger B): the ONE
+## hand-edited lineage file, written by retargeting/map_add.R and read
+## through the same 11-column contract as every frozen one. Its rows carry
+## truth_source "manual" so the map itself says which rows a human asserted;
+## classification is otherwise unchanged, and an empty (header-only) file
+## contributes nothing. A missing file is not an error -- the map must still
+## build on a checkout that predates it.
+## ---------------------------------------------------------------------
+manual_path <- file.path(root, "retargeting", "lineage_manual.csv")
+out_manual <- if (file.exists(manual_path)) {
+  process_new_lineage("manual", manual_path, "retargeting/lineage_manual.csv",
+                      truth_source = "manual")
+} else NULL
+cat(sprintf("lineage_manual.csv rows: %d\n", if (is.null(out_manual)) 0L else nrow(out_manual)))
+
 cat(sprintf("\nQualified-name (3-part FROM clause) db_schema/db_table un-split: %d row(s).\n", n_qualified_fix))
 cat(sprintf("Path-normalization fallback ('AppData/PROD/', no AzureDataLake segment -- Geospatial only): %d row(s).\n", n_geo_fallback))
 
 ## ---------------------------------------------------------------------
 ## Union, final column assembly, directive 1/2/3 corrections, write.
 ## ---------------------------------------------------------------------
-out_all <- rbind(out_existing, out_newapps)
+out_all <- rbind(out_existing, out_newapps, out_manual)
 
 ## Directive 1: path normalization, ALL rows.
 out_all$qvd_path_raw  <- rp_relativize_vec(out_all$qvd_path_raw)
@@ -855,7 +877,7 @@ out <- data.frame(
 out <- out[order(out$source_app, out$onprem_qvd, out$onprem_field), ]
 rownames(out) <- NULL
 
-out_path <- file.path(root, "retargeting", "qvd_field_map.csv")
+## out_path came from the --out override (or its default) at the top.
 write.csv(out, out_path, row.names = FALSE)
 cat(sprintf("\nWrote %d rows to %s\n", nrow(out), out_path))
 
