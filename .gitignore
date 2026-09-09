@@ -105,3 +105,18 @@ retargeting/retarget_payloads.json
 # Output baseline captured before comment-substream work (docs/PLAN-
 # comment-substream.md §11 step 0) - a dev-only diffing aid, not a deliverable.
 baseline-substream/
+
+# fleet/ (PLAN-fleet.md). Three untracked things, for three different reasons:
+#   apps/     one directory per app - unbuilt tenant content, same rule as
+#             unbuilt/ above: it stays on the machine that fetched it.
+#   audit.log the local record of what this machine did to the tenant. It is
+#             evidence, not source, and two machines' logs would only ever
+#             conflict.
+#   spaces.csv a cache of one tenant's space listing, rewritten by every
+#             `fleet.R spaces` run.
+# manifest.csv and master*.csv are NOT here on purpose (PLAN-fleet.md D1,
+# recommended answer (a)): the ledger IS the deliverable and travels with the
+# repo.
+fleet/apps/
+fleet/audit.log
+fleet/spaces.csv
