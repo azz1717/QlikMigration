@@ -243,6 +243,16 @@ open(.cui_stdin, "r")
 # Items that belong to a later milestone are LISTED and say so, rather than
 # being hidden: the menu is the only map of this tool most operators will see,
 # and a gap in the numbering is harder to read than a named "not yet".
+# [D] Doctor (RUNBOOK step 4): the FIRST thing to run against a new tenant.
+# Read-only, so it is offered without the LIVE lock [8] carries. The space is
+# asked for because the space-scoped calls (app ls, data-connection ls) are
+# the ones a migration leans on; Enter skips just those.
+.cui_doctor <- function() {
+	sid <- trimws(.cui_read_line("Space id (Enter to skip the space checks): "))
+	if (nzchar(sid)) .cui_fleet(c("doctor", "--space", sid)) else .cui_fleet("doctor")
+	invisible()
+}
+
 .CUI_LATER <- c("M" = "Map upkeep                       (run map_*.R by hand)")
 
 main <- function() {
@@ -259,6 +269,7 @@ main <- function() {
 		cat("[7] Status board\n")
 		cat("[8] Upload (copy or overwrite) + verify\n")
 		cat("[9] Stamp / reconcile tags\n")
+		cat("[D] Doctor: check the tenant's replies (read-only, run me first)\n")
 		cat("[M] ", .CUI_LATER[["M"]], "\n", sep = "")
 		cat("[Q] Quit\n")
 		choice <- .cui_read_line("> ")
@@ -275,6 +286,7 @@ main <- function() {
 		if (u == "7") { .cui_fleet("status"); next }
 		if (u == "8") { .cui_upload(); next }
 		if (u == "9") { .cui_tags(); next }
+		if (u == "D") { .cui_doctor(); next }
 		if (!u %in% c("1", "2")) {
 			cat("Not a valid choice.\n")
 			next

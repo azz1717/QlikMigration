@@ -97,6 +97,50 @@ qc_error <- function(r) structure(list(status = r$status, out = r$out, args = r$
                                   class = "qc_error")
 qc_failed <- function(x) inherits(x, "qc_error")
 
+# --- shape guards ---------------------------------------------------------
+# Every reply shape this project reads was INFERRED from qlik.dev, not measured
+# on the tenant (DESIGN 8.7). A reply that carries its rows under `items`
+# instead of `data`, or an app copy that answers `id` where `attributes.id` was
+# expected, used to read as "no rows" / "" and travel on as a silent wrong
+# answer - json_items() will even find an `id` nested under ANY key. So the
+# known keys are read in ONE place, and a missing one is a LOUD failure that
+# names the call, the key and the keys that did arrive. `doctor` is the verb
+# that runs these checks on purpose.
+
+.qc_keys <- function(x) {
+	if (is.list(x) && !is.null(names(x))) return(names(x))
+	if (is.list(x)) return(sprintf("(unnamed list of %d)", length(x)))
+	if (is.null(x)) return("(nothing)")
+	sprintf("(%s)", class(x)[1])
+}
+
+#' A wrong-SHAPE failure, in the same qc_error currency as an exit code, with
+#' status -3L so .fl_fail_msg() can print the message alone.
+qc_shape_error <- function(what, expected, reply, args = character(0)) {
+	qc_error(list(status = -3L, args = args,
+	              out = sprintf("%s: expected `%s`, got keys: %s", what, expected,
+	                            paste(.qc_keys(reply), collapse = ", "))))
+}
+
+#' Read a KNOWN key out of a reply, or fail loudly.
+#'
+#' `keys` is either one path - a character vector walked by json_get(), so
+#' c("attributes", "id") means attributes.id - or a LIST of such paths, tried
+#' in order, which is how `qName` or `name` is expressed. `what` names the call
+#' for the message. A present key holding an EMPTY array is a value, not a
+#' miss: an empty `data` is a listing with no rows, which is a normal answer.
+qc_expect <- function(reply, keys, what) {
+	paths <- if (is.list(keys)) keys else list(keys)
+	for (p in paths) {
+		v <- do.call(json_get, c(list(reply), as.list(p)))
+		if (!is.null(v)) return(v)
+	}
+	qc_shape_error(what,
+	               paste(vapply(paths, function(p) paste(as.character(p), collapse = "."),
+	                            character(1)), collapse = "` or `"),
+	               reply)
+}
+
 #' Run a READ-ONLY qlik command and parse its reply.
 #'
 #' json = TRUE appends --json when the caller has not already. The parsed
@@ -111,7 +155,13 @@ qc <- function(args, json = TRUE, timeout = .qc_opt("QC_TIMEOUT_S", 60L)) {
 	txt <- paste(r$out, collapse = "\n")
 	parsed <- tryCatch(json_parse(txt), error = function(e) e)
 	if (inherits(parsed, "error")) {
-		r$out <- c(paste("unparseable reply:", conditionMessage(parsed)), r$out)
+		# The TEXT, not just the parser's complaint: "unexpected token" tells an
+		# operator nothing, while the first 200 characters of what actually came
+		# back (a login prompt, an HTML error page, a plain-text warning) names
+		# the problem on sight. .fl_fail_msg() prints the first two lines, so the
+		# text rides along with every recorded failure.
+		r$out <- c(paste("unparseable reply:", conditionMessage(parsed)),
+		           paste0("text: ", substr(txt, 1L, 200L)), r$out)
 		r$status <- -2L
 		.qc_audit("read", args, r$status, "unparseable reply")
 		return(qc_error(r))
@@ -126,10 +176,11 @@ qc <- function(args, json = TRUE, timeout = .qc_opt("QC_TIMEOUT_S", 60L)) {
 #' A bare string token under links.next is accepted too. Anything else counts
 #' as "no more pages", so an unexpected shape ends the loop instead of
 #' spinning forever - the failure mode worth designing against here.
-qc_next_token <- function(reply) {
+qc_next_token <- function(reply, what = "listing") {
 	nx <- json_get(reply, "links", "next")
 	if (is.null(nx)) return(NA_character_)
-	href <- if (is.character(nx)) nx else json_get(nx, "href")
+	href <- if (is.character(nx)) nx else qc_expect(nx, "href", paste(what, "paging"))
+	if (qc_failed(href)) return(href)
 	if (!is.character(href) || length(href) != 1L) return(NA_character_)
 	m <- regmatches(href, regexpr("[?&]next=([^&]+)", href))
 	if (!length(m)) return(NA_character_)
@@ -138,10 +189,19 @@ qc_next_token <- function(reply) {
 
 #' Items of a listing reply, whatever it is wrapped in: a bare array, a
 #' `data` array, or a nested one. Keyed on `key` being present (json_items()).
-qc_items <- function(reply, key = "id") {
+qc_items <- function(reply, key = "id", what = "listing") {
 	if (is.null(reply)) return(list())
-	d <- json_get(reply, "data")
-	json_items(if (is.null(d)) reply else d, key)
+	if (qc_failed(reply)) return(reply)
+	# A bare ARRAY is a listing in its own right (`collection ls` and `item
+	# collections` answer that way). An OBJECT must carry `data`: without this
+	# a reply wrapped in `items` fell through to json_items(), which happily
+	# found the rows under any key at all and reported success.
+	if (is.list(reply) && !is.null(names(reply))) {
+		d <- qc_expect(reply, "data", what)
+		if (qc_failed(d)) return(d)
+		return(json_items(d, key))
+	}
+	json_items(reply, key)
 }
 
 #' Follow a paged listing to the end and return every item.
@@ -152,8 +212,13 @@ qc_items <- function(reply, key = "id") {
 #' policy: a server that keeps handing back the same token would otherwise
 #' loop forever.
 qc_pages <- function(args, limit = 100L, key = "id",
-                     timeout = .qc_opt("QC_TIMEOUT_S", 60L), max_pages = 100L) {
+                     timeout = .qc_opt("QC_TIMEOUT_S", 60L), max_pages = 100L,
+                     what = NULL) {
 	if (!("--limit" %in% args)) args <- c(args, "--limit", as.character(limit))
+	# The call, for the shape messages: the first two words that are not flags
+	# and not a flag's value ("app ls", "data-connection ls").
+	if (is.null(what))
+		what <- paste(utils::head(args[!startsWith(args, "--")], 2L), collapse = " ")
 	out <- list()
 	token <- NA_character_
 	seen <- character(0)
@@ -161,9 +226,11 @@ qc_pages <- function(args, limit = 100L, key = "id",
 		a <- if (is.na(token)) args else c(args, "--next", token)
 		reply <- qc(a, json = TRUE, timeout = timeout)
 		if (qc_failed(reply)) return(reply)
-		items <- qc_items(reply, key)
+		items <- qc_items(reply, key, what)
+		if (qc_failed(items)) return(items)
 		if (length(items)) out[(length(out) + 1L):(length(out) + length(items))] <- items
-		token <- qc_next_token(reply)
+		token <- qc_next_token(reply, what)
+		if (qc_failed(token)) return(token)
 		if (is.na(token) || token %in% seen) break
 		seen <- c(seen, token)
 	}

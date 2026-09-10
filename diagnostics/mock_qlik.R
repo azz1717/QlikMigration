@@ -88,6 +88,13 @@ if (nzchar(.log)) {
 # caller's --limit 100 would return everything in one page and the
 # multi-page path - the whole reason DESIGN 8.3 exists - would never run in
 # a test.
+# MOCK_QLIK_SHAPE=items makes every paged listing carry its rows under `items`
+# instead of `data` - a tenant whose reply shape is not the inferred one. It
+# exists so the shape guards (qc_expect/qc_items) and `fleet.R doctor` can be
+# proved to FAIL when they should; unset, nothing about this mock changes.
+.SHAPE <- Sys.getenv("MOCK_QLIK_SHAPE", "")
+.rows_key <- function() if (identical(.SHAPE, "items")) "items" else "data"
+
 .page <- function(items, page, per = 2L) {
 	n <- length(items)
 	from <- (page - 1L) * per + 1L
@@ -99,7 +106,7 @@ if (nzchar(.log)) {
 			.obj(.fld("href", paste0("https://mock.invalid/api/v1/items?limit=", per,
 			                         "&next=page", page + 1L))))))
 	else paste0(",", .q("links"), ":", .obj())
-	paste0("{", .q("data"), ":[", paste(body, collapse = ","), "]", nxt, "}")
+	paste0("{", .q(.rows_key()), ":[", paste(body, collapse = ","), "]", nxt, "}")
 }
 .page_no <- function() {
 	tok <- .mk_val("--next")

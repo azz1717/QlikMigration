@@ -12,8 +12,14 @@ Cloud-writing steps print their commands and do nothing until you add
 2. Put every app that is to be migrated in one Qlik Cloud shared space.
    Nothing else goes in that space. QVD builder/generator apps never do.
 3. Create the staging space that will receive the rebuilt copies.
-4. First time only: confirm the qlik-cli flags in the appendix with
-   `qlik <cmd> --help`. They were taken from qlik.dev docs, not a tenant.
+4. First time only, before anything else:
+   `Rscript fleet/fleet.R doctor --space <id>`
+   Read-only; it writes nothing to the cloud. It makes each call in
+   the appendix and checks the reply carries the keys this tool reads,
+   printing PASS/FAIL per call and exiting 1 if any failed. The
+   appendix is the reference of what it checks. If a call FAILs with
+   "expected `data`, got keys: ..." the tenant answers in a shape this
+   code does not read yet — send that line on, do not run other verbs.
 
 ## 2. Connect and pick the apps    (menu [3])
     Rscript fleet/fleet.R spaces --name "<part of space name>"
@@ -94,8 +100,9 @@ disagree (`fleet/tag_drift.csv`).
 | Hand mappings | retargeting/lineage_manual.csv |
 | Flag definitions | fleet/flags.csv (add a row to add a flag) |
 
-## Appendix — qlik-cli calls to confirm once with `--help`
-Never run against a tenant yet; the code sends exactly these.
+## Appendix — the qlik-cli calls, and what `doctor` checks
+Never run against a tenant yet; the code sends exactly these, and
+setup step 4's `doctor` makes the read-only ones for real.
 | call | used by |
 |---|---|
 | paging: `--limit N`, `--next <token>`; reply `links.next.href` with `next=`, rows under `data` | every listing |

@@ -167,7 +167,8 @@ manifest_upsert <- function(m, rows) {
 
 # --- argument parsing -----------------------------------------------------
 .FL_VALUE_FLAGS <- c("--manifest", "--apps", "--stage", "--space", "--name",
-                     "--type", "--limit", "--to-space", "--mode", "--dir")
+                     "--type", "--limit", "--to-space", "--mode", "--dir",
+                     "--app")
 .FL_BOOL_FLAGS <- c("--dry-run", "--live", "--all", "--digest", "--no-rollup",
                     "--force", "--no-style", "--allow-unresolved", "--adopt",
                      "--help")
@@ -226,8 +227,26 @@ fleet_parse_args <- function(argv) {
 
 # --- shared verb plumbing -------------------------------------------------
 .fl_fail_msg <- function(r) {
+	# A SHAPE failure (qc_shape_error, status -3) already reads as a sentence
+	# and never had an exit code of its own; prefixing "exit -3" would only
+	# bury the one thing the operator has to read.
+	if (identical(as.integer(r$status), -3L)) return(paste(r$out, collapse = " "))
 	head_out <- utils::head(r$out, 2L)
 	paste0("exit ", r$status, if (length(head_out)) paste0(": ", paste(head_out, collapse = " ")))
+}
+
+# The KNOWN keys of a listing, checked once on the first row rather than per
+# row: a tenant that answers with a different shape answers that way for every
+# row, and a per-row check would print the same message a thousand times.
+# Each element of `keys` is handed to qc_expect() as it stands, so "id" is one
+# key and list("qName", "name") is "either of these".
+.fl_first_keys <- function(items, keys, what) {
+	if (!length(items)) return(TRUE)
+	for (k in keys) {
+		v <- qc_expect(items[[1]], k, what)
+		if (qc_failed(v)) return(v)
+	}
+	TRUE
 }
 
 .fl_str <- function(x, default = "") {
@@ -243,6 +262,8 @@ fleet_parse_args <- function(argv) {
 .fl_app_rows <- function(space_id, name_filter = NULL) {
 	items <- qc_pages(c("app", "ls", "--spaceId", space_id))
 	if (qc_failed(items)) return(items)
+	shape <- .fl_first_keys(items, list("id", "name"), "app ls")
+	if (qc_failed(shape)) return(shape)
 	if (!length(items)) return(data.frame(id = character(0), name = character(0),
 	                                      modified = character(0),
 	                                      stringsAsFactors = FALSE))
@@ -261,6 +282,8 @@ fleet_parse_args <- function(argv) {
 .fl_space_rows <- function(name_filter = NULL, type_filter = NULL) {
 	items <- qc_pages(c("space", "ls"))
 	if (qc_failed(items)) return(items)
+	shape <- .fl_first_keys(items, list("id", "name"), "space ls")
+	if (qc_failed(shape)) return(shape)
 	df <- data.frame(
 		id = vapply(items, function(it) .fl_str(it[["id"]]), character(1)),
 		name = vapply(items, function(it) .fl_str(it[["name"]]), character(1)),
@@ -336,6 +359,10 @@ fleet_parse_args <- function(argv) {
 	for (ch in chunks) {
 		items <- qc_pages(c("item", "ls", "--resourceIds", paste(ch, collapse = ","),
 		                    "--resourceType", "app"))
+		if (!qc_failed(items)) {
+			shape <- .fl_first_keys(items, list("id", "resourceId"), "item ls")
+			if (qc_failed(shape)) items <- shape
+		}
 		if (qc_failed(items)) {
 			.fl_warn("item ls failed: ", .fl_fail_msg(items), " (item_id left blank)")
 			next
@@ -1396,8 +1423,12 @@ fleet_tag_id <- function(tag, tags = fleet_tags_read(), create = TRUE) {
 				return(list(id = "", tags = tags, created = FALSE))
 			}
 		} else {
-			found <- .fl_str(if (!is.null(r[["id"]])) r[["id"]]
-			                 else json_get(r, "attributes", "id"))
+			cid <- qc_expect(r, list("id", c("attributes", "id")), "collection create")
+			if (qc_failed(cid)) {
+				.fl_warn("collection create ", tag, ": ", .fl_fail_msg(cid))
+				return(list(id = "", tags = tags, created = FALSE))
+			}
+			found <- .fl_str(cid)
 			created <- TRUE
 		}
 	}
@@ -1409,7 +1440,10 @@ fleet_tag_id <- function(tag, tags = fleet_tags_read(), create = TRUE) {
 fleet_item_tags <- function(item_id) {
 	r <- qc(c("item", "collections", item_id))
 	if (qc_failed(r)) return(r)
-	items <- qc_items(r)
+	items <- qc_items(r, "id", "item collections")
+	if (qc_failed(items)) return(items)
+	shape <- .fl_first_keys(items, list("id", "name"), "item collections")
+	if (qc_failed(shape)) return(shape)
 	if (!length(items)) return(data.frame(id = character(0), name = character(0),
 	                                      stringsAsFactors = FALSE))
 	data.frame(id = vapply(items, function(it) .fl_str(it[["id"]]), character(1)),
@@ -1681,8 +1715,15 @@ fleet_space_connections <- function(space_id) {
 	if (!nzchar(space_id)) return(NULL)
 	r <- qc_pages(c("data-connection", "ls", "--spaceId", space_id))
 	if (qc_failed(r)) return(NULL)
-	nm <- vapply(r, function(x) .fl_str(json_get(x, "qName"),
-	                                    .fl_str(json_get(x, "name"))), character(1))
+	shape <- .fl_first_keys(r, list(list("qName", "name")), "data-connection ls")
+	if (qc_failed(shape)) {
+		.fl_warn(.fl_fail_msg(shape))
+		return(NULL)
+	}
+	nm <- vapply(r, function(x) {
+		v <- qc_expect(x, list("qName", "name"), "data-connection ls")
+		if (qc_failed(v)) "" else .fl_str(v)
+	}, character(1))
 	nm[nzchar(nm)]
 }
 
@@ -1757,10 +1798,11 @@ fleet_space_connections <- function(space_id) {
 				blocked <- blocked + 1L
 				next
 			}
-			target <- .fl_str(json_get(r, "attributes", "id"),
-			                  .fl_str(json_get(r, "id")))
+			tgt <- qc_expect(r, list(c("attributes", "id"), "id"), "app copy")
+			target <- if (qc_failed(tgt)) "" else .fl_str(tgt)
 			if (!nzchar(target)) {
-				m <- .fl_block(m, id, "copy: no app id in the reply")
+				m <- .fl_block(m, id, paste0("copy: ", if (qc_failed(tgt))
+					.fl_fail_msg(tgt) else "no app id in the reply"))
 				blocked <- blocked + 1L
 				next
 			}
@@ -1890,15 +1932,119 @@ fleet_script_diff <- function(downloaded, local) {
 	if (bad > 0L) 2L else 0L
 }
 
+# --- doctor ---------------------------------------------------------------
+# What the tenant ANSWERS, checked against what this code READS. It replaces
+# RUNBOOK step 4's manual `qlik <cmd> --help` pass: the flag names were never
+# the real risk (a rejected flag exits non-zero and is loud), the reply SHAPES
+# were - every one of them inferred from qlik.dev (DESIGN 8.7), and a reply
+# that carries its rows under another key used to read as "no rows".
+#
+# READ-ONLY BY CONSTRUCTION: every call below goes through qc(), never
+# qc_write() and never `app unbuild`, so there is nothing here that --live
+# could turn on and nothing on the tenant to undo.
+.fl_verb_doctor <- function(opts) {
+	sid <- .fl_resolve_space(.fl_opt(opts, "space"))
+	app_id <- .fl_opt(opts, "app", "")
+	pass <- 0L
+	fail <- 0L
+	say <- function(label, args, res) {
+		ok <- !qc_failed(res)
+		if (ok) pass <<- pass + 1L else fail <<- fail + 1L
+		.fl_say(if (ok) "PASS " else "FAIL ", label)
+		.fl_say("      $ qlik ", paste(args, collapse = " "))
+		if (!ok) .fl_say("      ", .fl_fail_msg(res))
+		ok
+	}
+	# One listing: run it, then read its rows and their known keys through the
+	# same helpers the real verbs use - so a PASS here means those verbs work,
+	# not merely that the call exited 0.
+	listing <- function(label, args, keys, key = "id") {
+		reply <- qc(args)
+		res <- reply
+		items <- list()
+		if (!qc_failed(res)) {
+			items <- qc_items(res, key, label)
+			if (qc_failed(items)) {
+				res <- items
+				items <- list()
+			} else {
+				shape <- .fl_first_keys(items, keys, label)
+				if (qc_failed(shape)) { res <- shape; items <- list() }
+			}
+		}
+		list(ok = say(label, args, res), reply = reply, items = items)
+	}
+	.fl_rule()
+	.fl_say("doctor: read-only checks of the tenant's replies (nothing is written)")
+	.fl_rule()
+
+	va <- c("--version")
+	say("qlik --version", va, qc(va, json = FALSE))
+
+	sa <- c("space", "ls", "--limit", "1", "--json")
+	sp <- listing("space ls", sa, list("id", "name"))
+	# --next is sent ONLY when page 1 actually carried a next link: asking for a
+	# page the tenant never offered would prove nothing and could error.
+	if (sp$ok) {
+		tok <- qc_next_token(sp$reply, "space ls")
+		if (qc_failed(tok)) {
+			say("space ls paging", sa, tok)
+		} else if (is.na(tok)) {
+			.fl_say("SKIP  space ls paging (page 1 carried no next link)")
+		} else {
+			listing("space ls page 2", c(sa, "--next", tok), list("id", "name"))
+		}
+	}
+
+	if (!is.null(sid) && nzchar(sid)) {
+		aa <- c("app", "ls", "--spaceId", sid, "--limit", "1", "--json")
+		ap <- listing("app ls", aa, list("id", "name"))
+		if (ap$ok && !nzchar(app_id) && length(ap$items))
+			app_id <- .fl_str(ap$items[[1]][["id"]])
+	}
+
+	if (nzchar(app_id)) {
+		ia <- c("item", "ls", "--resourceIds", app_id, "--resourceType", "app", "--json")
+		it <- listing("item ls", ia, list("id", "resourceId"))
+		item_id <- if (it$ok && length(it$items)) .fl_str(it$items[[1]][["id"]]) else ""
+		if (nzchar(item_id))
+			listing("item collections", c("item", "collections", item_id, "--json"),
+			        list("id", "name"))
+		else
+			.fl_say("SKIP  item collections (no item id for app ", app_id, ")")
+	} else {
+		.fl_say("SKIP  item ls / item collections (no --app and none found)")
+	}
+
+	listing("collection ls", c("collection", "ls", "--json"), list("id", "name"))
+
+	if (!is.null(sid) && nzchar(sid))
+		listing("data-connection ls",
+		        c("data-connection", "ls", "--spaceId", sid, "--json"),
+		        list(list("qName", "name")))
+	else
+		.fl_say("SKIP  app ls / data-connection ls (no --space given)")
+
+	.fl_rule()
+	if (fail == 0L) {
+		.fl_say("doctor: ", pass, " checks passed - replies match what fleet reads")
+		return(0L)
+	}
+	.fl_say("doctor: ", fail, " of ", pass + fail,
+	        " checks FAILED - fix the shape before running any other verb")
+	1L
+}
+
 .FL_TODO <- c("map" = "M5")
 
 .fl_usage <- function() {
 	.fl_say("usage: Rscript fleet/fleet.R <verb> [options]")
-	.fl_say("verbs now:   spaces apps add import-unbuilt fetch reconcile-ids")
-	.fl_say("             process report rollup status stamp reconcile")
-	.fl_say("             upload verify")
+	.fl_say("verbs now:   doctor spaces apps add import-unbuilt fetch")
+	.fl_say("             reconcile-ids process report rollup status stamp")
+	.fl_say("             reconcile upload verify")
 	.fl_say("verbs later: ", paste(names(.FL_TODO), collapse = " "))
-	.fl_say("options: --manifest f --space id|# --apps i,j|id,id --name s")
+	.fl_say("options: --manifest f --space id|# --app id --apps i,j|id,id")
+	.fl_say("         --name s")
 	.fl_say("         --type t --dir d --all --stage s --digest --no-rollup")
 	.fl_say("         --no-style --allow-unresolved --adopt --dry-run --live")
 	.fl_say("         --mode copy|overwrite --to-space id --force")
@@ -1914,6 +2060,7 @@ fleet_main <- function(argv) {
 	if (isTRUE(p$opts[["live"]])) DRY_RUN <<- FALSE
 	if (isTRUE(p$opts[["dry-run"]])) DRY_RUN <<- TRUE
 	switch(p$verb,
+	       doctor = .fl_verb_doctor(p$opts),
 	       spaces = .fl_verb_spaces(p$opts),
 	       apps = .fl_verb_apps(p$opts),
 	       add = .fl_verb_add(p$opts),

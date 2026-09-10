@@ -268,6 +268,57 @@ manifest_write(mb, MANIFEST)
        identical(fleet_parse_args(c("add", "--space", "2", "--all"))$opts,
                  list(space = "2", all = TRUE)))
 
+# --- 6. reply SHAPES: loud, not silent ------------------------------------
+# Every shape fleet/ reads was INFERRED from qlik.dev (DESIGN 8.7). These
+# checks are the mechanism that turns a wrong guess into a message instead of
+# an empty listing - and `doctor` is the verb that runs them on purpose.
+.tf_section("shape guards (qc_expect / qc_items) and doctor")
+raw <- qc(c("--version"))               # answers plain text, not JSON
+.tf_ok("an unparseable reply is a failure that SHOWS the text",
+       qc_failed(raw) && any(grepl("unparseable", raw$out, fixed = TRUE)) &&
+       	any(grepl("3.2.0-mock", raw$out[2], fixed = TRUE)),
+       paste(utils::head(raw$out, 2L), collapse = " | "))
+.tf_ok("the text is capped at 200 characters", nchar(raw$out[2]) <= 206L)
+
+.tf_ok("qc_expect walks a nested path and takes the first path that hits",
+       identical(qc_expect(json_parse('{"attributes":{"id":"x"}}'),
+                           list(c("attributes", "id"), "id"), "app copy"), "x") &&
+       	identical(qc_expect(json_parse('{"id":"y"}'),
+                            list(c("attributes", "id"), "id"), "app copy"), "y"))
+miss <- qc_expect(json_parse('{"qName2":"n","spaceId":"s"}'),
+                  list("qName", "name"), "data-connection ls")
+.tf_ok("a missing key names the call, the key and the keys received",
+       qc_failed(miss) &&
+       	grepl("data-connection ls", miss$out, fixed = TRUE) &&
+       	grepl("qName` or `name", miss$out, fixed = TRUE) &&
+       	grepl("qName2, spaceId", miss$out, fixed = TRUE),
+       miss$out)
+.tf_ok("a shape failure prints as a sentence, with no exit code in front",
+       identical(.fl_fail_msg(miss), miss$out))
+wrong <- qc_items(json_parse('{"items":[{"id":"a"}],"links":{}}'), "id", "app ls")
+.tf_ok("rows under the wrong key are a failure, not an empty listing",
+       qc_failed(wrong) &&
+       	grepl("app ls: expected `data`, got keys: items, links", wrong$out, fixed = TRUE),
+       if (qc_failed(wrong)) wrong$out else paste("got", length(wrong), "items"))
+empty <- qc_items(json_parse('{"data":[],"links":{}}'), "id", "app ls")
+.tf_ok("an empty data array is a listing with no rows, NOT an error",
+       !qc_failed(empty) && length(empty) == 0L)
+.tf_ok("a bare array is still a listing (collection ls, item collections)",
+       length(qc_items(json_parse('[{"id":"c1","name":"mig:x"}]'), "id", "collection ls")) == 1L)
+
+.tf_ok("doctor exits 0 against the mock",
+       fleet_main(c("doctor", "--space", "sp00000000001")) == 0L)
+.tf_ok("doctor exits 0 without a space (space-scoped checks skipped)",
+       fleet_main(c("doctor")) == 0L)
+Sys.setenv(MOCK_QLIK_SHAPE = "items")
+.tf_ok("a listing under `items` fails loudly through qc_pages",
+       qc_failed(qc_pages(c("space", "ls"))))
+.tf_ok("doctor exits 1 when the tenant answers with the wrong shape",
+       fleet_main(c("doctor", "--space", "sp00000000001")) == 1L)
+Sys.unsetenv("MOCK_QLIK_SHAPE")
+.tf_ok("and passes again once the shape is right",
+       fleet_main(c("doctor", "--space", "sp00000000001")) == 0L)
+
 cat("\n", sprintf("%d checks, %d failed", .TF_CHECKS, .TF_FAILS), "\n", sep = "")
 cat("call log: ", CALL_LOG, "\naudit log: ", AUDIT_LOG, "\n", sep = "")
 if (.TF_FAILS > 0L) quit(status = 1L) else cat("FLEET M0 GREEN\n")
