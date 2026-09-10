@@ -1277,8 +1277,8 @@ fleet_reconcile_match <- function(app_name, listing) {
 }
 
 # =========================================================================
-# M4: tag stamping. PLAN-fleet.md section 7 (D4 = a).
-# A Qlik Cloud tag IS a public collection, so `mig:<stage>` is a collection
+# M4: tag stamping. PLAN-fleet.md section 7 (D4 ANSWERED 2026-09-10, Adam).
+# A Qlik Cloud tag IS a public collection, so each `mig:*` tag is a collection
 # and stamping an app is adding its ITEM (item id != app id) to one.
 # =========================================================================
 
@@ -1286,8 +1286,61 @@ TAGS_CSV <- file.path(FLEET_DIR, "tags.csv")
 TAG_DRIFT_CSV <- file.path(FLEET_DIR, "tag_drift.csv")
 FLEET_TAG_PREFIX <- "mig:"
 
-#' The tag that names a stage. Section 7's scheme, one place.
-fleet_tag_for <- function(stage) paste0(FLEET_TAG_PREFIX, stage)
+# Section 7's scheme (D4 ANSWERED 2026-09-10, Adam): a hub reader never sees an
+# unbuilt app, so the only tags worth carrying are "the first scripts have run"
+# and "what is still outstanding".
+#
+# PROGRESS - at most one per item, and only from `retargeted` up. Below that,
+# and for `blocked`, an app carries NO progress tag: the ledger holds the stage
+# and last_error, and a tag that says "not started" tells the hub nothing.
+FLEET_PROGRESS <- c(processed = "retargeted", built = "built", verified = "verified")
+.FL_PROGRESS_TAGS <- paste0(FLEET_TAG_PREFIX, names(FLEET_PROGRESS))
+
+#' The progress tag for a ledger stage, or "" when the stage earns none.
+fleet_progress_tag <- function(stage) {
+	r <- stage_rank(stage)
+	if (is.na(r)) return("")
+	for (k in rev(seq_along(FLEET_PROGRESS)))
+		if (r >= stage_rank(FLEET_PROGRESS[[k]]))
+			return(paste0(FLEET_TAG_PREFIX, names(FLEET_PROGRESS)[k]))
+	""
+}
+
+#' The stage a progress tag claims - what `reconcile` compares, so that
+#' `retargeted` and its tag `mig:processed` are the same fact stated twice.
+fleet_progress_stage <- function(stage) {
+	t <- fleet_progress_tag(stage)
+	if (!nzchar(t)) "" else
+		unname(FLEET_PROGRESS[[sub(paste0("^", FLEET_TAG_PREFIX), "", t)]])
+}
+
+#' The outstanding tag for one flags.csv flag: underscores become hyphens,
+#' because `mig:unknown-src` is what a person reads in the hub.
+fleet_flag_tag <- function(flag) paste0(FLEET_TAG_PREFIX, gsub("_", "-", flag))
+
+#' Every outstanding tag one app has earned: one per flag_<name> column of
+#' master.csv that is non-zero. flags.csv drives the set, so a flag Adam adds
+#' by hand becomes a tag with no code change, and a flag that clears loses its
+#' tag on the next stamp. A heuristic flag (nprint) is tagged like any other -
+#' the master column already says it is a hint.
+fleet_outstanding_tags <- function(app_id, master = .fl_read(MASTER_CSV)) {
+	if (is.null(master) || !nrow(master) || is.null(master$app_id)) return(character(0))
+	k <- match(as.character(app_id), as.character(master$app_id))
+	if (is.na(k)) return(character(0))
+	out <- character(0)
+	for (cn in grep("^flag_", names(master), value = TRUE)) {
+		v <- suppressWarnings(as.numeric(master[[cn]][k]))
+		if (!is.na(v) && v != 0) out <- c(out, fleet_flag_tag(sub("^flag_", "", cn)))
+	}
+	out
+}
+
+#' The whole tag set one app should carry: its progress tag (if any) plus one
+#' tag per outstanding flag.
+fleet_want_tags <- function(stage, app_id, master = .fl_read(MASTER_CSV)) {
+	p <- fleet_progress_tag(stage)
+	c(if (nzchar(p)) p, fleet_outstanding_tags(app_id, master))
+}
 
 #' The tag -> collection id cache (fleet/tags.csv). A missing file is empty.
 fleet_tags_read <- function(path = TAGS_CSV)
@@ -1364,25 +1417,29 @@ fleet_item_tags <- function(item_id) {
 	           stringsAsFactors = FALSE)
 }
 
-#' What to add and what to remove so one item carries exactly one mig: tag.
+#' What to add and what to remove so one item carries exactly the tag set
+#' `want` under the mig: prefix - progress tag plus outstanding tags.
 #'
-#' Exclusivity is scoped to the mig: prefix and nothing else. An item's other
-#' collections are somebody's curation of the estate and are none of this
-#' tool's business - removing them would be a silent, unrecoverable edit to
-#' another team's work.
+#' Exclusivity is scoped to the mig: prefix and nothing else, so a mig: tag
+#' that is NOT wanted goes, whatever it is: the tags of a retired scheme, or a
+#' flag that has since cleared, would otherwise sit in the hub for ever. An
+#' item's other collections are somebody's curation of the estate and are none
+#' of this tool's business - removing them would be a silent, unrecoverable
+#' edit to another team's work.
 fleet_stamp_plan <- function(current_names, want) {
 	cur <- current_names[startsWith(current_names, FLEET_TAG_PREFIX)]
-	list(add = if (want %in% cur) character(0) else want,
-	     remove = setdiff(cur, want))
+	want <- unique(want[nzchar(want)])
+	list(add = setdiff(want, cur), remove = setdiff(cur, want))
 }
 
-#' Which stage an item's tags name, or "" when there is no mig: tag or more
-#' than one. Two mig: tags is exactly the drift `reconcile` exists to report,
-#' so it must not resolve to whichever came first.
+#' Which stage an item's PROGRESS tags name, or "" when it carries none or
+#' more than one. Two progress tags is exactly the drift `reconcile` exists to
+#' report, so it must not resolve to whichever came first. Outstanding tags are
+#' informational and are never read back into the ledger.
 fleet_tag_stage <- function(tag_names) {
-	t <- tag_names[startsWith(tag_names, FLEET_TAG_PREFIX)]
+	t <- tag_names[tag_names %in% .FL_PROGRESS_TAGS]
 	if (length(t) != 1L) return("")
-	sub(paste0("^", FLEET_TAG_PREFIX), "", t[1])
+	unname(FLEET_PROGRESS[[sub(paste0("^", FLEET_TAG_PREFIX), "", t[1])]])
 }
 
 #' Do the local artefacts a stage PROMISES actually exist? The --adopt guard
@@ -1413,6 +1470,7 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
 	tags <- fleet_tags_read()
+	master <- .fl_read(MASTER_CSV)
 	dry <- .qc_dry()
 	n_ok <- 0L; n_add <- 0L; n_rm <- 0L; n_skip <- 0L
 	for (i in seq_len(nrow(sel))) {
@@ -1423,7 +1481,7 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 			n_skip <- n_skip + 1L
 			next
 		}
-		want <- fleet_tag_for(sel$stage[i])
+		want <- fleet_want_tags(sel$stage[i], id, master)
 		cur <- fleet_item_tags(item)
 		if (qc_failed(cur)) {
 			.fl_warn(id, ": item collections failed: ", .fl_fail_msg(cur))
@@ -1437,26 +1495,28 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 			         json = FALSE, label = paste("untag", id, nm))
 			n_rm <- n_rm + 1L
 		}
-		if (length(plan$add)) {
-			g <- fleet_tag_id(want, tags)
+		missed <- FALSE
+		for (nm in plan$add) {
+			g <- fleet_tag_id(nm, tags)
 			tags <- g$tags
 			if (!nzchar(g$id)) {
 				# Live, no id means the create genuinely failed. Dry, it only
 				# means the collection does not exist yet - print the step.
 				if (!dry) {
-					.fl_warn(id, ": no collection id for ", want)
-					n_skip <- n_skip + 1L
+					.fl_warn(id, ": no collection id for ", nm)
+					missed <- TRUE
 					next
 				}
 				cat("DRY RUN $ qlik collection item create --collectionId <new ",
-				    want, "> --id ", item, "\n", sep = "")
+				    nm, "> --id ", item, "\n", sep = "")
 			} else {
 				qc_write(c("collection", "item", "create", "--collectionId", g$id,
 				           "--id", item),
-				         json = FALSE, label = paste("tag", id, want))
+				         json = FALSE, label = paste("tag", id, nm))
 			}
 			n_add <- n_add + 1L
 		}
+		if (missed) { n_skip <- n_skip + 1L; next }
 		n_ok <- n_ok + 1L
 	}
 	if (!dry) .fl_write_csv(tags, TAGS_CSV)
@@ -1487,6 +1547,7 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 		id <- sel$app_id[i]
 		item <- .fl_str(sel$item_id[i])
 		tag_stage <- ""
+		n_prog <- 0L
 		action <- ""
 		if (!nzchar(item)) {
 			action <- "no item_id"
@@ -1494,11 +1555,19 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 			cur <- fleet_item_tags(item)
 			if (qc_failed(cur)) action <- paste0("item collections failed: ",
 			                                     .fl_fail_msg(cur))
-			else tag_stage <- fleet_tag_stage(cur$name)
+			else {
+				n_prog <- sum(cur$name %in% .FL_PROGRESS_TAGS)
+				tag_stage <- fleet_tag_stage(cur$name)
+			}
 		}
+		# Progress tags only. Outstanding tags are informational - they say what
+		# is left to do, not how far the work got, so adopting one would put a
+		# connector's name where a stage belongs.
+		want_stage <- fleet_progress_stage(sel$stage[i])
 		if (!nzchar(action)) {
-			if (!nzchar(tag_stage)) action <- "no single mig: tag"
-			else if (identical(tag_stage, sel$stage[i])) action <- "agree"
+			if (n_prog > 1L) action <- "no single mig: progress tag"
+			else if (identical(tag_stage, want_stage)) action <- "agree"
+			else if (!nzchar(tag_stage)) action <- "no progress tag"
 			else if (!adopt) action <- "drift"
 			else if (!is.na(stage_rank(sel$stage[i])) && !is.na(stage_rank(tag_stage)) &&
 			         stage_rank(tag_stage) < stage_rank(sel$stage[i]))
@@ -1530,7 +1599,8 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 		                rows$action[i]))
 	.fl_rule()
 	.fl_say(nrow(rows), " item(s) checked, ",
-	        sum(rows$action %in% c("drift", "adopted")), " differing; ", TAG_DRIFT_CSV)
+	        sum(rows$action %in% c("drift", "adopted", "no progress tag")),
+	        " differing; ", TAG_DRIFT_CSV)
 	0L
 }
 

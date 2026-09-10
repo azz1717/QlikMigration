@@ -245,22 +245,65 @@ manifest_write(manifest_upsert(manifest_new(),
 .t2_ok("reconcile-ids with a local: row but no space is a usage error",
        fleet_main(c("reconcile-ids", "--manifest", NOSPACE, "--no-rollup")) == 1L)
 
-# --- 4. stamp (M4) --------------------------------------------------------
-.t2_section("stamp - exclusive mig:* tags per item (section 7)")
+# --- 4. stamp (M4; scheme reworked 2026-09-10 on Adam's answer to D4) ------
+# Nobody sees an unbuilt app in the hub, so the tags are: the first scripts
+# have run (progress), and what is left outstanding (one per flag).
+.t2_section("stamp - progress + outstanding mig:* tags (section 7)")
 .t2_reset_state()
 .t2_reset_calls()
 DRY_RUN <- TRUE
-.t2_ok("the tag for a stage is mig:<stage>",
-       identical(fleet_tag_for("retargeted"), "mig:retargeted"))
-pl <- fleet_stamp_plan(c("mig:unbuilt", "Finance curated"), "mig:styled")
-.t2_ok("stamping removes the OTHER mig: tag", identical(pl$remove, "mig:unbuilt"))
-.t2_ok("stamping adds the wanted one", identical(pl$add, "mig:styled"))
+.t2_set_stage <- function(id, s)
+	manifest_write(manifest_upsert(manifest_read(MANIFEST_DEFAULT),
+	                               data.frame(app_id = id, stage = s,
+	                                          stringsAsFactors = FALSE)),
+	               MANIFEST_DEFAULT)
+.t2_master <- function(inphinity, nprint)
+	.fl_write_csv(data.frame(app_id = APP1, app_name = "01 ESS QVD Builder - CDP",
+	                         flag_geoanalytics = 0, flag_inphinity = inphinity,
+	                         flag_nprint = nprint, flag_unknown_src = 0,
+	                         stringsAsFactors = FALSE), MASTER_CSV)
+
+.t2_ok("a stage below retargeted earns NO progress tag",
+       !nzchar(fleet_progress_tag("unbuilt")) && !nzchar(fleet_progress_tag("styled")))
+.t2_ok("blocked earns none either - the ledger holds last_error",
+       !nzchar(fleet_progress_tag("blocked")))
+.t2_ok("retargeted means the first scripts have run: mig:processed",
+       identical(fleet_progress_tag("retargeted"), "mig:processed"))
+.t2_ok("built and verified name themselves",
+       identical(fleet_progress_tag("built"), "mig:built") &&
+       	identical(fleet_progress_tag("verified"), "mig:verified"))
+.t2_ok("a flag's tag is its name with hyphens",
+       identical(fleet_flag_tag("unknown_src"), "mig:unknown-src") &&
+       	identical(fleet_flag_tag("inphinity"), "mig:inphinity"))
+
+.t2_master(1, 2)
+.t2_ok("one outstanding tag per NON-ZERO flag column, none for a zero",
+       identical(fleet_outstanding_tags(APP1), c("mig:inphinity", "mig:nprint")),
+       paste(fleet_outstanding_tags(APP1), collapse = " "))
+.t2_ok("an app with no master.csv row has no outstanding tags",
+       !length(fleet_outstanding_tags("local:nothing-like-this")))
+.t2_ok("the wanted set is the progress tag plus the outstanding ones",
+       identical(fleet_want_tags("retargeted", APP1),
+                 c("mig:processed", "mig:inphinity", "mig:nprint")))
+.t2_ok("an app below retargeted still says what is outstanding",
+       identical(fleet_want_tags("styled", APP1), c("mig:inphinity", "mig:nprint")))
+
+pl <- fleet_stamp_plan(c("mig:unbuilt", "mig:inphinity", "Finance curated"),
+                       c("mig:processed", "mig:inphinity"))
+.t2_ok("a mig: tag nobody wants goes - retired scheme included",
+       identical(pl$remove, "mig:unbuilt"))
+.t2_ok("the missing progress tag is added", identical(pl$add, "mig:processed"))
+.t2_ok("an outstanding tag already in place is left alone",
+       !("mig:inphinity" %in% c(pl$add, pl$remove)))
 .t2_ok("a non-mig: collection is never touched",
        !("Finance curated" %in% pl$remove))
-pl <- fleet_stamp_plan(c("mig:styled"), "mig:styled")
+pl <- fleet_stamp_plan(c("mig:processed", "mig:inphinity"),
+                       c("mig:processed", "mig:inphinity"))
 .t2_ok("an already-correct item is a no-op",
        !length(pl$add) && !length(pl$remove))
 
+.t2_set_stage(APP1, "styled")
+.t2_set_stage(APP1, "retargeted")
 rc <- fleet_main(c("stamp", "--apps", APP1))
 .t2_ok("a dry stamp exits 0", rc == 0L)
 .t2_ok("a dry stamp writes NO collection at all",
@@ -268,30 +311,50 @@ rc <- fleet_main(c("stamp", "--apps", APP1))
        .t2_calls())
 .t2_ok("a dry stamp writes no tags.csv either", !file.exists(TAGS_CSV))
 
-rc <- fleet_main(c("stamp", "--apps", APP1, "--live"))
-.t2_ok("a live stamp exits 0", rc == 0L)
 item1 <- .t2_row(APP1)$item_id
 DRY_RUN <- FALSE
+# A tag from the retired scheme, put there by hand: stamp must clear it.
+qc_write(c("collection", "item", "create", "--collectionId", "col000000001",
+           "--id", item1), json = FALSE)
+rc <- fleet_main(c("stamp", "--apps", APP1, "--live"))
+.t2_ok("a live stamp exits 0", rc == 0L)
+DRY_RUN <- FALSE
 cur <- fleet_item_tags(item1)
-.t2_ok("the item now carries exactly one mig: tag", nrow(cur) == 1L,
+.t2_ok("the item carries the progress tag and one tag per flag",
+       setequal(cur$name, c("mig:processed", "mig:inphinity", "mig:nprint")),
        paste(cur$name, collapse = " "))
-.t2_ok("and it is the ledger's own stage",
-       identical(fleet_tag_stage(cur$name), .t2_stage(APP1)),
-       paste("tag", fleet_tag_stage(cur$name), "stage", .t2_stage(APP1)))
+.t2_ok("an unknown mig: tag was removed by the same stamp",
+       !("mig:unbuilt" %in% cur$name), paste(cur$name, collapse = " "))
 tg <- fleet_tags_read(TAGS_CSV)
-.t2_ok("tags.csv cached the collection id",
-       nrow(tg) >= 1L && all(nzchar(tg$collection_id)))
+.t2_ok("tags.csv cached the collection ids",
+       nrow(tg) >= 3L && all(nzchar(tg$collection_id)), paste(tg$tag, collapse = " "))
 
-# Exclusivity, the point of the scheme: move the stage and re-stamp.
-manifest_write(manifest_upsert(manifest_read(MANIFEST_DEFAULT),
-                               data.frame(app_id = APP1, stage = "styled",
-                                          stringsAsFactors = FALSE)),
-               MANIFEST_DEFAULT)
+# A flag that clears loses its tag on the next stamp - that is the whole point
+# of "what is left outstanding".
+.t2_master(0, 2)
 fleet_main(c("stamp", "--apps", APP1, "--live"))
+DRY_RUN <- FALSE
 cur <- fleet_item_tags(item1)
-.t2_ok("re-stamping leaves exactly ONE mig: tag, the new one",
-       nrow(cur) == 1L && identical(fleet_tag_stage(cur$name), "styled"),
+.t2_ok("clearing a flag removes ITS tag and only its tag",
+       setequal(cur$name, c("mig:processed", "mig:nprint")),
        paste(cur$name, collapse = " "))
+
+# Progress is exclusive: move the stage and the old progress tag goes.
+.t2_set_stage(APP1, "built")
+fleet_main(c("stamp", "--apps", APP1, "--live"))
+DRY_RUN <- FALSE
+cur <- fleet_item_tags(item1)
+.t2_ok("a later stage replaces the earlier progress tag",
+       setequal(cur$name, c("mig:built", "mig:nprint")),
+       paste(cur$name, collapse = " "))
+
+# An app that has not been retargeted yet carries no progress tag at all.
+.t2_set_stage(APP1, "styled")
+fleet_main(c("stamp", "--apps", APP1, "--live"))
+DRY_RUN <- FALSE
+cur <- fleet_item_tags(item1)
+.t2_ok("dropping below retargeted leaves the outstanding tags only",
+       setequal(cur$name, "mig:nprint"), paste(cur$name, collapse = " "))
 
 DRY_RUN <- FALSE
 r <- qc_write(c("collection", "create", "--name", "mig:unbuilt", "--type", "public"))
@@ -307,41 +370,58 @@ g <- fleet_tag_id("mig:unbuilt", fleet_tags_read(file.path(TMP, "nosuch.csv")))
 })
 
 # --- 5. reconcile + --adopt ------------------------------------------------
-.t2_section("reconcile - tag vs ledger drift, and the --adopt guard")
-# The item is tagged mig:styled (above); put the ledger back to unbuilt so the
-# tag is genuinely AHEAD, which is the only direction --adopt may move.
-manifest_write(manifest_upsert(manifest_read(MANIFEST_DEFAULT),
-                               data.frame(app_id = APP1, stage = "unbuilt",
-                                          stringsAsFactors = FALSE)),
-               MANIFEST_DEFAULT)
-unlink(file.path(.fl_app_dir(APP1), "script_styled.qvs"))
+.t2_section("reconcile - PROGRESS drift only, and the --adopt guard")
+# The ledger is at styled and the item carries no progress tag: that is what
+# the scheme ASKS for, outstanding tags notwithstanding.
 rc <- fleet_main(c("reconcile", "--apps", APP1))
 .t2_ok("reconcile exits 0 - drift is information, not failure", rc == 0L)
 dr <- read_csv_any(TAG_DRIFT_CSV)
 .t2_ok("the drift report is a FILE with section 7's columns",
        identical(names(dr), c("app_id", "app_name", "item_id", "manifest_stage",
                               "tag_stage", "action")))
-.t2_ok("it reports the disagreement", identical(dr$action[1], "drift"),
-       paste(dr$action, collapse = " "))
+.t2_ok("outstanding tags are informational: no progress tag wanted, none there",
+       identical(dr$action[1], "agree"), dr$action[1])
+.t2_set_stage(APP1, "retargeted")
+fleet_main(c("reconcile", "--apps", APP1))
+dr <- read_csv_any(TAG_DRIFT_CSV)
+.t2_ok("a ledger ahead of the tenant reads as a MISSING progress tag",
+       identical(dr$action[1], "no progress tag"), dr$action[1])
+
+# Now the tag ahead of the ledger, which is the only direction --adopt moves.
+fleet_main(c("stamp", "--apps", APP1, "--live"))
+DRY_RUN <- FALSE
+.t2_set_stage(APP1, "styled")
+unlink(file.path(.fl_app_dir(APP1), "script_retargeted.qvs"))
+fleet_main(c("reconcile", "--apps", APP1))
+dr <- read_csv_any(TAG_DRIFT_CSV)
+.t2_ok("mig:processed against a styled ledger is drift",
+       identical(dr$action[1], "drift") && identical(dr$tag_stage[1], "retargeted"),
+       paste(dr$action[1], dr$tag_stage[1]))
 fleet_main(c("reconcile", "--apps", APP1, "--adopt"))
 dr <- read_csv_any(TAG_DRIFT_CSV)
 .t2_ok("--adopt REFUSES a stage whose local artefacts are missing",
        grepl("no local artefacts", dr$action[1]), dr$action[1])
-.t2_ok("and the ledger did not move", identical(.t2_stage(APP1), "unbuilt"))
-writeLines("styled", file.path(.fl_app_dir(APP1), "script_styled.qvs"))
+.t2_ok("and the ledger did not move", identical(.t2_stage(APP1), "styled"))
+writeLines("retargeted", file.path(.fl_app_dir(APP1), "script_retargeted.qvs"))
 fleet_main(c("reconcile", "--apps", APP1, "--adopt"))
 dr <- read_csv_any(TAG_DRIFT_CSV)
 .t2_ok("--adopt moves the ledger once the artefacts are there",
-       identical(dr$action[1], "adopted") && identical(.t2_stage(APP1), "styled"),
+       identical(dr$action[1], "adopted") && identical(.t2_stage(APP1), "retargeted"),
        paste(dr$action[1], .t2_stage(APP1)))
 .t2_ok("a second reconcile now agrees", {
 	fleet_main(c("reconcile", "--apps", APP1))
 	identical(read_csv_any(TAG_DRIFT_CSV)$action[1], "agree")
 })
+.t2_ok("an outstanding tag is never read back as a stage",
+       !nzchar(fleet_tag_stage(c("mig:inphinity", "mig:nprint"))) &&
+       	identical(fleet_tag_stage(c("mig:processed", "mig:nprint")), "retargeted"))
+.t2_ok("two progress tags resolve to no stage at all",
+       !nzchar(fleet_tag_stage(c("mig:processed", "mig:built"))))
 .t2_ok("a row with no item_id is reported, not skipped silently", {
 	fleet_main(c("reconcile", "--apps", "local:nothing-like-this"))
 	identical(read_csv_any(TAG_DRIFT_CSV)$action[1], "no item_id")
 })
+writeLines("styled", file.path(.fl_app_dir(APP1), "script_styled.qvs"))
 .t2_ok("the artefact guard knows what each stage promises",
        fleet_stage_artefacts(.fl_app_dir(APP1), "styled") &&
        	!fleet_stage_artefacts(.fl_app_dir(APP1), "built") &&
