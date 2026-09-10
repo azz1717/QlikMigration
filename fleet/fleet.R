@@ -10,8 +10,9 @@
 #
 # M0 implemented spaces / apps / add / status. M1 adds import-unbuilt /
 # process / report / rollup and turns `status` into a reader of master.csv.
-# The remaining verbs are named here and exit 1 with the milestone that brings
-# them, so the CLI never pretends to have done something it has not.
+# M2 adds fetch / reconcile-ids, M4 stamp / reconcile. The remaining verbs are
+# named here and exit 1 with the milestone that brings them, so the CLI never
+# pretends to have done something it has not.
 #
 # Exit codes (PLAN-fleet.md section 3): 0 all ok, 2 some rows blocked,
 # 1 usage or configuration error.
@@ -168,7 +169,8 @@ manifest_upsert <- function(m, rows) {
 .FL_VALUE_FLAGS <- c("--manifest", "--apps", "--stage", "--space", "--name",
                      "--type", "--limit", "--to-space", "--mode", "--dir")
 .FL_BOOL_FLAGS <- c("--dry-run", "--live", "--all", "--digest", "--no-rollup",
-                    "--force", "--no-style", "--allow-unresolved", "--help")
+                    "--force", "--no-style", "--allow-unresolved", "--adopt",
+                     "--help")
 
 #' Split argv into a verb and an options list. Returns
 #' list(verb, opts, error): `error` non-empty means usage, and the caller
@@ -438,6 +440,17 @@ FLEET_CHILD_TIMEOUT_S <- 300L
 # on an already-retargeted script reports, and it is a SUCCESS.
 FLEET_LOAD_OK <- c("retargeted", "retargeted-pending-import", "already-mapped")
 FLEET_LOAD_UNRESOLVED <- c("not-in-map", "multi-source")
+
+# D14 (ANSWERED 2026-09-10 by the overseer, PLAN-fleet.md section 8): the
+# pct_retargeted DENOMINATOR is ELIGIBLE loads only. These four statuses were
+# never retargeting work in the first place - an out-of-scope or commented
+# load, a geospatial one, a directory statement - so counting them made 14
+# generator apps read 0% with nothing left to do. DONE is the pair that means
+# a load now points at the cloud; `retargeted-pending-import` is deliberately
+# NOT here, because pending is not done.
+FLEET_LOAD_INELIGIBLE <- c("out-of-scope", "commented", "geospatial",
+                           "directory-statement")
+FLEET_LOAD_DONE <- c("retargeted", "already-mapped")
 
 # The local bundles on this machine (PLAN-fleet.md M1 acceptance): the 18
 # generator exports, the two example apps and the retarget trial app.
@@ -715,17 +728,23 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 
 #' The feature-flag patterns (PLAN-fleet.md section 5). Adam extends this file
 #' by hand and rollup grows a column per row - no code change per flag.
-fleet_flags_read <- function(path = FLAGS_CSV) {
-	cols <- c("flag", "where", "pattern", "note")
+fleet_flags_read <- function(path = FLAGS_CSV)
+	.fl_read_cols(path, c("flag", "where", "pattern", "note"))
+
+# One reader for every small fixed-column fleet csv (flags.csv, tags.csv): a
+# missing file is an EMPTY table, a missing column is filled rather than
+# refused. Factored out when tags.csv needed the identical five lines - the
+# twin rule (CLAUDE.md), applied in the fold-in direction.
+.fl_read_cols <- function(path, cols) {
 	if (!file.exists(path)) {
-		f <- as.data.frame(matrix(character(0), nrow = 0L, ncol = length(cols)),
+		d <- as.data.frame(matrix(character(0), nrow = 0L, ncol = length(cols)),
 		                   stringsAsFactors = FALSE)
-		names(f) <- cols
-		return(f)
+		names(d) <- cols
+		return(d)
 	}
-	f <- read_csv_any(path)
-	for (cn in cols) if (is.null(f[[cn]])) f[[cn]] <- rep("", nrow(f))
-	f[, cols, drop = FALSE]
+	d <- read_csv_any(path)
+	for (cn in cols) if (is.null(d[[cn]])) d[[cn]] <- rep("", nrow(d))
+	d[, cols, drop = FALSE]
 }
 
 .fl_json_strings <- function(path) {
@@ -898,6 +917,28 @@ fleet_app_summary <- function(app_dir, tok) {
 #' the text left of the colon, so "not-in-map:3" costs the same 10 as
 #' "not-in-map:1" - the number of unresolved loads is already its own column,
 #' and counting it twice would make one bad app dominate the ordering.
+#' pct_retargeted over ELIGIBLE loads only (D14), in ONE function.
+#'
+#' `status` is the retarget report's own status column, restricted to its
+#' `load` rows by the caller. Eligible = not one of FLEET_LOAD_INELIGIBLE;
+#' done = FLEET_LOAD_DONE. An app with loads but NO eligible one has nothing
+#' left to do and scores 100 - that is D14's whole point.
+#'
+#' `measured` is what tells "nothing eligible" apart from "never processed":
+#' an app with no retarget_report.csv at all has not been measured and scores
+#' 0, not 100. Without that distinction every unfetched app in the ledger
+#' would top the readiness board.
+fleet_pct_retargeted <- function(status, measured = TRUE) {
+	s <- as.character(status)
+	s <- s[!is.na(s) & nzchar(s)]
+	elig <- s[!(s %in% FLEET_LOAD_INELIGIBLE)]
+	pct <- if (!isTRUE(measured)) 0L
+	       else if (!length(elig)) 100L
+	       else as.integer(round(100 * sum(elig %in% FLEET_LOAD_DONE) / length(elig)))
+	list(total = length(s), eligible = length(elig),
+	     done = sum(elig %in% FLEET_LOAD_DONE), pct = pct)
+}
+
 fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 	pct <- suppressWarnings(as.integer(round(as.numeric(pct_retargeted))))
 	if (is.na(pct)) pct <- 0L
@@ -943,7 +984,11 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 		n_multi <- sum(ld == "multi-source")
 		n_cmt <- sum(ld == "commented")
 		n_wild <- sum(ld == "wildcard")
-		pct <- if (n_total > 0L) round(100 * n_ok / n_total) else 0L
+		# D14: the denominator is ELIGIBLE loads. loads_total stays the raw
+		# count of `load` rows; loads_eligible is the number pct is over.
+		ldl <- if (length(kind) == length(ld)) ld[kind == "load"] else ld
+		pc <- fleet_pct_retargeted(ldl, measured = !is.null(rr))
+		pct <- pc$pct
 
 		t_total <- if (is.null(ut)) 0L else nrow(ut)
 		t_unused <- if (is.null(ut) || is.null(ut$category)) 0L else sum(ut$category == "unreferenced")
@@ -966,7 +1011,8 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 			app_id = id, app_name = nm, space_name = m$space_name[i],
 			stage = m$stage[i], stage_at = m$stage_at[i],
 			target_app_id = m$target_app_id[i],
-			loads_total = n_total, loads_retargeted = n_ok,
+			loads_total = n_total, loads_eligible = pc$eligible,
+			loads_retargeted = n_ok,
 			loads_not_in_map = n_nim, loads_multi_source = n_multi,
 			loads_commented = n_cmt, loads_wildcard = n_wild,
 			pct_retargeted = pct,
@@ -1047,17 +1093,457 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 	0L
 }
 
-.FL_TODO <- c("fetch" = "M2", "upload" = "M3", "verify" = "M3",
-              "stamp" = "M4", "reconcile" = "M4", "map" = "M5")
+# =========================================================================
+# M2: fetch (unbuild from the tenant) and reconcile-ids (D12).
+# PLAN-fleet.md section 3. Every tenant call goes through fleet/qlik_api.R,
+# so the whole of this section is provable against diagnostics/mock_qlik.bat.
+# =========================================================================
+
+#' `fetch` - unbuild every selected app from the tenant into fleet/apps/<id>/.
+#'
+#' Normally driven by `--stage listed`, which is the stage `add` leaves a row
+#' at; any selection is accepted, because a re-fetch of an app already further
+#' along is legitimate (the stage enum allows a backward move, DESIGN 8.6).
+#'
+#' DRY_RUN is honoured as a FETCH AUDIT, not as a write: qc_unbuild() prints
+#' the exact command line and writes a DRYRUN audit line, nothing is
+#' downloaded, and - the part that matters - the ledger is NOT touched, so a
+#' rehearsal cannot advance a single row.
+#'
+#' Unbuilt into a STAGING directory and copied in on success. qc_unbuild()
+#' deletes the directory it was given when a fetch fails, so unbuilding
+#' straight into fleet/apps/<id>/ would take an existing bundle's styled
+#' script, reports and log down with a failed re-fetch. The destination is
+#' still section 3's fleet/apps/<id>/; only the failure path differs.
+.fl_verb_fetch <- function(opts) {
+	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
+	m <- manifest_read(path)
+	sel <- .fl_select(m, opts)
+	if (is.null(sel)) {
+		.fl_warn("fetch needs --all, --apps <id,id> or --stage <s>",
+		         " (usually --stage listed)")
+		return(1L)
+	}
+	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
+	dry <- .qc_dry()
+	done <- 0L; blocked <- 0L; skipped <- 0L; planned <- 0L
+	for (i in seq_len(nrow(sel))) {
+		id <- sel$app_id[i]
+		# A `local:` key is D12's placeholder: there is no tenant app behind
+		# it, so this is a skip with a reason, never a blocked row.
+		if (!nzchar(id) || startsWith(id, "local:")) {
+			.fl_warn(id, ": no tenant app id - run 'fleet.R reconcile-ids' first")
+			skipped <- skipped + 1L
+			next
+		}
+		stage_dir <- file.path(tempdir(), paste0("fetch-", .fl_slug(id)))
+		unlink(stage_dir, recursive = TRUE)
+		r <- qc_unbuild(id, stage_dir)
+		if (dry) { planned <- planned + 1L; next }
+		if (qc_failed(r)) {
+			m <- .fl_block(m, id, paste0("fetch: ", .fl_fail_msg(r)))
+			blocked <- blocked + 1L
+			next
+		}
+		dest <- .fl_app_dir(id)
+		if (!dir.exists(dest)) dir.create(dest, recursive = TRUE, showWarnings = FALSE)
+		file.copy(list.files(stage_dir, full.names = TRUE), dest,
+		          recursive = TRUE, overwrite = TRUE, copy.date = TRUE)
+		unlink(stage_dir, recursive = TRUE)
+		props <- tryCatch(json_read(file.path(dest, "app-properties.json")),
+		                  error = function(e) NULL)
+		title <- .fl_str(if (is.null(props)) NULL else props[["qTitle"]],
+		                 sel$app_name[i])
+		writeLines(title, file.path(dest, "name.txt"), useBytes = TRUE)
+		m <- .fl_clear_error(m, id)
+		m <- manifest_upsert(m, data.frame(app_id = id, app_name = title,
+		                                   stage = "unbuilt",
+		                                   stringsAsFactors = FALSE))
+		done <- done + 1L
+	}
+	if (dry) {
+		.fl_say(planned, " app(s) would be fetched, ", skipped,
+		        " skipped (no tenant id); ledger untouched. Re-run with --live.")
+		return(0L)
+	}
+	manifest_write(m, path)
+	.fl_say(done, " fetched, ", blocked, " blocked, ", skipped,
+	        " skipped (no tenant id)")
+	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
+	if (blocked > 0L) 2L else 0L
+}
+
+#' One manifest row's app_name against a tenant listing (D12).
+#'
+#' EXACT match on the name, and nothing else: the tenant has 578 duplicate app
+#' names, so a fuzzy or case-folded match would silently hand an app another
+#' app's id. A non-unique match is a NOTE on the row, never a guess.
+fleet_reconcile_match <- function(app_name, listing) {
+	miss <- list(status = "none", n = 0L, id = "", space_id = "", space_name = "")
+	if (is.null(listing) || !nrow(listing) || !nzchar(app_name)) return(miss)
+	k <- which(listing$name == app_name)
+	if (!length(k)) return(miss)
+	if (length(k) > 1L)
+		return(list(status = "ambiguous", n = length(k), id = "",
+		            space_id = "", space_name = ""))
+	list(status = "unique", n = 1L, id = listing$id[k],
+	     space_id = listing$space_id[k], space_name = listing$space_name[k])
+}
+
+# `app ls` over each space in turn, stacked into one listing with the space
+# each row came from. A space that fails to list is warned about and skipped:
+# a partial listing can only produce "no match", which is already a safe
+# outcome here, whereas aborting would strand every other space's matches.
+.fl_tenant_listing <- function(space_ids, spaces = NULL) {
+	out <- NULL
+	for (sid in space_ids) {
+		df <- .fl_app_rows(sid)
+		if (qc_failed(df)) {
+			.fl_warn("app ls failed for space ", sid, ": ", .fl_fail_msg(df))
+			next
+		}
+		if (!nrow(df)) next
+		snm <- if (!is.null(spaces) && !qc_failed(spaces) && sid %in% spaces$id)
+			spaces$name[match(sid, spaces$id)] else ""
+		out <- rbind(out, data.frame(id = df$id, name = df$name, space_id = sid,
+		                             space_name = snm, stringsAsFactors = FALSE))
+	}
+	out
+}
+
+#' `reconcile-ids` - give D12's `local:` rows their real tenant ids.
+#'
+#' Reads only (`app ls`, `item ls`); the ledger and the app directory are
+#' local, so there is no tenant write here and DRY_RUN does not gate it.
+.fl_verb_reconcile_ids <- function(opts) {
+	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
+	m <- manifest_read(path)
+	local <- which(startsWith(m$app_id, "local:"))
+	if (!length(local)) {
+		.fl_say("no local: ids in ", path, " - nothing to reconcile")
+		return(0L)
+	}
+	sp <- .fl_resolve_space(.fl_opt(opts, "space"))
+	sids <- if (!is.null(sp)) sp else unique(m$space_id[nzchar(m$space_id)])
+	if (!length(sids)) {
+		.fl_warn("no space to search: the manifest knows no space_id yet, ",
+		         "so pass --space <id|index from 'spaces'>")
+		return(1L)
+	}
+	spaces <- .fl_space_rows()
+	listing <- .fl_tenant_listing(sids, spaces)
+	if (is.null(listing) || !nrow(listing)) {
+		.fl_warn("the tenant listing came back empty - nothing to match against")
+		return(1L)
+	}
+	res <- lapply(local, function(k) fleet_reconcile_match(m$app_name[k], listing))
+	uniq <- vapply(res, function(r) identical(r$status, "unique"), logical(1))
+	ids <- vapply(res, function(r) r$id, character(1))
+	items <- if (any(uniq)) .fl_item_ids(ids[uniq]) else character(0)
+	n_ok <- 0L; n_amb <- 0L; n_none <- 0L
+	for (j in seq_along(local)) {
+		k <- local[j]
+		r <- res[[j]]
+		if (!identical(r$status, "unique")) {
+			note <- if (identical(r$status, "ambiguous"))
+				paste0("reconcile-ids: ", r$n, " tenant apps share this name")
+			else "reconcile-ids: no tenant app with this exact name"
+			m$notes[k] <- note
+			.fl_warn(m$app_id[k], ": ", note)
+			if (identical(r$status, "ambiguous")) n_amb <- n_amb + 1L
+			else n_none <- n_none + 1L
+			next
+		}
+		if (any(m$app_id == r$id)) {
+			m$notes[k] <- "reconcile-ids: that tenant id is already in the ledger"
+			.fl_warn(m$app_id[k], ": matched id ", r$id, " already present")
+			n_amb <- n_amb + 1L
+			next
+		}
+		old_dir <- .fl_app_dir(m$app_id[k])
+		new_dir <- .fl_app_dir(r$id)
+		if (dir.exists(old_dir) && !dir.exists(new_dir)) file.rename(old_dir, new_dir)
+		m$app_id[k] <- r$id
+		m$item_id[k] <- if (r$id %in% names(items)) items[[r$id]] else ""
+		m$space_id[k] <- r$space_id
+		m$space_name[k] <- r$space_name
+		m$notes[k] <- ""
+		n_ok <- n_ok + 1L
+	}
+	manifest_write(m, path)
+	.fl_say(n_ok, " id(s) resolved, ", n_amb, " ambiguous, ", n_none, " unmatched")
+	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
+	0L
+}
+
+# =========================================================================
+# M4: tag stamping. PLAN-fleet.md section 7 (D4 = a).
+# A Qlik Cloud tag IS a public collection, so `mig:<stage>` is a collection
+# and stamping an app is adding its ITEM (item id != app id) to one.
+# =========================================================================
+
+TAGS_CSV <- file.path(FLEET_DIR, "tags.csv")
+TAG_DRIFT_CSV <- file.path(FLEET_DIR, "tag_drift.csv")
+FLEET_TAG_PREFIX <- "mig:"
+
+#' The tag that names a stage. Section 7's scheme, one place.
+fleet_tag_for <- function(stage) paste0(FLEET_TAG_PREFIX, stage)
+
+#' The tag -> collection id cache (fleet/tags.csv). A missing file is empty.
+fleet_tags_read <- function(path = TAGS_CSV)
+	.fl_read_cols(path, c("tag", "collection_id", "cached_at"))
+
+# The id of the public collection with this exact name, or "" - a READ, so it
+# works under DRY_RUN and is what makes the 409 recovery below possible.
+.fl_collection_id <- function(name) {
+	items <- qc_pages(c("collection", "ls"))
+	if (qc_failed(items)) return("")
+	for (it in items)
+		if (identical(.fl_str(it[["name"]]), name)) return(.fl_str(it[["id"]]))
+	""
+}
+
+.fl_tag_cache <- function(tags, tag, id) {
+	k <- which(tags$tag == tag)
+	if (length(k)) {
+		tags$collection_id[k[1]] <- id
+		tags$cached_at[k[1]] <- .fl_now()
+		return(tags)
+	}
+	rbind(tags, data.frame(tag = tag, collection_id = id, cached_at = .fl_now(),
+	                       stringsAsFactors = FALSE))
+}
+
+#' The collection id behind a tag, creating the collection on first use.
+#'
+#' Returns list(id, tags, created); `tags` is the cache to carry on with, so a
+#' caller stamping 200 apps reads `collection ls` once per NEW tag, not once
+#' per app. The cache is a convenience and never a dependency - a miss simply
+#' re-reads the listing.
+#'
+#' A create that comes back 409 is NOT a failure: the name already exists
+#' (someone made it by hand, or two operators raced), so the listing is re-read
+#' and the existing id used. Section 7 asks for exactly that. Under DRY_RUN
+#' qc_write() runs nothing and there is no id to have - the id comes back ""
+#' and the caller prints the create rather than inventing one.
+fleet_tag_id <- function(tag, tags = fleet_tags_read(), create = TRUE) {
+	k <- which(tags$tag == tag)
+	if (length(k) && nzchar(tags$collection_id[k[1]]))
+		return(list(id = tags$collection_id[k[1]], tags = tags, created = FALSE))
+	found <- .fl_collection_id(tag)
+	created <- FALSE
+	if (!nzchar(found) && isTRUE(create)) {
+		r <- qc_write(c("collection", "create", "--name", tag, "--type", "public"),
+		              label = paste("collection create", tag))
+		if (is.null(r)) return(list(id = "", tags = tags, created = FALSE))
+		if (qc_failed(r)) {
+			found <- .fl_collection_id(tag)
+			if (!nzchar(found)) {
+				.fl_warn("collection create ", tag, " failed: ", .fl_fail_msg(r))
+				return(list(id = "", tags = tags, created = FALSE))
+			}
+		} else {
+			found <- .fl_str(if (!is.null(r[["id"]])) r[["id"]]
+			                 else json_get(r, "attributes", "id"))
+			created <- TRUE
+		}
+	}
+	if (!nzchar(found)) return(list(id = "", tags = tags, created = FALSE))
+	list(id = found, tags = .fl_tag_cache(tags, tag, found), created = created)
+}
+
+#' The collections one item is in, as data.frame(id, name), or a qc_error.
+fleet_item_tags <- function(item_id) {
+	r <- qc(c("item", "collections", item_id))
+	if (qc_failed(r)) return(r)
+	items <- qc_items(r)
+	if (!length(items)) return(data.frame(id = character(0), name = character(0),
+	                                      stringsAsFactors = FALSE))
+	data.frame(id = vapply(items, function(it) .fl_str(it[["id"]]), character(1)),
+	           name = vapply(items, function(it) .fl_str(it[["name"]]), character(1)),
+	           stringsAsFactors = FALSE)
+}
+
+#' What to add and what to remove so one item carries exactly one mig: tag.
+#'
+#' Exclusivity is scoped to the mig: prefix and nothing else. An item's other
+#' collections are somebody's curation of the estate and are none of this
+#' tool's business - removing them would be a silent, unrecoverable edit to
+#' another team's work.
+fleet_stamp_plan <- function(current_names, want) {
+	cur <- current_names[startsWith(current_names, FLEET_TAG_PREFIX)]
+	list(add = if (want %in% cur) character(0) else want,
+	     remove = setdiff(cur, want))
+}
+
+#' Which stage an item's tags name, or "" when there is no mig: tag or more
+#' than one. Two mig: tags is exactly the drift `reconcile` exists to report,
+#' so it must not resolve to whichever came first.
+fleet_tag_stage <- function(tag_names) {
+	t <- tag_names[startsWith(tag_names, FLEET_TAG_PREFIX)]
+	if (length(t) != 1L) return("")
+	sub(paste0("^", FLEET_TAG_PREFIX), "", t[1])
+}
+
+#' Do the local artefacts a stage PROMISES actually exist? The --adopt guard
+#' (section 7): a tag is a label somebody can set by hand, so believing one
+#' without the files behind it would let the ledger claim work nobody did.
+fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
+	f <- switch(stage,
+	            listed = "",
+	            unbuilt = "script.qvs",
+	            styled = "script_styled.qvs",
+	            retargeted = "script_retargeted.qvs",
+	            built = "script_retargeted.qvs",
+	            verified = "script_retargeted.qvs",
+	            NA_character_)
+	if (is.na(f)) return(FALSE)
+	if (stage %in% c("built", "verified") && !nzchar(as.character(target_app_id)))
+		return(FALSE)
+	!nzchar(f) || file.exists(file.path(app_dir, f))
+}
+
+.fl_verb_stamp <- function(opts) {
+	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
+	m <- manifest_read(path)
+	sel <- .fl_select(m, opts)
+	if (is.null(sel)) {
+		.fl_warn("stamp needs --all, --apps <id,id> or --stage <s>")
+		return(1L)
+	}
+	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
+	tags <- fleet_tags_read()
+	dry <- .qc_dry()
+	n_ok <- 0L; n_add <- 0L; n_rm <- 0L; n_skip <- 0L
+	for (i in seq_len(nrow(sel))) {
+		id <- sel$app_id[i]
+		item <- .fl_str(sel$item_id[i])
+		if (!nzchar(item)) {
+			.fl_warn(id, ": no item_id - run 'add' or 'reconcile-ids' first")
+			n_skip <- n_skip + 1L
+			next
+		}
+		want <- fleet_tag_for(sel$stage[i])
+		cur <- fleet_item_tags(item)
+		if (qc_failed(cur)) {
+			.fl_warn(id, ": item collections failed: ", .fl_fail_msg(cur))
+			n_skip <- n_skip + 1L
+			next
+		}
+		plan <- fleet_stamp_plan(cur$name, want)
+		for (nm in plan$remove) {
+			qc_write(c("collection", "item", "rm", item, "--collectionId",
+			           cur$id[match(nm, cur$name)]),
+			         json = FALSE, label = paste("untag", id, nm))
+			n_rm <- n_rm + 1L
+		}
+		if (length(plan$add)) {
+			g <- fleet_tag_id(want, tags)
+			tags <- g$tags
+			if (!nzchar(g$id)) {
+				# Live, no id means the create genuinely failed. Dry, it only
+				# means the collection does not exist yet - print the step.
+				if (!dry) {
+					.fl_warn(id, ": no collection id for ", want)
+					n_skip <- n_skip + 1L
+					next
+				}
+				cat("DRY RUN $ qlik collection item create --collectionId <new ",
+				    want, "> --id ", item, "\n", sep = "")
+			} else {
+				qc_write(c("collection", "item", "create", "--collectionId", g$id,
+				           "--id", item),
+				         json = FALSE, label = paste("tag", id, want))
+			}
+			n_add <- n_add + 1L
+		}
+		n_ok <- n_ok + 1L
+	}
+	if (!dry) .fl_write_csv(tags, TAGS_CSV)
+	.fl_say(if (dry) "PLAN: " else "", n_ok, " item(s), ", n_add, " tag(s) to add, ",
+	        n_rm, " to remove, ", n_skip, " skipped")
+	0L
+}
+
+#' `reconcile` - report where the tenant's tag and the ledger's stage differ.
+#'
+#' The report is a FILE (fleet/tag_drift.csv); the console lines are the photo
+#' fallback. `--adopt` moves the manifest FORWARD to the tag's stage, and only
+#' when the local artefacts that stage promises are actually here and the move
+#' is not a forward skip. Everything it declines is written down with the
+#' reason, so a refusal is visible rather than silent.
+.fl_verb_reconcile <- function(opts) {
+	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
+	m <- manifest_read(path)
+	sel <- .fl_select(m, opts)
+	if (is.null(sel)) {
+		.fl_warn("reconcile needs --all, --apps <id,id> or --stage <s>")
+		return(1L)
+	}
+	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
+	adopt <- isTRUE(opts[["adopt"]])
+	rows <- NULL
+	for (i in seq_len(nrow(sel))) {
+		id <- sel$app_id[i]
+		item <- .fl_str(sel$item_id[i])
+		tag_stage <- ""
+		action <- ""
+		if (!nzchar(item)) {
+			action <- "no item_id"
+		} else {
+			cur <- fleet_item_tags(item)
+			if (qc_failed(cur)) action <- paste0("item collections failed: ",
+			                                     .fl_fail_msg(cur))
+			else tag_stage <- fleet_tag_stage(cur$name)
+		}
+		if (!nzchar(action)) {
+			if (!nzchar(tag_stage)) action <- "no single mig: tag"
+			else if (identical(tag_stage, sel$stage[i])) action <- "agree"
+			else if (!adopt) action <- "drift"
+			else if (!is.na(stage_rank(sel$stage[i])) && !is.na(stage_rank(tag_stage)) &&
+			         stage_rank(tag_stage) < stage_rank(sel$stage[i]))
+				action <- "adopt refused: the tag is behind the ledger"
+			else if (!fleet_stage_artefacts(.fl_app_dir(id), tag_stage,
+			                                sel$target_app_id[i]))
+				action <- "adopt refused: no local artefacts for that stage"
+			else if (!stage_advance_ok(sel$stage[i], tag_stage))
+				action <- "adopt refused: would skip forward"
+			else {
+				m <- manifest_upsert(m, data.frame(app_id = id, stage = tag_stage,
+				                                   stringsAsFactors = FALSE))
+				action <- "adopted"
+			}
+		}
+		rows <- rbind(rows, data.frame(app_id = id, app_name = sel$app_name[i],
+		                               item_id = item,
+		                               manifest_stage = sel$stage[i],
+		                               tag_stage = tag_stage, action = action,
+		                               stringsAsFactors = FALSE))
+	}
+	.fl_write_csv(rows, TAG_DRIFT_CSV)
+	if (adopt) manifest_write(m, path)
+	.fl_rule()
+	for (i in which(rows$action != "agree"))
+		.fl_say(sprintf("%-11s %-10s tag=%-10s %s", substr(rows$app_id[i], 1L, 11L),
+		                rows$manifest_stage[i],
+		                if (nzchar(rows$tag_stage[i])) rows$tag_stage[i] else "-",
+		                rows$action[i]))
+	.fl_rule()
+	.fl_say(nrow(rows), " item(s) checked, ",
+	        sum(rows$action %in% c("drift", "adopted")), " differing; ", TAG_DRIFT_CSV)
+	0L
+}
+
+.FL_TODO <- c("upload" = "M3", "verify" = "M3", "map" = "M5")
 
 .fl_usage <- function() {
 	.fl_say("usage: Rscript fleet/fleet.R <verb> [options]")
-	.fl_say("verbs now:   spaces apps add import-unbuilt process report")
-	.fl_say("             rollup status")
+	.fl_say("verbs now:   spaces apps add import-unbuilt fetch reconcile-ids")
+	.fl_say("             process report rollup status stamp reconcile")
 	.fl_say("verbs later: ", paste(names(.FL_TODO), collapse = " "))
 	.fl_say("options: --manifest f --space id|# --apps i,j|id,id --name s")
 	.fl_say("         --type t --dir d --all --stage s --digest --no-rollup")
-	.fl_say("         --no-style --allow-unresolved --dry-run --live")
+	.fl_say("         --no-style --allow-unresolved --adopt --dry-run --live")
 }
 
 #' Run one fleet command. Returns the process exit code; `fleet.R` run as a
@@ -1075,6 +1561,10 @@ fleet_main <- function(argv) {
 	       add = .fl_verb_add(p$opts),
 	       status = .fl_verb_status(p$opts),
 	       "import-unbuilt" = .fl_verb_import_unbuilt(p$opts, p$pos),
+	       fetch = .fl_verb_fetch(p$opts),
+	       "reconcile-ids" = .fl_verb_reconcile_ids(p$opts),
+	       stamp = .fl_verb_stamp(p$opts),
+	       reconcile = .fl_verb_reconcile(p$opts),
 	       process = .fl_verb_process(p$opts),
 	       report = .fl_verb_report(p$opts),
 	       rollup = .fl_verb_rollup(p$opts),

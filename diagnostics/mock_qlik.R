@@ -111,6 +111,66 @@ if (nzchar(.log)) {
 
 .item_id <- function(app_id) paste0("itm-", substr(app_id, 1L, 8L), "-0001")
 
+# --- collections, and the one piece of STATE this mock keeps ---------------
+# M4's verbs are about a round trip: stamp adds an item to a collection and
+# expects `item collections` to say so afterwards, and reconcile has to see a
+# tag that disagrees with the ledger. A purely canned answer can prove neither.
+#
+# So: when env var MOCK_QLIK_STATE names a file, `collection create` and
+# `collection item create|rm` write to it and `collection ls` / `item
+# collections` read from it. When it is UNSET the mock behaves exactly as it
+# did in M0 - fixed answers, no file - which is what keeps fleet/test_fleet.R
+# untouched by this addition. The format is JSON the mock itself is the only
+# writer of, so the small readers below are safe on it and stay base R.
+.STATE <- Sys.getenv("MOCK_QLIK_STATE", "")
+.COL_ID <- c("col000000001", "col000000002")
+.COL_NAME <- c("mig:unbuilt", "mig:styled")
+
+.st_read <- function() {
+	s <- list(collections = character(0), items = list())
+	if (!nzchar(.STATE) || !file.exists(.STATE)) return(s)
+	txt <- paste(readLines(.STATE, warn = FALSE), collapse = "")
+	cb <- regmatches(txt, regexpr('"collections":[{][^}]*[}]', txt))
+	if (length(cb)) {
+		prs <- regmatches(cb, gregexpr('"[^"]+":"[^"]*"', cb))[[1]]
+		if (length(prs))
+			s$collections <- setNames(sub('^.*:"([^"]*)"$', "\\1", prs),
+			                          sub('^"([^"]+)":.*$', "\\1", prs))
+	}
+	for (e in regmatches(txt, gregexpr('"[^"]+":\\[[^]]*\\]', txt))[[1]]) {
+		k <- sub('^"([^"]+)":.*$', "\\1", e)
+		# GOTCHA (caught by fleet/test_fleet_m2.R, not by inspection): the
+		# match positions and the string they are extracted from must be the
+		# SAME string. Computing gregexpr() on the stripped remainder and then
+		# calling regmatches() on the unstripped `e` reads at the wrong offsets
+		# and silently yields the item id instead of its collection ids.
+		rest <- sub('^"[^"]+":', "", e)
+		s$items[[k]] <- gsub('"', "", regmatches(rest, gregexpr('"[^"]*"', rest))[[1]])
+	}
+	s
+}
+
+.st_write <- function(s) {
+	if (!nzchar(.STATE)) return(invisible(NULL))
+	cols <- if (length(s$collections))
+		paste(sprintf('"%s":"%s"', names(s$collections), s$collections), collapse = ",")
+		else ""
+	its <- if (length(s$items))
+		paste(vapply(names(s$items), function(k)
+			sprintf('"%s":[%s]', k,
+			        paste(sprintf('"%s"', s$items[[k]]), collapse = ",")),
+			character(1), USE.NAMES = FALSE), collapse = ",")
+		else ""
+	cat('{"collections":{', cols, '},"items":{', its, '}}\n', sep = "", file = .STATE)
+	invisible(NULL)
+}
+
+# Every collection the tenant has: the two canned ones plus anything created
+# during this test run.
+.all_collections <- function(s) {
+	c(setNames(.COL_NAME, .COL_ID), s$collections)
+}
+
 # --- subcommands ----------------------------------------------------------
 .cmd_space <- function(w) {
 	if (length(w) < 2L || w[2] != "ls") .mk_die(paste("unknown space command:", paste(w, collapse = " ")))
@@ -225,8 +285,20 @@ if (nzchar(.log)) {
 	}
 	if (sub == "collections") {
 		if (length(w) < 3L) .mk_die("item collections needs an item id")
-		cat("[", .obj(.fld("id", "col000000001"), .fld("name", "mig:unbuilt"),
-		              .fld("type", "public")), "]\n", sep = "")
+		if (!nzchar(.STATE)) {
+			cat("[", .obj(.fld("id", "col000000001"), .fld("name", "mig:unbuilt"),
+			              .fld("type", "public")), "]\n", sep = "")
+			return(invisible(NULL))
+		}
+		s <- .st_read()
+		all <- .all_collections(s)
+		mine <- s$items[[w[3]]]
+		if (is.null(mine)) mine <- character(0)
+		mine <- mine[mine %in% names(all)]
+		cat("[", paste(vapply(mine, function(cid)
+			.obj(.fld("id", cid), .fld("name", unname(all[cid])),
+			     .fld("type", "public")), character(1), USE.NAMES = FALSE),
+			collapse = ","), "]\n", sep = "")
 		return(invisible(NULL))
 	}
 	.mk_die(paste("unknown item command:", sub))
@@ -234,17 +306,31 @@ if (nzchar(.log)) {
 
 .cmd_collection <- function(w) {
 	sub <- if (length(w) >= 2L) w[2] else ""
+	s <- .st_read()
 	if (sub == "ls") {
-		cat("[", paste(c(.obj(.fld("id", "col000000001"), .fld("name", "mig:unbuilt"),
-		                      .fld("type", "public")),
-		                 .obj(.fld("id", "col000000002"), .fld("name", "mig:styled"),
-		                      .fld("type", "public"))), collapse = ","), "]\n", sep = "")
+		all <- .all_collections(s)
+		cat("[", paste(vapply(names(all), function(cid)
+			.obj(.fld("id", cid), .fld("name", unname(all[cid])),
+			     .fld("type", "public")), character(1), USE.NAMES = FALSE),
+			collapse = ","), "]\n", sep = "")
 		return(invisible(NULL))
 	}
 	if (sub == "create") {
 		nm <- .mk_val("--name")
 		if (is.na(nm)) .mk_die("collection create needs --name")
-		cat(.obj(.fld("id", "col000000009"), .fld("name", nm),
+		# A tag name is UNIQUE on the tenant, so a second create of the same
+		# name is a 409. fleet/fleet.R's fleet_tag_id() treats that as "someone
+		# else made it" and re-reads the listing, which is the recovery
+		# PLAN-fleet.md section 7 asks for - and it cannot be tested at all
+		# unless the mock actually refuses.
+		if (nm %in% .all_collections(s))
+			.mk_die(paste0("409 Conflict: a collection named ", nm, " already exists"),
+			        status = 1L)
+		newid <- if (!nzchar(.STATE)) "col000000009"
+		         else sprintf("col%09d", 9L + length(s$collections) + 1L)
+		s$collections[[newid]] <- nm
+		.st_write(s)
+		cat(.obj(.fld("id", newid), .fld("name", nm),
 		         .fld("type", .mk_val("--type", "public"))), "\n", sep = "")
 		return(invisible(NULL))
 	}
@@ -255,11 +341,15 @@ if (nzchar(.log)) {
 		if (act == "create") {
 			id <- .mk_val("--id")
 			if (is.na(id)) .mk_die("collection item create needs --id")
+			s$items[[id]] <- unique(c(s$items[[id]], col))
+			.st_write(s)
 			cat("added ", id, " to ", col, "\n", sep = "")
 			return(invisible(NULL))
 		}
 		if (act == "rm") {
 			if (length(w) < 4L) .mk_die("collection item rm needs an item id")
+			s$items[[w[4]]] <- setdiff(s$items[[w[4]]], col)
+			.st_write(s)
 			cat("removed ", w[4], " from ", col, "\n", sep = "")
 			return(invisible(NULL))
 		}

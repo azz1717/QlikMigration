@@ -219,7 +219,7 @@ if (!have) {
 	.t1_ok("rollup exits 0", fleet_main(c("rollup")) == 0L)
 	ms <- read_csv_any(MASTER_CSV)
 	want <- c("app_id", "app_name", "space_name", "stage", "stage_at",
-	          "target_app_id", "loads_total", "loads_retargeted",
+	          "target_app_id", "loads_total", "loads_eligible", "loads_retargeted",
 	          "loads_not_in_map", "loads_multi_source", "loads_commented",
 	          "loads_wildcard", "pct_retargeted", "tables_total", "tables_unused",
 	          "fields_unused_pct", "vars_total", "vars_unused", "dims_unused",

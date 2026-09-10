@@ -102,13 +102,90 @@ open(.cui_stdin, "r")
 	invisible(status)
 }
 
+# PLAN-fleet.md section 4's selection syntax, "1,3-5,all", expanded into the
+# index list `fleet.R add --apps` takes. This is the ONE piece of parsing the
+# menu owns, and it is presentation: the operator typed a range at a prompt,
+# and ranges are not something a CLI flag should have to understand. Returns
+# "all", a comma list of indexes, or "" when the input makes no sense.
+.cui_expand_sel <- function(s, n) {
+	s <- tolower(trimws(s))
+	if (!nzchar(s)) return("")
+	if (s == "all") return("all")
+	out <- integer(0)
+	for (part in trimws(strsplit(s, ",", fixed = TRUE)[[1]])) {
+		if (!nzchar(part)) next
+		if (grepl("^[0-9]+-[0-9]+$", part)) {
+			ab <- as.integer(strsplit(part, "-", fixed = TRUE)[[1]])
+			if (ab[1] > ab[2]) return("")
+			out <- c(out, ab[1]:ab[2])
+		} else if (grepl("^[0-9]+$", part)) {
+			out <- c(out, as.integer(part))
+		} else return("")
+	}
+	out <- sort(unique(out))
+	if (!length(out) || any(out < 1L) || (n > 0L && any(out > n))) return("")
+	paste(out, collapse = ",")
+}
+
+# [3] Cloud browse: spaces -> pick one -> apps -> select -> add. Four fleet.R
+# runs and no logic of its own; every step is reproducible from a command
+# line, which is the rule for this whole menu.
+.cui_cloud_browse <- function() {
+	if (.cui_fleet("spaces") != 0) return(invisible())
+	sp <- trimws(.cui_read_line("\nSpace (number from the list above, or a space id): "))
+	if (!nzchar(sp)) return(invisible())
+	if (.cui_fleet("apps", "--space", shQuote(sp)) != 0) return(invisible())
+	sel <- .cui_read_line("\nApps to add (e.g. 1,3-5 or all, blank to cancel): ")
+	if (!nzchar(trimws(sel))) return(invisible())
+	# n = 0: the count lives in the listing fleet.R just printed, and the UI
+	# stores no listing. An out-of-range index is refused by `add` itself.
+	ex <- .cui_expand_sel(sel, 0L)
+	if (!nzchar(ex)) { cat("Not a valid selection.\n"); return(invisible()) }
+	if (identical(ex, "all")) .cui_fleet("add", "--space", shQuote(sp), "--all")
+	else .cui_fleet("add", "--space", shQuote(sp), "--apps", shQuote(ex))
+	invisible()
+}
+
+# A tenant-touching run is offered as a dry run FIRST and needs the word LIVE
+# typed to go further - the same shape PLAN-fleet.md section 4 specifies for
+# [8]. `fleet.R` defaults to DRY_RUN anyway; this is the second lock.
+.cui_live_confirm <- function(what) {
+	cat("\nThat was the dry run. Type LIVE to ", what, " for real, ",
+	    "anything else to stop.\n", sep = "")
+	identical(trimws(.cui_read_line("> ")), "LIVE")
+}
+
+.cui_fetch <- function() {
+	cat("\n[1] apps at stage 'listed' (the usual)\n[2] every app in the ledger\n")
+	pick <- trimws(.cui_read_line("> "))
+	sel <- if (pick == "1") c("--stage", "listed") else if (pick == "2") "--all" else NULL
+	if (is.null(sel)) { cat("Not a valid choice.\n"); return(invisible()) }
+	.cui_fleet("fetch", sel)
+	if (.cui_live_confirm("fetch")) .cui_fleet("fetch", sel, "--live")
+	invisible()
+}
+
+.cui_tags <- function() {
+	cat("\n[1] stamp - dry run (print the plan)\n[2] stamp - LIVE\n",
+	    "[3] reconcile - report tag vs ledger drift\n",
+	    "[4] reconcile --adopt - move the ledger to the tag where artefacts exist\n",
+	    sep = "")
+	pick <- trimws(.cui_read_line("> "))
+	if (pick == "1") .cui_fleet("stamp", "--all")
+	else if (pick == "2") {
+		.cui_fleet("stamp", "--all")
+		if (.cui_live_confirm("stamp every app")) .cui_fleet("stamp", "--all", "--live")
+	}
+	else if (pick == "3") .cui_fleet("reconcile", "--all")
+	else if (pick == "4") .cui_fleet("reconcile", "--all", "--adopt")
+	else cat("Not a valid choice.\n")
+	invisible()
+}
+
 # Items that belong to a later milestone are LISTED and say so, rather than
 # being hidden: the menu is the only map of this tool most operators will see,
 # and a gap in the numbering is harder to read than a named "not yet".
-.CUI_LATER <- c("3" = "Cloud: browse spaces / add apps (M2)",
-                "4" = "Fetch (unbuild from tenant)      (M2)",
-                "8" = "Upload (copy or overwrite)       (M3)",
-                "9" = "Stamp / reconcile tags           (M4)",
+.CUI_LATER <- c("8" = "Upload (copy or overwrite)       (M3)",
                 "M" = "Map upkeep                       (run map_*.R by hand)")
 
 main <- function() {
@@ -118,13 +195,13 @@ main <- function() {
 		cat("\nWhat would you like to do?\n")
 		cat("[1] Run formatting (one app)\n")
 		cat("[2] Run report (one app)\n")
-		cat("[3] ", .CUI_LATER[["3"]], "\n", sep = "")
-		cat("[4] ", .CUI_LATER[["4"]], "\n", sep = "")
+		cat("[3] Cloud: browse spaces / add apps\n")
+		cat("[4] Fetch (unbuild from tenant)\n")
 		cat("[5] Process the fleet (style + retarget)\n")
 		cat("[6] Report the fleet (usage + flags)\n")
 		cat("[7] Status board\n")
 		cat("[8] ", .CUI_LATER[["8"]], "\n", sep = "")
-		cat("[9] ", .CUI_LATER[["9"]], "\n", sep = "")
+		cat("[9] Stamp / reconcile tags\n")
 		cat("[M] ", .CUI_LATER[["M"]], "\n", sep = "")
 		cat("[Q] Quit\n")
 		choice <- .cui_read_line("> ")
@@ -134,9 +211,12 @@ main <- function() {
 			cat("Not yet: ", .CUI_LATER[[u]], "\n", sep = "")
 			next
 		}
+		if (u == "3") { .cui_cloud_browse(); next }
+		if (u == "4") { .cui_fetch(); next }
 		if (u == "5") { .cui_fleet("process", "--all"); next }
 		if (u == "6") { .cui_fleet("report", "--all"); next }
 		if (u == "7") { .cui_fleet("status"); next }
+		if (u == "9") { .cui_tags(); next }
 		if (!u %in% c("1", "2")) {
 			cat("Not a valid choice.\n")
 			next
