@@ -117,6 +117,10 @@ baseline-substream/
 # manifest.csv and master*.csv are NOT here on purpose (PLAN-fleet.md D1,
 # recommended answer (a)): the ledger IS the deliverable and travels with the
 # repo.
+#   map_check_status.csv  what retargeting/map_check.R said on THIS machine's
+#             last `process` run - a local run record like audit.log. Its
+#             finding COUNT travels in master.csv, which is tracked.
 fleet/apps/
 fleet/audit.log
 fleet/spaces.csv
+fleet/map_check_status.csv

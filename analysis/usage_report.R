@@ -168,7 +168,19 @@ main <- function(args) {
   if (!is.na(stem)) {
     write.csv(r$tables, paste0(stem, "-tables.csv"), row.names = FALSE)
     write.csv(r$fields, paste0(stem, "-fields.csv"), row.names = FALSE)
-    cat("\nwrote ", stem, "-tables.csv and ", stem, "-fields.csv\n", sep = "")
+    # The DECLARED assets (variables / master dimensions / master measures) and
+    # whether anything uses them - already computed by app_usage.R's
+    # asset_usage(), until now reachable only through that script's own console
+    # summary or the HTML report. PLAN-fleet.md section 3 (`report`) needs it as
+    # a file so `fleet.R rollup` can count it without re-tokenizing a script.
+    # The WHOLE table is written, not just the unused rows: master.csv wants
+    # vars_total as well as vars_unused, and a filter is the reader's to apply.
+    # Written here, inside main(), so nothing that SOURCES this file (render_
+    # report.R does) changes behaviour by one byte.
+    av <- asset_usage(args[1L], if (is.na(scr)) NULL else scr)
+    write.csv(av, paste0(stem, "-vars.csv"), row.names = FALSE)
+    cat("\nwrote ", stem, "-tables.csv, ", stem, "-fields.csv and ",
+        stem, "-vars.csv\n", sep = "")
   }
 }
 

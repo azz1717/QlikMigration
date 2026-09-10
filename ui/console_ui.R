@@ -89,14 +89,54 @@ open(.cui_stdin, "r")
 	if (status != 0) cat("render_report.R exited with status", status, "\n") else cat("Done.\n")
 }
 
+# The fleet verbs (PLAN-fleet.md section 4). The UI HOLDS NO LOGIC: every item
+# below is one `fleet.R <verb>` run in its own process, so the same action is
+# reproducible from a command line without this menu, and testable offline.
+# fleet.R self-locates the project folder, so it needs no working directory.
+.cui_fleet <- function(...) {
+	args <- c(shQuote(file.path("fleet", "fleet.R")), ...)
+	cat("\n$ Rscript", paste(args, collapse = " "), "\n\n")
+	status <- system2(RSCRIPT, args)
+	# 2 is "some apps blocked", which is information, not a failure.
+	if (!status %in% c(0, 2)) cat("fleet.R exited with status", status, "\n")
+	invisible(status)
+}
+
+# Items that belong to a later milestone are LISTED and say so, rather than
+# being hidden: the menu is the only map of this tool most operators will see,
+# and a gap in the numbering is harder to read than a named "not yet".
+.CUI_LATER <- c("3" = "Cloud: browse spaces / add apps (M2)",
+                "4" = "Fetch (unbuild from tenant)      (M2)",
+                "8" = "Upload (copy or overwrite)       (M3)",
+                "9" = "Stamp / reconcile tags           (M4)",
+                "M" = "Map upkeep                       (run map_*.R by hand)")
+
 main <- function() {
 	cat("Rtools console launcher\n")
 	wd <- getwd()
 	repeat {
-		cat("\nWhat would you like to do?\n[1] Run formatting\n[2] Run report\n[Q] Quit\n")
+		cat("\nWhat would you like to do?\n")
+		cat("[1] Run formatting (one app)\n")
+		cat("[2] Run report (one app)\n")
+		cat("[3] ", .CUI_LATER[["3"]], "\n", sep = "")
+		cat("[4] ", .CUI_LATER[["4"]], "\n", sep = "")
+		cat("[5] Process the fleet (style + retarget)\n")
+		cat("[6] Report the fleet (usage + flags)\n")
+		cat("[7] Status board\n")
+		cat("[8] ", .CUI_LATER[["8"]], "\n", sep = "")
+		cat("[9] ", .CUI_LATER[["9"]], "\n", sep = "")
+		cat("[M] ", .CUI_LATER[["M"]], "\n", sep = "")
+		cat("[Q] Quit\n")
 		choice <- .cui_read_line("> ")
 		u <- toupper(trimws(choice))
 		if (u == "Q") break
+		if (u %in% names(.CUI_LATER)) {
+			cat("Not yet: ", .CUI_LATER[[u]], "\n", sep = "")
+			next
+		}
+		if (u == "5") { .cui_fleet("process", "--all"); next }
+		if (u == "6") { .cui_fleet("report", "--all"); next }
+		if (u == "7") { .cui_fleet("status"); next }
 		if (!u %in% c("1", "2")) {
 			cat("Not a valid choice.\n")
 			next

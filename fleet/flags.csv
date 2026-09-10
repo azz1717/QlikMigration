@@ -1,0 +1,7 @@
+"flag","where","pattern","note"
+"geoanalytics","script","geoanalytics|geooperation|idevio","Qlik GeoAnalytics connector calls. Named, not judged - render_report.R's .RR_CONNECTOR_PRODUCT names the same product from the other direction."
+"inphinity","script","inphinity","Inphinity Forms writes back through its own connector; the app cannot move without it."
+"rest","script","lib +connect +to +'[^']*(rest|web)","A REST or Web connector. Space-level in cloud, so it is a target-space prerequisite, not a script edit."
+"unknown_src","report","","COMPUTED, not a regex: retarget_report.csv rows with status not-in-map or multi-source, plus tables whose field list is incomplete (an unresolved wildcard load). where=report means rollup supplies the count."
+"section_access","script","section +access","Section Access changes who can open the app at all; a copy into a staging space inherits it."
+"nprint","script,objects,comments","nprint","HEURISTIC, reported as a hint and never as proof: NPrinting lives OUTSIDE the app, so only a comment, a variable name or an object title can betray it. This is why the scope includes comments."
