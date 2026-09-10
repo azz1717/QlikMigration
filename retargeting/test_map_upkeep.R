@@ -197,6 +197,20 @@ source(file.path(.TM_ROOT, "retargeting", "map_upkeep.R"))
                                 "--schemas", shQuote(sch), "--out", shQuote(find)))
   .tm_ok("a clean re-run deletes the stale findings file", r$status == 0L && !file.exists(find), r$out)
 
+  cat("\n-- dedupe (the builder's rule, tested on map_upkeep.R's function) --\n")
+  dd <- read.csv(map, colClasses = "character")           # 2 rows, distinct keys
+  clash <- dd[1, ]; clash$verdict <- "not-found"          # same key, disagreeing
+  clash$source_object <- "T Two"; clash$evidence <- "searched it"
+  dd2 <- map_dedupe(rbind(dd[1, ], clash, dd[2, ]))
+  .tm_ok("dedupe keeps one row per key", nrow(dd2) == 2L, paste("rows:", nrow(dd2)))
+  .tm_ok("...and it is the resolvable one",
+         identical(dd2$verdict, c("in-cloud", "in-cloud")), paste(dd2$verdict, collapse = ", "))
+  .tm_ok("...evidence records the drop",
+         grepl("dedupe: dropped 1 row(s) with verdict not-found via source_object T Two",
+               dd2$evidence[1], fixed = TRUE), dd2$evidence[1])
+  .tm_ok("...a map with no duplicates is returned unchanged",
+         identical(map_dedupe(dd), dd))
+
   cat("\n-- map_refresh --\n")
   same <- file.path(tmp, "canned_same.csv"); file.copy(map, same, overwrite = TRUE)
   stub_same <- file.path(tmp, "stub_same.R"); .tm_make_builder(stub_same, same)

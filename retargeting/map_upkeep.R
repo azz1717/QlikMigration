@@ -69,6 +69,34 @@ read_lineage_csv <- function(p) {
   d
 }
 
+#' Verdict preference when duplicate keys DISAGREE (Adam, 2026-09-10: "keep
+#' the resolvable one"). Anything not listed ranks last.
+MAP_DEDUPE_RANK <- c("in-cloud", "import-view", "extend-view", "create-view")
+
+#' Collapse a built map to ONE row per map_key(): the best-ranked verdict wins,
+#' ties keep the FIRST row in file order, and the kept row's `evidence` records
+#' what was dropped so the choice stays auditable. The rewriter takes the first
+#' matching row, so leaving duplicates in was a silently arbitrary rewrite.
+map_dedupe <- function(d) {
+  k <- map_key(d$onprem_qvd, d$onprem_field)
+  dup_keys <- unique(k[duplicated(k)])
+  if (length(dup_keys) == 0) return(d)
+  rank <- match(d$verdict, MAP_DEDUPE_RANK, nomatch = length(MAP_DEDUPE_RANK) + 1L)
+  dropped <- logical(nrow(d))
+  for (key in dup_keys) {
+    idx  <- which(k == key)
+    keep <- idx[which.min(rank[idx])]          ## which.min = first in file order
+    lost <- idx[idx != keep]
+    d$evidence[keep] <- paste0(
+      d$evidence[keep],
+      sprintf(" | dedupe: dropped %d row(s) with verdict %s via source_object %s",
+              length(lost), paste(unique(d$verdict[lost]), collapse = ", "),
+              paste(unique(as.character(d$source_object[lost])), collapse = ", ")))
+    dropped[lost] <- TRUE
+  }
+  d[!dropped, , drop = FALSE]
+}
+
 #' Pull `--flag value` pairs out of a commandArgs() vector. Unknown `--flags`
 #' are an ERROR, not a silent no-op: a typo in a batch script must not look
 #' like a successful default run.

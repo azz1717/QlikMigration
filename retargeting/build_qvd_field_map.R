@@ -877,6 +877,18 @@ out <- data.frame(
 out <- out[order(out$source_app, out$onprem_qvd, out$onprem_field), ]
 rownames(out) <- NULL
 
+## Dedupe (Adam, 2026-09-10, BINDING): "keep the resolvable one when duplicate
+## keys disagree". The rewriter takes the FIRST row matching (onprem_qvd
+## case-insens, onprem_field case-sens), so a disagreeing duplicate was an
+## arbitrary rewrite; map_dedupe() keeps one row per key by verdict preference
+## (in-cloud > import-view > extend-view > create-view > anything else), ties
+## by file order, and records the drop in the kept row's evidence.
+n_before <- nrow(out)
+out <- map_dedupe(out)
+rownames(out) <- NULL
+cat(sprintf("\nDedupe: %d row(s) in, %d out (%d duplicate-key row(s) dropped).\n",
+            n_before, nrow(out), n_before - nrow(out)))
+
 ## out_path came from the --out override (or its default) at the top.
 write.csv(out, out_path, row.names = FALSE)
 cat(sprintf("\nWrote %d rows to %s\n", nrow(out), out_path))
