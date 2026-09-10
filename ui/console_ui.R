@@ -182,11 +182,68 @@ open(.cui_stdin, "r")
 	invisible()
 }
 
+# The target space for an upload. fleet/spaces.csv is whatever the last
+# `fleet.R spaces` run cached (index, id, name, type); with no cache the
+# operator types an id. Blank means "the app's own space", which `upload`
+# then reads from the ledger - and refuses for a copy if there is none.
+.cui_pick_space <- function() {
+	p <- file.path("fleet", "spaces.csv")
+	s <- if (file.exists(p))
+		tryCatch(utils::read.csv(p, colClasses = "character",
+		                         stringsAsFactors = FALSE),
+		         error = function(e) NULL) else NULL
+	if (!is.null(s) && nrow(s) && all(c("id", "name") %in% names(s))) {
+		cat("\nSpaces (from fleet/spaces.csv):\n")
+		for (i in seq_len(nrow(s)))
+			cat(sprintf("[%d] %-26s %s\n", i, substr(s$id[i], 1, 26),
+			            substr(s$name[i], 1, 36)))
+	} else {
+		s <- NULL
+		cat("\nNo fleet/spaces.csv yet - run [3] first, or type a space id.\n")
+	}
+	v <- trimws(.cui_read_line("Target space (number, id, blank = app's own): "))
+	if (!nzchar(v)) return("")
+	idx <- suppressWarnings(as.integer(v))
+	if (!is.na(idx) && !is.null(s) && idx >= 1 && idx <= nrow(s)) return(s$id[idx])
+	v
+}
+
+# [8] Upload (PLAN-fleet.md section 4): mode, target space, selection, the
+# DRY-RUN command lines, then the literal word LIVE. Two locks, on purpose:
+# fleet.R is dry by default and only --live turns that off, and this menu
+# will not pass --live until the word is typed exactly.
+.cui_upload <- function() {
+	cat("\nUpload mode:\n")
+	cat("[1] copy into a target space, name + \" [mig]\"  (default)\n")
+	cat("[2] overwrite the source app in place\n")
+	pick <- trimws(.cui_read_line("> "))
+	mode <- if (pick %in% c("", "1")) "copy" else if (pick == "2") "overwrite" else ""
+	if (!nzchar(mode)) { cat("Not a valid choice.\n"); return(invisible()) }
+	sp <- if (mode == "copy") .cui_pick_space() else ""
+	cat("\nWhich apps?\n[1] stage 'retargeted' (the usual)\n")
+	cat("[2] every app in the ledger\n[3] type app ids\n")
+	pick <- trimws(.cui_read_line("> "))
+	sel <- if (pick == "1") c("--stage", "retargeted")
+	       else if (pick == "2") "--all"
+	       else if (pick == "3") {
+	       	ids <- trimws(.cui_read_line("App ids, comma separated: "))
+	       	if (nzchar(ids)) c("--apps", shQuote(ids)) else NULL
+	       } else NULL
+	if (is.null(sel)) { cat("Not a valid choice.\n"); return(invisible()) }
+	args <- c("upload", "--mode", mode,
+	          if (nzchar(sp)) c("--to-space", shQuote(sp)), sel)
+	.cui_fleet(args)
+	if (!.cui_live_confirm(paste0("upload (--mode ", mode, ")"))) return(invisible())
+	.cui_fleet(c(args, "--live"))
+	v <- trimws(.cui_read_line("\nVerify the uploaded apps now? [y/N] "))
+	if (toupper(v) == "Y") .cui_fleet(c("verify", "--stage", "built", "--live"))
+	invisible()
+}
+
 # Items that belong to a later milestone are LISTED and say so, rather than
 # being hidden: the menu is the only map of this tool most operators will see,
 # and a gap in the numbering is harder to read than a named "not yet".
-.CUI_LATER <- c("8" = "Upload (copy or overwrite)       (M3)",
-                "M" = "Map upkeep                       (run map_*.R by hand)")
+.CUI_LATER <- c("M" = "Map upkeep                       (run map_*.R by hand)")
 
 main <- function() {
 	cat("Rtools console launcher\n")
@@ -200,7 +257,7 @@ main <- function() {
 		cat("[5] Process the fleet (style + retarget)\n")
 		cat("[6] Report the fleet (usage + flags)\n")
 		cat("[7] Status board\n")
-		cat("[8] ", .CUI_LATER[["8"]], "\n", sep = "")
+		cat("[8] Upload (copy or overwrite) + verify\n")
 		cat("[9] Stamp / reconcile tags\n")
 		cat("[M] ", .CUI_LATER[["M"]], "\n", sep = "")
 		cat("[Q] Quit\n")
@@ -216,6 +273,7 @@ main <- function() {
 		if (u == "5") { .cui_fleet("process", "--all"); next }
 		if (u == "6") { .cui_fleet("report", "--all"); next }
 		if (u == "7") { .cui_fleet("status"); next }
+		if (u == "8") { .cui_upload(); next }
 		if (u == "9") { .cui_tags(); next }
 		if (!u %in% c("1", "2")) {
 			cat("Not a valid choice.\n")

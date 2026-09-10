@@ -359,8 +359,10 @@ dr <- read_csv_any(TAG_DRIFT_CSV)
        nzchar(fleet_parse_args(c("reconcile", "--all", "--adop"))$error))
 .t2_ok("the M2/M4 verbs no longer report themselves as unimplemented",
        !any(c("fetch", "stamp", "reconcile") %in% names(.FL_TODO)))
-.t2_ok("upload and verify still do (M3 is not built)",
-       all(c("upload", "verify") %in% names(.FL_TODO)))
+# M3 built upload/verify (2026-09-10); `map` is still the only verb fleet.R
+# names as somebody else's script.
+.t2_ok("only the map verb still reports itself as unimplemented",
+       identical(names(.FL_TODO), "map"), paste(names(.FL_TODO), collapse = " "))
 
 unlink(TMP, recursive = TRUE)
 cat("\n", sprintf("%d checks, %d failed", .T2_CHECKS, .T2_FAILS), "\n", sep = "")

@@ -40,7 +40,7 @@ root is entry points, everything else is engine room:
 | `styling/` | The eight style passes `run_pipeline.R` wires together |
 | `analysis/` | Phase 2 usage/review/pruning scripts, and the migration debt report |
 | `retargeting/` | Phase 3 — not started yet (DESIGN §6.6) |
-| `fleet/` | Batch migration across the whole app estate: `fleet.R <verb>` (`spaces`, `apps`, `add`, `import-unbuilt`, `fetch`, `reconcile-ids`, `process`, `report`, `rollup`, `status`, `stamp`, `reconcile`), the `manifest.csv` ledger, the `master*.csv` record, `flags.csv`, `tags.csv`, `qlik_api.R` (DESIGN §8.6, §8.7) |
+| `fleet/` | Batch migration across the whole app estate: `fleet.R <verb>` (`spaces`, `apps`, `add`, `import-unbuilt`, `fetch`, `reconcile-ids`, `process`, `report`, `rollup`, `status`, `stamp`, `reconcile`, `upload`, `verify`), the `manifest.csv` ledger, the `master*.csv` record, `flags.csv`, `tags.csv`, `qlik_api.R` (DESIGN §8.6, §8.7) |
 
 The working docs live in `docs/`, which is **ignored here and has its own git
 repo with no remote** (2026-08-24). They need history — you cannot safely

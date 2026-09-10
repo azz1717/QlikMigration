@@ -111,6 +111,32 @@ if (nzchar(.log)) {
 
 .item_id <- function(app_id) paste0("itm-", substr(app_id, 1L, 8L), "-0001")
 
+# --- the fake app store, and one canned failure (M3) ----------------------
+# `app build` has to be provable end to end: upload writes a script onto an
+# app, `verify` unbuilds that app again and compares. A mock that only
+# printed "updated" could prove neither half. So when env var
+# MOCK_QLIK_APPS names a directory, `app build` KEEPS the script it was
+# given there and `app unbuild` hands that same file back as script.qvs.
+# UNSET, both behave exactly as they did in M0, which is what keeps
+# fleet/test_fleet.R untouched by this addition.
+#
+# MOCK_QLIK_FAIL is the other half: a verb's failure path (a build that
+# fails AFTER a copy has already created an app) cannot be tested against a
+# mock that always succeeds. Its value is matched against the start of the
+# command words, so "app build" fails every build and "app copy" every copy.
+.APPS_STORE <- Sys.getenv("MOCK_QLIK_APPS", "")
+.FAIL <- Sys.getenv("MOCK_QLIK_FAIL", "")
+.mk_store_path <- function(id)
+	file.path(.APPS_STORE, paste0(gsub("[^A-Za-z0-9._-]", "_", id), ".qvs"))
+
+# Data connections are SPACE-level in cloud (PLAN-fleet.md section 0), which
+# is why `upload`'s connection check asks per space. INFERRED flag, marked as
+# such in DESIGN 8.7: the mock states what fleet/ expects, not what the
+# installed CLI was measured to answer.
+.CONN_ID    <- c("dc0000000001", "dc0000000002", "dc0000000003")
+.CONN_NAME  <- c("DataFiles", "AzureDataLake", "CuratedDataStore")
+.CONN_SPACE <- c(1L, 3L, 2L)
+
 # --- collections, and the one piece of STATE this mock keeps ---------------
 # M4's verbs are about a round trip: stamp adds an item to a collection and
 # expects `item collections` to say so afterwards, and reconcile has to see a
@@ -217,14 +243,22 @@ if (nzchar(.log)) {
 		dir <- .mk_val("--dir")
 		if (is.na(id) || is.na(dir)) .mk_die("app unbuild needs --app and --dir")
 		k <- match(id, .APP_ID)
-		if (is.na(k)) .mk_die(paste("no such app:", id))
+		stored <- if (nzchar(.APPS_STORE)) .mk_store_path(id) else ""
+		has_stored <- nzchar(stored) && file.exists(stored)
+		# An app the store knows is a real app here even when it is not one of
+		# the canned four: `upload --mode copy` creates one and `verify`
+		# unbuilds it a moment later.
+		if (is.na(k) && !has_stored) .mk_die(paste("no such app:", id))
+		nm <- if (is.na(k)) paste("Copied App", id) else .APP_NAME[k]
+		sp <- if (is.na(k)) .SPACE_ID[3] else .SPACE_ID[.APP_SPACE[k]]
 		dir.create(file.path(dir, "objects"), recursive = TRUE, showWarnings = FALSE)
-		writeLines(c("{", paste0('  "qTitle": ', .q(.APP_NAME[k]), ","),
+		writeLines(c("{", paste0('  "qTitle": ', .q(nm), ","),
 		             paste0('  "qThumbnail": { "qUrl": "/api/v1/apps/', id, '/media/files/t.png" },'),
-		             paste0('  "spaceId": ', .q(.SPACE_ID[.APP_SPACE[k]]), ","),
+		             paste0('  "spaceId": ', .q(sp), ","),
 		             '  "published": false', "}"),
 		           file.path(dir, "app-properties.json"))
-		writeLines(c("///$tab Main", "SET vMock = 1;", "",
+		if (has_stored) file.copy(stored, file.path(dir, "script.qvs"), overwrite = TRUE)
+		else writeLines(c("///$tab Main", "SET vMock = 1;", "",
 		             "MockTable:", "LOAD 1 AS [Mock Field]", "AUTOGENERATE 1;"),
 		           file.path(dir, "script.qvs"))
 		writeLines("[]", file.path(dir, "variables.json"))
@@ -232,7 +266,7 @@ if (nzchar(.log)) {
 		writeLines("[]", file.path(dir, "measures.json"))
 		writeLines("connections:", file.path(dir, "connections.yml"))
 		writeLines(paste0('{ "qInfo": { "qId": "obj-0001", "qType": "sheet" }, "title": ',
-		                  .q(paste("Sheet -", .APP_NAME[k])), " }"),
+		                  .q(paste("Sheet -", nm)), " }"),
 		           file.path(dir, "objects", "sheet-mock.json"))
 		cat("unbuilt ", id, " to ", dir, "\n", sep = "")
 		return(invisible(NULL))
@@ -243,6 +277,12 @@ if (nzchar(.log)) {
 		if (is.na(id)) .mk_die("app build needs --app")
 		if (is.na(script) || !file.exists(script)) .mk_die(paste("no such script file:", script))
 		if (is.na(match(id, .APP_ID)) && !startsWith(id, "copy-")) .mk_die(paste("no such app:", id))
+		# The script is KEPT (when there is a store) so `app unbuild` can hand
+		# the very same bytes back - which is the whole of what `verify` checks.
+		if (nzchar(.APPS_STORE)) {
+			dir.create(.APPS_STORE, recursive = TRUE, showWarnings = FALSE)
+			file.copy(script, .mk_store_path(id), overwrite = TRUE)
+		}
 		cat("app ", id, " updated from ", basename(script), "\n", sep = "")
 		return(invisible(NULL))
 	}
@@ -358,6 +398,27 @@ if (nzchar(.log)) {
 	.mk_die(paste("unknown collection command:", sub))
 }
 
+.cmd_dataconnection <- function(w) {
+	if (length(w) < 2L || w[2] != "ls")
+		.mk_die(paste("unknown data-connection command:", paste(w, collapse = " ")))
+	keep <- seq_along(.CONN_ID)
+	sp <- .mk_val("--spaceId")
+	if (!is.na(sp)) {
+		hit <- match(sp, .SPACE_ID)
+		if (is.na(hit)) .mk_die(paste("no such space:", sp))
+		keep <- keep[.CONN_SPACE[keep] == hit]
+	}
+	if (!.mk_has("--json")) {
+		for (k in keep) cat(.CONN_ID[k], " ", .CONN_NAME[k], "\n", sep = "")
+		return(invisible(NULL))
+	}
+	items <- vapply(keep, function(k)
+		.obj(.fld("id", .CONN_ID[k]), .fld("qName", .CONN_NAME[k]),
+		     .fld("name", .CONN_NAME[k]),
+		     .fld("spaceId", .SPACE_ID[.CONN_SPACE[k]])), character(1))
+	cat(.page(items, .page_no()), "\n", sep = "")
+}
+
 .mk_main <- function() {
 	if (.mk_has("--version") || .mk_has("version")) {
 		cat("qlik version 3.2.0-mock\n")
@@ -365,11 +426,14 @@ if (nzchar(.log)) {
 	}
 	w <- .mk_words()
 	if (!length(w)) .mk_die("no command given")
+	if (nzchar(.FAIL) && startsWith(paste(w, collapse = " "), .FAIL))
+		.mk_die(paste0("canned failure for '", .FAIL, "' (MOCK_QLIK_FAIL)"))
 	switch(w[1],
 	       space = .cmd_space(w),
 	       app = .cmd_app(w),
 	       item = .cmd_item(w),
 	       collection = .cmd_collection(w),
+	       "data-connection" = .cmd_dataconnection(w),
 	       .mk_die(paste("unknown command:", w[1])))
 	invisible(0L)
 }
