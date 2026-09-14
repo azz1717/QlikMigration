@@ -78,10 +78,6 @@ docs/
 outputs/*
 !outputs/RESULTS_LAND_HERE.txt
 
-# input-apps/ has no generated content to ignore - only its placeholder note
-# is tracked; whatever a user drops in there is theirs to manage, not ignored
-# by this repo (they know what they put there).
-
 # Dev fixtures: untracked 2026-08-24. They are inputs for verify.R, which is
 # itself a dev-only gate that never runs on a VM - so a VM operator has no use
 # for them, and they were the largest thing the repo carried for nobody.

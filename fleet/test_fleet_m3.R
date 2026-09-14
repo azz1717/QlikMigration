@@ -119,13 +119,13 @@ pf <- fleet_upload_preflight(.t3_row(APP1), d_ok, "copy", SPACE3)
 .t3_app(APP2, "Grants QVD Generator", "unbuilt")
 pf <- fleet_upload_preflight(.t3_row(APP2), .fl_app_dir(APP2), "copy", SPACE3)
 .t3_ok("a stage other than retargeted is refused",
-       !pf$ok && grepl("not retargeted", pf$reason), pf$reason)
+       !pf$ok && grepl("not formatted and retargeted yet", pf$reason), pf$reason)
 
 LOCAL <- "local:not-on-tenant"
 .t3_app(LOCAL, "Not On Tenant", "retargeted")
 pf <- fleet_upload_preflight(.t3_row(LOCAL), .fl_app_dir(LOCAL), "copy", SPACE3)
 .t3_ok("a local: key has no tenant app to upload to",
-       !pf$ok && grepl("no tenant app id", pf$reason), pf$reason)
+       !pf$ok && grepl("not matched to an app on the tenant", pf$reason), pf$reason)
 
 EMPTY <- "e0000000-0000-0000-0000-00000000000e"
 de <- .t3_app(EMPTY, "Empty Script", "retargeted", script = NULL)
@@ -141,10 +141,12 @@ UNRES <- "f0000000-0000-0000-0000-00000000000f"
 du <- .t3_app(UNRES, "Unresolved Loads", "retargeted",
               statuses = c("retargeted", "not-in-map", "multi-source"))
 pf <- fleet_upload_preflight(.t3_row(UNRES), du, "copy", SPACE3)
-.t3_ok("not-in-map / multi-source loads stop the upload (D7)",
-       !pf$ok && grepl("^2 unresolved", pf$reason), pf$reason)
-pf <- fleet_upload_preflight(.t3_row(UNRES), du, "copy", SPACE3, force = TRUE)
-.t3_ok("--force is the deliberate override", isTRUE(pf$ok), pf$reason)
+# D7 WITHDRAWN 2026-09-14 (Adam): an unresolved load is output, not failure.
+# The loads are listed in dev_notes.txt; the app uploads like any other.
+.t3_ok("not-in-map / multi-source loads do NOT stop the upload (D7 gone)",
+       isTRUE(pf$ok), pf$reason)
+.t3_ok("preflight has no force override left to take",
+       !"force" %in% names(formals(fleet_upload_preflight)))
 
 NOSPACE <- "c0000000-0000-0000-0000-00000000000c"
 dn <- .t3_app(NOSPACE, "No Space", "retargeted", space = "")
@@ -245,8 +247,9 @@ cmds <- grep("^DRY RUN", out, value = TRUE)
 
 out <- capture.output(rc <- fleet_main(c("upload", "--apps", UNRES,
                                          "--to-space", SPACE3, "--no-rollup")))
-.t3_ok("a refused app makes the run exit 2, printing no command at all",
-       rc == 2L && !length(grep("^DRY RUN", out)), paste("exit", rc))
+cmds <- grep("^DRY RUN", out, value = TRUE)
+.t3_ok("an app with unresolved loads is planned like any other: exit 0, two lines",
+       rc == 0L && length(cmds) == 2L, paste("exit", rc, "lines", length(cmds)))
 
 # --- 4. live against the mock: copy, build, then verify --------------------
 .t3_section("live against the mock - copy, build, verify the round trip")
@@ -287,6 +290,9 @@ out <- capture.output(rc <- fleet_main(c("verify", "--apps", APP1, "--no-rollup"
 
 # A tampered script is what verify exists to catch: build one thing, put
 # something else on disk, and the compare must fail with a line number.
+# The folder is named for the APP, and the runs above renamed it off the id
+# it was created under, so the path is re-derived rather than remembered.
+d_ok <- .fl_app_dir(APP1)
 writeLines(c(SCRIPT[1:4], "LOAD [Id] AS [Nope]", SCRIPT[6:7]),
            file.path(d_ok, "script_retargeted.qvs"))
 rc <- fleet_main(c("verify", "--apps", APP1, "--live", "--no-rollup"))
@@ -319,19 +325,14 @@ row3 <- .t3_row(APP3)
        nzchar(row3$target_app_id), row3$target_app_id)
 .t3_ok("as was the name it was created with", nzchar(row3$target_name))
 
-# --- 6. the --force path, end to end ---------------------------------------
-.t3_section("--force uploads an app with unresolved loads (D7's override)")
+# --- 6. an app with unresolved loads, end to end ---------------------------
+.t3_section("an app with unresolved loads uploads like any other (D7 gone)")
 unlink(CALLS)
+# The mock knows nothing of this id, so the overwrite build must fail - which
+# is exactly the proof that the call was issued rather than refused up front.
 rc <- fleet_main(c("upload", "--mode", "overwrite", "--apps", UNRES,
                    "--live", "--no-rollup"))
-.t3_ok("without --force it is refused and nothing is built",
-       rc == 2L && !any(grepl("app build", .t3_calls())), .t3_calls())
-.t3_ok("and the stage does not move", identical(.t3_stage(UNRES), "retargeted"))
-# The mock knows nothing of this id, so the overwrite build must fail - which
-# is exactly the proof that --force got past preflight and issued the call.
-rc <- fleet_main(c("upload", "--mode", "overwrite", "--apps", UNRES,
-                   "--force", "--live", "--no-rollup"))
-.t3_ok("--force gets past preflight and the build is really attempted",
+.t3_ok("the build is really attempted, not refused for its loads",
        any(grepl("app build", .t3_calls(), fixed = TRUE)), .t3_calls())
 .t3_ok("a failing build blocks the row with the CLI's own message",
        identical(.t3_stage(UNRES), "blocked") &&
@@ -345,22 +346,56 @@ rc <- fleet_main(c("upload", "--mode", "overwrite", "--apps", UNRES,
        fleet_main(c("verify")) == 1L)
 .t3_ok("an unknown --mode is a usage error, not a guess",
        fleet_main(c("upload", "--all", "--mode", "sideways")) == 1L)
-.t3_ok("--mode, --to-space and --force are known flags", {
+.t3_ok("--mode and --to-space are known flags", {
 	o <- fleet_parse_args(c("upload", "--all", "--mode", "copy", "--to-space",
-	                        "s1", "--force"))$opts
-	identical(o[["mode"]], "copy") && identical(o[["to-space"]], "s1") &&
-		isTRUE(o[["force"]])
+	                        "s1"))$opts
+	identical(o[["mode"]], "copy") && identical(o[["to-space"]], "s1")
 })
+.t3_ok("--force is gone: the gate it overrode is gone too",
+       nzchar(fleet_parse_args(c("upload", "--all", "--force"))$error))
 .t3_ok("a mistyped --to-spce is still refused",
        nzchar(fleet_parse_args(c("upload", "--all", "--to-spce", "s"))$error))
 .t3_ok("upload and verify no longer report themselves as unimplemented",
        !any(c("upload", "verify") %in% names(.FL_TODO)))
-.t3_ok("the console UI offers [8] and holds no logic of its own", {
+.t3_ok("the console UI is the four-step walk-through, holding no logic", {
 	ui <- readLines("ui/console_ui.R", warn = FALSE)
-	any(grepl('u == "8"', ui, fixed = TRUE)) &&
-		any(grepl('.cui_live_confirm', ui, fixed = TRUE)) &&
-		!any(grepl('"8" =', ui, fixed = TRUE))
+	live <- grep("--live", ui, fixed = TRUE, value = TRUE)
+	length(live) > 0L &&
+		all(grepl("upload|fetch|verify", live)) &&
+		any(grepl('"YES"', ui, fixed = TRUE)) &&
+		any(grepl("--space", ui, fixed = TRUE)) &&
+		!any(grepl('u == "8"', ui, fixed = TRUE))
 })
+
+# --- 8. app folders are named for the app, and index.csv is the record -----
+# Adam 2026-09-14: a folder called 7862b8ac-... tells the operator nothing.
+# The id stays the key (578 duplicate names on the tenant), so the mapping
+# has to live somewhere: index.csv, read and written in ONE place.
+.t3_section("fleet/apps/<app name>/ and its index")
+IXD <- file.path(TMP, "ixapps")
+dir.create(IXD, recursive = TRUE, showWarnings = FALSE)
+n1 <- "n0000000-0000-0000-0000-0000000000n1"
+n2 <- "n0000000-0000-0000-0000-0000000000n2"
+d1 <- .fl_app_dir(n1, IXD, name = "A: B/C")
+.t3_ok("a name Windows cannot spell becomes a legal folder",
+       !grepl("[:/\\\\]", basename(d1)) && nzchar(basename(d1)), basename(d1))
+.t3_ok("the index remembers it: the same id gives the same folder",
+       identical(.fl_app_dir(n1, IXD), d1), .fl_app_dir(n1, IXD))
+dup1 <- .fl_app_dir("d1", IXD, name = "Same Name")
+dup2 <- .fl_app_dir("d2", IXD, name = "Same Name")
+.t3_ok("two apps with ONE name get two folders, not one",
+       identical(basename(dup1), "Same Name") &&
+       	identical(basename(dup2), "Same Name (2)"), basename(dup2))
+legacy <- file.path(IXD, gsub("[^A-Za-z0-9._-]", "_", n2))
+dir.create(legacy, recursive = TRUE, showWarnings = FALSE)
+writeLines("x", file.path(legacy, "script.qvs"))
+d2 <- .fl_app_dir(n2, IXD, name = "Renamed App")
+.t3_ok("an id-named folder from before is RENAMED, never orphaned",
+       !dir.exists(legacy) && file.exists(file.path(d2, "script.qvs")), d2)
+rk <- .fl_dir_rekey(n2, "real-id-for-n2", IXD)
+.t3_ok("rekey changes the key and keeps the folder",
+       identical(.fl_app_dir("real-id-for-n2", IXD), d2) &&
+       	file.exists(file.path(d2, "script.qvs")), rk)
 
 unlink(TMP, recursive = TRUE)
 cat("\n", sprintf("%d checks, %d failed", .T3_CHECKS, .T3_FAILS), "\n", sep = "")

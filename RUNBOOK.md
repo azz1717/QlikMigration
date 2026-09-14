@@ -2,10 +2,12 @@
 
 Everything runs from the repo root on a machine that has R and, for the
 cloud steps, qlik-cli signed in (`qlik context use <name>` done once).
-Menu: double-click `launch_console_ui.bat`. Command line: every menu
-item is `Rscript fleet/fleet.R <verb>`; use it for unattended runs.
-Cloud-writing steps print their commands and do nothing until you add
-`--live` (menu: type LIVE when asked).
+Double-click `launch_console_ui.bat`: it walks the four steps below.
+Command line: every step is `Rscript fleet/fleet.R <verb>`; use it for
+unattended runs, and for the verbs the walk-through does not offer
+(`status`, `rollup`, `stamp`, `reconcile`, `doctor`). Cloud-writing steps
+print their commands and do nothing until you add `--live` (the
+walk-through asks you to type YES once, before the upload).
 
 ## 1. One-time setup
 1. Put the path to qlik.exe in `qlik_cli_path.txt` (copy the .example).
@@ -21,37 +23,53 @@ Cloud-writing steps print their commands and do nothing until you add
    "expected `data`, got keys: ..." the tenant answers in a shape this
    code does not read yet — send that line on, do not run other verbs.
 
-## 2. Connect and pick the apps    (menu [3])
-    Rscript fleet/fleet.R spaces --name "<part of space name>"
+## Step 1 of 4 — which space are the apps in?
+    Rscript fleet/fleet.R spaces
     Rscript fleet/fleet.R apps --space <space id>
+`spaces` prints `[n] name (type)` and caches the list, ids and all, in
+`fleet/spaces.csv`. Everything after this is scoped to the one space:
+`--space <id>` (or `--space <n>`, the number from that list) selects it.
+
+## Step 2 of 4 — unbuild every app in the space
     Rscript fleet/fleet.R add --space <space id> --all
-`add` writes one row per app to `fleet/manifest.csv`, the ledger. Every
+    Rscript fleet/fleet.R fetch --space <space id> --live
+`add` writes one row per app to `fleet/manifest.csv`, the ledger; every
 later step reads and updates it. Use `--apps 1,3-5` instead of `--all`
-for a subset.
+for a subset. `fetch` downloads each app's script and objects into
+`fleet/apps/<app name>/`. Both are tenant READS — nothing changes in
+the cloud.
 
-## 3. Unpack    (menu [4])
-    Rscript fleet/fleet.R fetch --all
-Downloads each app's script and objects into `fleet/apps/<app id>/`.
-
-## 4. Format and retarget    (menu [5])
-    Rscript fleet/fleet.R process --all
+## Step 3 of 4 — format and retarget, or report only
+    Rscript fleet/fleet.R process --space <space id>
 Runs the styling passes, then rewrites every on-prem QVD load to its
 cloud view using `retargeting/qvd_field_map.csv`. Per app it writes
 `script_styled.qvs`, `script_retargeted.qvs`, `retarget_report.csv`
 (one line per load: retargeted / not-in-map / multi-source / commented /
 out-of-scope), `changes/` (one CSV per styling pass), `log.txt`.
-An app with any not-in-map or multi-source load is marked **blocked**
-and will not upload. `--allow-unresolved` overrides for a look.
+Loads it could not map are listed in `dev_notes.txt` and
+`master_loads.csv`; the app still uploads. Nothing here touches the
+cloud, and nothing here blocks.
 
-## 5. Review and tech-debt report    (menu [6])
-    Rscript fleet/fleet.R report --all
-Independent of step 4; can run the day the apps are fetched. Per app:
-`report.html` (the readable review), `usage-tables.csv`,
+Report only — independent of the line above, and it can run the day the
+apps are fetched:
+
+    Rscript fleet/fleet.R report --space <space id>
+Per app: `report.html` (the readable review), `usage-tables.csv`,
 `usage-fields.csv`, `usage-vars.csv` (unused tables, fields, variables,
 dimensions, measures), `flags.csv` (GeoAnalytics, Inphinity, REST,
 NPrinting hint, section access, unknown sources).
 
-## 6. The master list    (menu [7], also refreshed after every step)
+## Step 4 of 4 — where the rebuilt apps go
+    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --space <src id>
+    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --space <src id> --live
+    Rscript fleet/fleet.R verify --space <src id> --live
+Copies each app into staging as "<name> [mig]", builds the retargeted
+script into the copy (script only, no reload), then `verify` pulls the
+copy back and confirms the script matches. `--mode overwrite` builds
+onto the original instead and needs no `--to-space`. Do one app live
+before the batch. This is the only step that writes to the cloud.
+
+## The master list    (refreshed after every step)
     Rscript fleet/fleet.R rollup
     Rscript fleet/fleet.R status
 Three files in `fleet/`, the record of the whole migration:
@@ -63,23 +81,14 @@ Three files in `fleet/`, the record of the whole migration:
 - `master_unused.csv` — every unused table, field, variable, dimension
   and measure, by app.
 
-## 7. Rebuild into staging    (menu [8])
-    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --all
-    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --all --live
-    Rscript fleet/fleet.R verify --all --live
-Copies each app into staging as "<name> [mig]", builds the retargeted
-script into the copy (script only, no reload), then `verify` pulls the
-copy back and confirms the script matches. `--mode overwrite` builds
-onto the original instead. Do one app live before the batch.
-
-## 8. Tags in the hub    (menu [9])
-    Rscript fleet/fleet.R stamp --all --live
+## Tags in the hub
+    Rscript fleet/fleet.R stamp --space <space id> --live
 Progress tag: mig:processed, mig:built or mig:verified. Outstanding
 tags, one per active flag: mig:inphinity, mig:geoanalytics, mig:nprint,
 mig:unknown-src, ... `reconcile` reports where hub tags and the ledger
 disagree (`fleet/tag_drift.csv`).
 
-## 9. When a QVD is not in the map
+## When a QVD is not in the map
 - View now exists in the cloud: refresh `fixtures/DBfixture1.csv` (and
   `fixtures/loaded_schemas.csv` for a new schema), then
   `Rscript retargeting/map_refresh.R`. It prints what flipped and which
@@ -94,7 +103,9 @@ disagree (`fleet/tag_drift.csv`).
 |---|---|
 | Ledger | fleet/manifest.csv |
 | Master list | fleet/master.csv, master_loads.csv, master_unused.csv |
-| Per-app outputs | fleet/apps/<app id>/ |
+| Per-app outputs | fleet/apps/<app name>/ |
+| Which folder is whose | fleet/apps/index.csv (app id -> folder) |
+| Loads that need a hand | fleet/apps/<app name>/dev_notes.txt |
 | Cloud call audit | fleet/audit.log |
 | The QVD map | retargeting/qvd_field_map.csv (generated, never edit) |
 | Hand mappings | retargeting/lineage_manual.csv |

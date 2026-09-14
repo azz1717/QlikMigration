@@ -185,7 +185,7 @@ if (!have) {
 	pick <- pick[!is.na(pick)]
 	.t1_ok("found a trial app and a generator to run", length(pick) == 2L)
 	sel <- paste(pick, collapse = ",")
-	rc <- fleet_main(c("process", "--apps", sel, "--allow-unresolved", "--no-rollup"))
+	rc <- fleet_main(c("process", "--apps", sel, "--no-rollup"))
 	.t1_ok("process exits 0 (all ok) or 2 (some blocked)", rc %in% c(0L, 2L),
 	       paste("exit:", rc))
 	.t1_ok("map_check ran and its outcome was RECORDED, not blocked on (D13)",

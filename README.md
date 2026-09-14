@@ -32,9 +32,8 @@ root is entry points, everything else is engine room:
 | Where | What |
 |---|---|
 | *(repo root)* | Entry points only: `launch_console_ui.bat`, `qlik_probe.bat`, plus this `README.md` and `RUNBOOK.md` (operator instructions for the fleet pipeline) |
-| `ui/` | `console_ui.R` — the interactive front end the launcher starts |
+| `ui/` | `console_ui.R` — the four-step migration walk-through the launcher starts (pick a space, unbuild every app in it, format+retarget or report, upload) |
 | `diagnostics/` | `qlik_cli_probe.R` — tenant reachability probe (DESIGN §8) |
-| `input-apps/` | Put the app you want processed here (its own subfolder) |
 | `outputs/` | Styled scripts and reports land here, named after the app |
 | `shared/` | Tokenizer, reserved-word lists, and the csv/JSON helpers — used by everything below |
 | `styling/` | The eight style passes `run_pipeline.R` wires together |

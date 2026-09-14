@@ -51,11 +51,11 @@ MANIFEST_COLS <- c("space_id", "space_name", "app_id", "app_name", "item_id",
                    "last_error", "notes")
 
 .fl_now <- function() format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-.fl_say <- function(...) {
-	s <- gsub("[\r\n\t]+", " ", paste0(...))
-	if (nchar(s) > SCREEN_W) s <- paste0(substr(s, 1L, SCREEN_W - 3L), "...")
-	cat(s, "\n", sep = "")
-}
+# Never clipped: the 72-column clip this once carried ate the end of the
+# summary lines ("...; ledger untouched. Re-run with --live." became "le..."),
+# and the end of a sentence is where the reassurance lives. SCREEN_W now
+# sizes .fl_rule() only.
+.fl_say <- function(...) cat(gsub("[\r\n\t]+", " ", paste0(...)), "\n", sep = "")
 .fl_rule <- function() cat(strrep("-", SCREEN_W), "\n", sep = "")
 .fl_warn <- function(...) cat("fleet: ", paste0(...), "\n", sep = "", file = stderr())
 
@@ -157,8 +157,8 @@ manifest_upsert <- function(m, rows) {
 				m$stage[k] <- ns
 				m$stage_at[k] <- .fl_now()
 			} else {
-				.fl_warn("refused stage ", m$stage[k], " -> ", ns, " for ", id,
-				         " (would skip forward)")
+				.fl_warn(.fl_label(m, id), ": cannot go from '", m$stage[k], "' to '",
+				         ns, "' - the step in between has not run on it yet")
 			}
 		}
 	}
@@ -170,8 +170,7 @@ manifest_upsert <- function(m, rows) {
                      "--type", "--limit", "--to-space", "--mode", "--dir",
                      "--app")
 .FL_BOOL_FLAGS <- c("--dry-run", "--live", "--all", "--digest", "--no-rollup",
-                    "--force", "--no-style", "--allow-unresolved", "--adopt",
-                     "--help")
+                    "--no-style", "--adopt", "--help")
 
 #' Split argv into a verb and an options list. Returns
 #' list(verb, opts, error): `error` non-empty means usage, and the caller
@@ -326,12 +325,13 @@ fleet_parse_args <- function(argv) {
 	df <- .fl_space_rows(.fl_opt(opts, "name"), .fl_opt(opts, "type"))
 	if (qc_failed(df)) { .fl_warn("space ls failed: ", .fl_fail_msg(df)); return(1L) }
 	.fl_write_csv(cbind(index = seq_len(nrow(df)), df), SPACES_CSV)
+	# Names and types only: the ids are in spaces.csv, and a GUID on screen
+	# is never what an operator is choosing between.
 	.fl_rule()
-	.fl_say(sprintf("%-3s %-26s %-9s %s", "#", "id", "type", "name"))
 	for (i in seq_len(nrow(df)))
-		.fl_say(sprintf("%-3d %-26s %-9s %s", i, df$id[i], df$type[i], df$name[i]))
+		.fl_say(sprintf("[%d] %s  (%s)", i, df$name[i], df$type[i]))
 	.fl_rule()
-	.fl_say(nrow(df), " spaces; cached in ", SPACES_CSV)
+	.fl_say(nrow(df), " spaces")
 	0L
 }
 
@@ -341,11 +341,9 @@ fleet_parse_args <- function(argv) {
 	df <- .fl_app_rows(sid, .fl_opt(opts, "name"))
 	if (qc_failed(df)) { .fl_warn("app ls failed: ", .fl_fail_msg(df)); return(1L) }
 	.fl_rule()
-	.fl_say(sprintf("%-3s %-38s %s", "#", "id", "name"))
-	for (i in seq_len(nrow(df)))
-		.fl_say(sprintf("%-3d %-38s %s", i, df$id[i], df$name[i]))
+	for (i in seq_len(nrow(df))) .fl_say(sprintf("[%d] %s", i, df$name[i]))
 	.fl_rule()
-	.fl_say(nrow(df), " apps in space ", sid, " (manifest untouched)")
+	.fl_say(nrow(df), " apps in the space (ledger untouched)")
 	0L
 }
 
@@ -416,13 +414,11 @@ fleet_parse_args <- function(argv) {
 	.fl_say(paste(sprintf("%s=%d", names(counts), as.integer(counts)), collapse = "  "))
 	if (!isTRUE(opts[["digest"]])) {
 		for (i in seq_len(nrow(m)))
-			.fl_say(sprintf("%-11s %-8s %s", substr(m$app_id[i], 1L, 11L),
-			                m$stage[i], m$app_name[i]))
+			.fl_say(sprintf("%-10s %s", m$stage[i], m$app_name[i]))
 	} else {
 		blocked <- m[m$stage == "blocked", , drop = FALSE]
 		for (i in seq_len(min(nrow(blocked), 10L)))
-			.fl_say(sprintf("BLOCKED %-11s %s", substr(blocked$app_id[i], 1L, 11L),
-			                blocked$last_error[i]))
+			.fl_say("BLOCKED ", blocked$app_name[i], ": ", blocked$last_error[i])
 	}
 	.fl_rule()
 	# The board: master.csv, sorted by readiness, as PLAN-fleet.md section 3
@@ -484,14 +480,81 @@ FLEET_LOAD_DONE <- c("retargeted", "already-mapped")
 .FL_LOCAL_SOURCES <- c("retargeting/unbuilt", "app-unbuilt", "app2-unbuilt",
                        "retargeting/05 - Grant Acquittals Report")
 
-#' Where one app's artefacts live.
+#' Where one app's artefacts live: `fleet/apps/<app name>/`.
 #'
-#' The app_id is the key everywhere; the DIRECTORY NAME is a sanitised form of
-#' it, because a D12 local key ("local:01-ess-qvd-builder-cdp") contains a
-#' colon and Windows has no such filename. Every caller goes through here, so
-#' the two spellings can never be derived independently.
-.fl_app_dir <- function(app_id, apps_dir = APPS_DIR)
-	file.path(apps_dir, gsub("[^A-Za-z0-9._-]", "_", app_id))
+#' The app_id stays the KEY everywhere (578 duplicate names on the tenant),
+#' but the DIRECTORY is named after the app, because a folder called
+#' 7862b8ac-75fd-40a5-86b4-e91124882e67 tells the operator nothing (Adam,
+#' 2026-09-14). `<apps_dir>/index.csv` (app_id, dir) is the one record of
+#' which folder is whose; every caller goes through here, so the mapping can
+#' never be derived a second way.
+#'
+#' Lookup order: the index; else, when `name` is given, a new folder named
+#' for it (a duplicate name gets " (2)", " (3)" ...), recorded in the index -
+#' and if this app already has a folder under the OLD id-based name, that
+#' folder is renamed rather than left behind; else the id-based fallback, so
+#' a caller with no name in hand still gets a stable, legal path.
+APPS_INDEX <- "index.csv"
+
+.fl_dir_name <- function(name) {
+	s <- gsub('[<>:"/\\\\|?*[:cntrl:]]+', "_", .fl_str(name))
+	s <- sub("[. ]+$", "", trimws(gsub("[[:space:]]+", " ", s)))
+	if (nzchar(s)) s else "unnamed"
+}
+
+.fl_index_read <- function(apps_dir = APPS_DIR) {
+	empty <- data.frame(app_id = character(0), dir = character(0),
+	                    stringsAsFactors = FALSE)
+	p <- file.path(apps_dir, APPS_INDEX)
+	if (!file.exists(p)) return(empty)
+	ix <- tryCatch(read_csv_any(p), error = function(e) NULL)
+	if (is.null(ix) || !all(c("app_id", "dir") %in% names(ix))) return(empty)
+	ix[, c("app_id", "dir"), drop = FALSE]
+}
+
+.fl_app_dir <- function(app_id, apps_dir = APPS_DIR, name = NULL) {
+	ix <- .fl_index_read(apps_dir)
+	k <- match(app_id, ix$app_id)
+	if (!is.na(k)) return(file.path(apps_dir, ix$dir[k]))
+	legacy <- file.path(apps_dir, gsub("[^A-Za-z0-9._-]", "_", app_id))
+	if (is.null(name) || !nzchar(.fl_str(name))) return(legacy)
+	base <- .fl_dir_name(name)
+	d <- base
+	n <- 2L
+	while (d %in% ix$dir || dir.exists(file.path(apps_dir, d))) {
+		d <- paste0(base, " (", n, ")")
+		n <- n + 1L
+	}
+	if (dir.exists(legacy)) file.rename(legacy, file.path(apps_dir, d))
+	.fl_write_csv(rbind(ix, data.frame(app_id = app_id, dir = d,
+	                                   stringsAsFactors = FALSE)),
+	              file.path(apps_dir, APPS_INDEX))
+	file.path(apps_dir, d)
+}
+
+#' reconcile-ids gives a `local:` row its real tenant id: the folder keeps its
+#' name, the index just learns the new key. A row the index never met falls
+#' back to renaming the id-based folder, as before.
+.fl_dir_rekey <- function(old_id, new_id, apps_dir = APPS_DIR) {
+	ix <- .fl_index_read(apps_dir)
+	k <- match(old_id, ix$app_id)
+	if (!is.na(k)) {
+		ix$app_id[k] <- new_id
+		.fl_write_csv(ix, file.path(apps_dir, APPS_INDEX))
+		return(invisible(file.path(apps_dir, ix$dir[k])))
+	}
+	old_dir <- .fl_app_dir(old_id, apps_dir)
+	new_dir <- .fl_app_dir(new_id, apps_dir)
+	if (dir.exists(old_dir) && !dir.exists(new_dir)) file.rename(old_dir, new_dir)
+	invisible(new_dir)
+}
+
+#' The app's name for anything printed to a person; the id only when the
+#' ledger has no name for it. No GUID is ever the first thing on a line.
+.fl_label <- function(m, id) {
+	nm <- if (is.data.frame(m) && nrow(m)) m$app_name[match(id, m$app_id)] else NA
+	if (length(nm) != 1L || is.na(nm) || !nzchar(nm)) id else nm
+}
 
 .fl_slug <- function(x) {
 	s <- gsub("^-+|-+$", "", gsub("[^a-z0-9]+", "-", tolower(x)))
@@ -561,7 +624,7 @@ fleet_bundle_dirs <- function(root) {
 #' Mark a row blocked with its reason. The ledger is the only record of what
 #' has been done to an app, so a failure is WRITTEN, never only printed.
 .fl_block <- function(m, id, msg) {
-	.fl_warn(id, ": ", msg)
+	.fl_warn(.fl_label(m, id), ": ", msg)
 	manifest_upsert(m, data.frame(app_id = id, stage = "blocked",
 	                              last_error = msg, stringsAsFactors = FALSE))
 }
@@ -576,18 +639,25 @@ fleet_bundle_dirs <- function(root) {
 	m
 }
 
-#' Rows selected by --apps <id,id> / --stage <s> / --all. NULL = no selection
-#' given, which every batch verb treats as a usage error rather than "all".
+#' Rows selected by --apps <id,id> / --stage <s> / --space <id|#> / --all.
+#' NULL = no selection given, which every batch verb treats as a usage error
+#' rather than "all". `--space` is the console UI's selection: every app the
+#' ledger has in that space (`add` wrote the space onto each row), so the
+#' whole walk-through - fetch, process, report, upload, verify - is scoped to
+#' the one space the operator picked and never touches another space's rows.
 .fl_select <- function(m, opts) {
 	ids <- .fl_opt(opts, "apps")
 	stg <- .fl_opt(opts, "stage")
+	sp <- .fl_resolve_space(.fl_opt(opts, "space"))
 	if (!is.null(ids))
 		return(m[m$app_id %in% trimws(strsplit(ids, ",", fixed = TRUE)[[1]]), , drop = FALSE])
 	if (!is.null(stg))
 		return(m[m$stage %in% trimws(strsplit(stg, ",", fixed = TRUE)[[1]]), , drop = FALSE])
+	if (!is.null(sp)) return(m[m$space_id == sp, , drop = FALSE])
 	if (isTRUE(opts[["all"]])) return(m)
 	NULL
 }
+.FL_SELECTION <- "--all, --apps <id,id>, --stage <s> or --space <id|#>"
 
 # --- import-unbuilt -------------------------------------------------------
 .fl_verb_import_unbuilt <- function(opts, pos = NULL) {
@@ -620,7 +690,7 @@ fleet_bundle_dirs <- function(root) {
 		}
 		seen <- c(seen, id)
 		if (startsWith(id, "local:")) n_synth <- n_synth + 1L
-		dest <- .fl_app_dir(id)
+		dest <- .fl_app_dir(id, name = title)
 		if (!dir.exists(dest)) dir.create(dest, recursive = TRUE, showWarnings = FALSE)
 		file.copy(list.files(d, full.names = TRUE), dest,
 		          recursive = TRUE, overwrite = TRUE, copy.date = TRUE)
@@ -649,7 +719,8 @@ fleet_bundle_dirs <- function(root) {
 #' Run retargeting/map_check.R and report what it found. D13: `process` runs it
 #' FIRST and RECORDS the outcome, but does not block on it - today's map exits
 #' 1 on 85 duplicate CRM keys and that is Adam's data to settle, not a reason
-#' for the whole fleet to stop. Blocking stays for unresolved LOADS (D7).
+#' for the whole fleet to stop. Nothing else blocks either: an unresolved load
+#' is the tool's output, not its failure (Adam, 2026-09-14 - see process).
 fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 	r <- .fl_child(c("retargeting/map_check.R"), log)
 	f <- file.path("retargeting", "map_check_findings.csv")
@@ -663,7 +734,7 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 	m <- manifest_read(path)
 	sel <- .fl_select(m, opts)
 	if (is.null(sel)) {
-		.fl_warn("process needs --all, --apps <id,id> or --stage <s>")
+		.fl_warn("process needs ", .FL_SELECTION)
 		return(1L)
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
@@ -671,13 +742,17 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 	.fl_write_csv(data.frame(checked_at = .fl_now(), exit = mc$exit,
 	                         findings = mc$findings, stringsAsFactors = FALSE),
 	              MAP_CHECK_STATUS)
-	.fl_say("map_check: exit ", mc$exit, ", ", mc$findings,
-	        " finding(s) - recorded, not blocking (D13)")
-	blocked <- 0L; done <- 0L; skipped <- 0L
+	# The map check's verdict is for log.txt and master.csv, not the screen:
+	# the operator has no action to take on it mid-run.
+	blocked <- 0L; done <- 0L; skipped <- 0L; unresolved <- 0L
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
-		dir <- .fl_app_dir(id)
-		if (!dir.exists(dir)) { skipped <- skipped + 1L; next }
+		dir <- .fl_app_dir(id, name = sel$app_name[i])
+		if (!dir.exists(dir)) {
+			.fl_warn(.fl_label(m, id), ": not unbuilt yet, skipped")
+			skipped <- skipped + 1L; next
+		}
+		.fl_say("formatting + retargeting: ", .fl_label(m, id))
 		log <- file.path(dir, "log.txt")
 		cat("\n=== process ", id, " [", .fl_now(), "]\nmap_check exit=", mc$exit,
 		    " findings=", mc$findings, "\n", sep = "", file = log, append = TRUE)
@@ -711,11 +786,15 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 			                             .fl_tail_msg(r2$out)))
 			blocked <- blocked + 1L; next
 		}
+		# An unresolved load is NOT a block (Adam, 2026-09-14): resolving what
+		# the map can and handing the rest over is the whole point of the
+		# tool, and every app is expected to have some. They are counted here,
+		# listed per app in dev_notes.txt and fleet-wide in master_loads.csv.
 		unres <- .fl_unresolved_loads(dir)
-		if (unres > 0L && !isTRUE(opts[["allow-unresolved"]])) {
-			m <- .fl_block(m, id, paste0(unres,
-			     " unresolved load(s); rerun with --allow-unresolved to proceed"))
-			blocked <- blocked + 1L; next
+		if (unres > 0L) {
+			.fl_say("  ", unres, " load(s) need your hand - see ",
+			        file.path(dir, "dev_notes.txt"))
+			unresolved <- unresolved + unres
 		}
 		m <- .fl_clear_error(m, id)
 		m <- manifest_upsert(m, data.frame(app_id = id, stage = "retargeted",
@@ -723,7 +802,8 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 		done <- done + 1L
 	}
 	manifest_write(m, path)
-	.fl_say(done, " retargeted, ", blocked, " blocked, ", skipped, " skipped (no bundle)")
+	.fl_say(done, " app(s) formatted and retargeted, ", blocked, " failed, ", skipped,
+	        " skipped; ", unresolved, " load(s) across them still need your hand")
 	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
 	if (blocked > 0L) 2L else 0L
 }
@@ -860,7 +940,7 @@ fleet_app_flags <- function(app_dir, script_path, flags) {
 	m <- manifest_read(path)
 	sel <- .fl_select(m, opts)
 	if (is.null(sel)) {
-		.fl_warn("report needs --all, --apps <id,id> or --stage <s>")
+		.fl_warn("report needs ", .FL_SELECTION)
 		return(1L)
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
@@ -868,7 +948,7 @@ fleet_app_flags <- function(app_dir, script_path, flags) {
 	blocked <- 0L; done <- 0L; skipped <- 0L
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
-		dir <- .fl_app_dir(id)
+		dir <- .fl_app_dir(id, name = sel$app_name[i])
 		if (!dir.exists(dir)) { skipped <- skipped + 1L; next }
 		log <- file.path(dir, "log.txt")
 		src <- file.path(dir, "script.qvs")
@@ -995,7 +1075,7 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 	rows <- NULL; loads <- NULL; unused <- NULL
 	for (i in seq_len(nrow(m))) {
 		id <- m$app_id[i]; nm <- m$app_name[i]
-		dir <- .fl_app_dir(id)
+		dir <- .fl_app_dir(id, name = nm)
 		rr <- .fl_read(file.path(dir, "retarget_report.csv"))
 		ut <- .fl_read(file.path(dir, "usage-tables.csv"))
 		uf <- .fl_read(file.path(dir, "usage-fields.csv"))
@@ -1147,8 +1227,7 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 	m <- manifest_read(path)
 	sel <- .fl_select(m, opts)
 	if (is.null(sel)) {
-		.fl_warn("fetch needs --all, --apps <id,id> or --stage <s>",
-		         " (usually --stage listed)")
+		.fl_warn("fetch needs ", .FL_SELECTION)
 		return(1L)
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
@@ -1159,10 +1238,12 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 		# A `local:` key is D12's placeholder: there is no tenant app behind
 		# it, so this is a skip with a reason, never a blocked row.
 		if (!nzchar(id) || startsWith(id, "local:")) {
-			.fl_warn(id, ": no tenant app id - run 'fleet.R reconcile-ids' first")
+			.fl_warn(.fl_label(m, id), ": not matched to an app on the tenant yet",
+			         " (fleet.R reconcile-ids), skipped")
 			skipped <- skipped + 1L
 			next
 		}
+		if (!dry) .fl_say("unbuilding: ", .fl_label(m, id))
 		stage_dir <- file.path(tempdir(), paste0("fetch-", .fl_slug(id)))
 		unlink(stage_dir, recursive = TRUE)
 		r <- qc_unbuild(id, stage_dir)
@@ -1172,7 +1253,7 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 			blocked <- blocked + 1L
 			next
 		}
-		dest <- .fl_app_dir(id)
+		dest <- .fl_app_dir(id, name = sel$app_name[i])
 		if (!dir.exists(dest)) dir.create(dest, recursive = TRUE, showWarnings = FALSE)
 		file.copy(list.files(stage_dir, full.names = TRUE), dest,
 		          recursive = TRUE, overwrite = TRUE, copy.date = TRUE)
@@ -1194,8 +1275,7 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 		return(0L)
 	}
 	manifest_write(m, path)
-	.fl_say(done, " fetched, ", blocked, " blocked, ", skipped,
-	        " skipped (no tenant id)")
+	.fl_say(done, " app(s) unbuilt, ", blocked, " failed, ", skipped, " skipped")
 	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
 	if (blocked > 0L) 2L else 0L
 }
@@ -1287,9 +1367,7 @@ fleet_reconcile_match <- function(app_name, listing) {
 			n_amb <- n_amb + 1L
 			next
 		}
-		old_dir <- .fl_app_dir(m$app_id[k])
-		new_dir <- .fl_app_dir(r$id)
-		if (dir.exists(old_dir) && !dir.exists(new_dir)) file.rename(old_dir, new_dir)
+		.fl_dir_rekey(m$app_id[k], r$id)
 		m$app_id[k] <- r$id
 		m$item_id[k] <- if (r$id %in% names(items)) items[[r$id]] else ""
 		m$space_id[k] <- r$space_id
@@ -1606,7 +1684,8 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 			else if (!is.na(stage_rank(sel$stage[i])) && !is.na(stage_rank(tag_stage)) &&
 			         stage_rank(tag_stage) < stage_rank(sel$stage[i]))
 				action <- "adopt refused: the tag is behind the ledger"
-			else if (!fleet_stage_artefacts(.fl_app_dir(id), tag_stage,
+			else if (!fleet_stage_artefacts(.fl_app_dir(id, name = sel$app_name[i]),
+			                                tag_stage,
 			                                sel$target_app_id[i]))
 				action <- "adopt refused: no local artefacts for that stage"
 			else if (!stage_advance_ok(sel$stage[i], tag_stage))
@@ -1627,7 +1706,8 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 	if (adopt) manifest_write(m, path)
 	.fl_rule()
 	for (i in which(rows$action != "agree"))
-		.fl_say(sprintf("%-11s %-10s tag=%-10s %s", substr(rows$app_id[i], 1L, 11L),
+		.fl_say(sprintf("%-32s %-10s tag=%-10s %s",
+		                substr(.fl_label(m, rows$app_id[i]), 1L, 32L),
 		                rows$manifest_stage[i],
 		                if (nzchar(rows$tag_stage[i])) rows$tag_stage[i] else "-",
 		                rows$action[i]))
@@ -1642,8 +1722,9 @@ fleet_stage_artefacts <- function(app_dir, stage, target_app_id = "") {
 # M3: upload (copy or overwrite) and verify. PLAN-fleet.md section 3, and
 # decisions D2 (copy into a target space, name suffix " [mig]"), D3a (never
 # reload in v1 - every build carries --no-reload), D5a (the SCRIPT only, no
-# --connections/--objects/--dimensions/--measures/--variables) and D7a (an
-# unresolved load stops the upload unless --force).
+# --connections/--objects/--dimensions/--measures/--variables). D7 is
+# WITHDRAWN (Adam, 2026-09-14): an unresolved load never stops an upload -
+# it is listed in dev_notes.txt for the developer, and the app goes up.
 #
 # Every tenant write goes through qc_write(), so a dry run prints the exact
 # command lines, writes a DRYRUN audit line and touches neither the tenant
@@ -1665,28 +1746,22 @@ fleet_upload_target_name <- function(app_name, suffix = UPLOAD_SUFFIX) {
 #'
 #' Returns list(ok, reason, space, script). A refusal is a REASON, never a
 #' stop(): the batch prints it, leaves the row exactly where it was and
-#' carries on to the next app. The unresolved-load rule is D7a - not-in-map
-#' and multi-source loads mean the script still points somewhere on prem, so
-#' uploading it would publish a broken app; --force is the deliberate override.
-fleet_upload_preflight <- function(row, app_dir, mode = "copy",
-                                   to_space = NULL, force = FALSE) {
+#' carries on to the next app. Unresolved loads are NOT checked here: the
+#' script is uploaded with them and dev_notes.txt says which they are.
+fleet_upload_preflight <- function(row, app_dir, mode = "copy", to_space = NULL) {
 	no <- function(why) list(ok = FALSE, reason = why, space = "", script = "")
 	id <- .fl_str(row$app_id)
 	if (!nzchar(id) || startsWith(id, "local:"))
-		return(no("no tenant app id - run 'fleet.R reconcile-ids' first"))
+		return(no("not matched to an app on the tenant yet (fleet.R reconcile-ids)"))
 	if (!identical(.fl_str(row$stage), "retargeted"))
-		return(no(paste0("stage is ", .fl_str(row$stage, "(none)"),
-		                 ", not retargeted")))
+		return(no(paste0("not formatted and retargeted yet (it is at '",
+		                 .fl_str(row$stage, "none"), "')")))
 	script <- file.path(app_dir, "script_retargeted.qvs")
 	if (!file.exists(script) || file.size(script) <= 0)
 		return(no("no script_retargeted.qvs, or it is empty"))
-	unres <- .fl_unresolved_loads(app_dir)
-	if (unres > 0L && !isTRUE(force))
-		return(no(paste0(unres, " unresolved load(s) (D7) - rerun with --force",
-		                 " to upload anyway")))
 	space <- .fl_str(to_space, .fl_str(row$space_id))
 	if (identical(mode, "copy") && !nzchar(space))
-		return(no("no target space - pass --to-space <id>"))
+		return(no("no space to copy into (--to-space <id>)"))
 	list(ok = TRUE, reason = "", space = space, script = script)
 }
 
@@ -1759,24 +1834,24 @@ fleet_space_connections <- function(space_id) {
 	m <- manifest_read(path)
 	sel <- .fl_select(m, opts)
 	if (is.null(sel)) {
-		.fl_warn("upload needs --all, --apps <id,id> or --stage <s>",
-		         " (usually --stage retargeted)")
+		.fl_warn("upload needs ", .FL_SELECTION)
 		return(1L)
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
 	dry <- .qc_dry()
-	force <- isTRUE(opts[["force"]])
 	to_space <- .fl_opt(opts, "to-space")
 	done <- 0L; blocked <- 0L; refused <- 0L; planned <- 0L
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
-		dir <- .fl_app_dir(id)
-		pf <- fleet_upload_preflight(sel[i, , drop = FALSE], dir, mode, to_space, force)
+		dir <- .fl_app_dir(id, name = sel$app_name[i])
+		pf <- fleet_upload_preflight(sel[i, , drop = FALSE], dir, mode, to_space)
 		if (!pf$ok) {
-			.fl_warn(id, ": ", pf$reason)
+			.fl_warn(.fl_label(m, id), ": ", pf$reason)
 			refused <- refused + 1L
 			next
 		}
+		if (!dry) .fl_say(if (identical(mode, "copy")) "copying + rebuilding: "
+		                  else "rebuilding in place: ", .fl_label(m, id))
 		.fl_conn_warn(pf$script, pf$space)
 		target <- id
 		nm <- fleet_upload_target_name(sel$app_name[i])
@@ -1833,11 +1908,12 @@ fleet_space_connections <- function(space_id) {
 	}
 	if (dry) {
 		.fl_say(planned, " app(s) would be uploaded (--mode ", mode, "), ", refused,
-		        " refused by preflight; ledger untouched. Re-run with --live.")
+		        " not ready; ledger untouched. Re-run with --live.")
 		return(if (refused > 0L) 2L else 0L)
 	}
 	manifest_write(m, path)
-	.fl_say(done, " built, ", blocked, " blocked, ", refused, " refused by preflight")
+	.fl_say(done, " app(s) rebuilt in the cloud, ", blocked, " failed, ", refused,
+	        " not ready")
 	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
 	if (blocked > 0L || refused > 0L) 2L else 0L
 }
@@ -1878,8 +1954,7 @@ fleet_script_diff <- function(downloaded, local) {
 	m <- manifest_read(path)
 	sel <- .fl_select(m, opts)
 	if (is.null(sel)) {
-		.fl_warn("verify needs --all, --apps <id,id> or --stage <s>",
-		         " (usually --stage built)")
+		.fl_warn("verify needs ", .FL_SELECTION)
 		return(1L)
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
@@ -1888,14 +1963,10 @@ fleet_script_diff <- function(downloaded, local) {
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
 		target <- .fl_str(sel$target_app_id[i])
-		local <- file.path(.fl_app_dir(id), "script_retargeted.qvs")
-		if (!nzchar(target)) {
-			.fl_warn(id, ": no target_app_id - run 'fleet.R upload' first")
-			skipped <- skipped + 1L
-			next
-		}
-		if (!file.exists(local)) {
-			.fl_warn(id, ": no script_retargeted.qvs to compare against")
+		local <- file.path(.fl_app_dir(id, name = sel$app_name[i]), "script_retargeted.qvs")
+		# Only apps that were actually uploaded are checked; the rest are
+		# passed over quietly - verify runs over a whole space at a time.
+		if (!nzchar(target) || !file.exists(local)) {
 			skipped <- skipped + 1L
 			next
 		}
@@ -1910,7 +1981,7 @@ fleet_script_diff <- function(downloaded, local) {
 		}
 		d <- fleet_script_diff(file.path(tmp, "script.qvs"), local)
 		unlink(tmp, recursive = TRUE)
-		.fl_say(substr(id, 1L, 20L), ": ", d$summary)
+		.fl_say("checked ", .fl_label(m, id), ": ", d$summary)
 		if (!d$same) {
 			m <- .fl_block(m, id, paste0("verify: ", d$summary))
 			bad <- bad + 1L
@@ -1927,7 +1998,7 @@ fleet_script_diff <- function(downloaded, local) {
 		return(0L)
 	}
 	manifest_write(m, path)
-	.fl_say(good, " verified, ", bad, " blocked, ", skipped, " skipped")
+	.fl_say(good, " app(s) verified, ", bad, " differ, ", skipped, " not uploaded")
 	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
 	if (bad > 0L) 2L else 0L
 }
@@ -2046,8 +2117,8 @@ fleet_script_diff <- function(downloaded, local) {
 	.fl_say("options: --manifest f --space id|# --app id --apps i,j|id,id")
 	.fl_say("         --name s")
 	.fl_say("         --type t --dir d --all --stage s --digest --no-rollup")
-	.fl_say("         --no-style --allow-unresolved --adopt --dry-run --live")
-	.fl_say("         --mode copy|overwrite --to-space id --force")
+	.fl_say("         --no-style --adopt --dry-run --live")
+	.fl_say("         --mode copy|overwrite --to-space id")
 }
 
 #' Run one fleet command. Returns the process exit code; `fleet.R` run as a
