@@ -63,6 +63,12 @@ source(file.path(.RL_ROOT, "styling", "enforce_alias_alignment.R"))
   as.integer(m)
 }
 
+# A map cell that actually says something. The map carries both "" and the
+# literal "NA" for "not known", and either read as a value made blank lineage
+# rows count as real sources (Adam, 2026-09-16).
+.rl_real <- function(x)
+  !is.na(x) & nzchar(trimws(x)) & trimws(x) != "NA"
+
 # ---- path classification -------------------------------------------------
 
 # Normalize a raw (already undelimited) lib:// path body and classify it.
@@ -370,13 +376,36 @@ retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
       next
     }
 
-    src_pairs <- unique(rows[, c("source_schema", "source_object")])
+    # A BLANK source_object is not a second source (Adam, 2026-09-16). Rows
+    # with nothing in that column are lineage this map could not resolve, and
+    # counting them made 16 of the 31 flagged qvds false positives - among
+    # them Geospatial/NT Admin Region 2023.qvd, whose sources are the one
+    # object "NT Admin Region 2023" and two empty rows.
+    src_pairs <- unique(rows[.rl_real(rows$source_object),
+                             c("source_schema", "source_object"), drop = FALSE])
     if (nrow(src_pairs) > 1) {
-      detail <- paste(apply(src_pairs, 1, function(r) paste(r[1], r[2], sep = "/")),
-                       collapse = "; ")
-      add_report(tokens$line[pi], "load", label, raw, "multi-source", "",
-                 0L, 0L, rl_join_detail(detail, var_detail))
-      next
+      # MORE THAN ONE SOURCE TABLE IS NOT THE END OF IT (Adam, 2026-09-16).
+      # A database view is free to join several tables, and a view created to
+      # replace a legacy qvd does exactly that - so the question is not how
+      # many tables fed the qvd but whether ONE view now covers it. When every
+      # field resolves to a single cloud view, that view IS the target and the
+      # load retargets like any other; the field renames below already use
+      # each row's own source_column, which is the column name in that view.
+      # Only a qvd whose fields are genuinely spread across SEVERAL views is
+      # reported - that one needs a rebuild decision, not a rename.
+      vs <- unique(paste(rows$cloud_view_schema, rows$cloud_view_name, sep = "\r")[
+                     .rl_real(rows$cloud_view_name)])
+      if (length(vs) == 1L) {
+        parts <- strsplit(vs, "\r", fixed = TRUE)[[1]]
+        rows$source_schema <- parts[1]
+        rows$source_object <- parts[2]
+      } else {
+        detail <- paste(apply(src_pairs, 1, function(r) paste(r[1], r[2], sep = "/")),
+                         collapse = "; ")
+        add_report(tokens$line[pi], "load", label, raw, "multi-source", "",
+                   0L, 0L, rl_join_detail(detail, var_detail))
+        next
+      }
     }
 
     # wildcard check: a field segment whose ENTIRE content is the lone
