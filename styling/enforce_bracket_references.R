@@ -35,6 +35,9 @@
 #     silently break the script by turning a variable reference into a
 #     field reference. WHERE-clause and other non-field-list bare words are
 #     therefore left untouched; deliberately out of scope (DESIGN §4.11).
+#     EXCEPT ALSO a word inside a `$( ... )` expansion: Qlik expands those
+#     before parsing, so the word is a VARIABLE name and `$([vName])` breaks
+#     every call. `dollar_expansion_idx()` (qlik_tokenizer.R) is the guard.
 #   - SELECT ... ; blocks (raw SQL passed to a LIB CONNECT TO source) are
 #     left untouched entirely, same as the other passes.
 #   - A token whose content contains "]" cannot be safely represented in
@@ -131,7 +134,11 @@ enforce_bracket_references <- function(tokens) {
     nxt      <- next_non_trivia_idx(t_type)
     call_pos <- !is.na(nxt) & t_type[nxt] == "LPAREN"
 
-    bare <- which(in_field & t_type == "WORD" & !call_pos &
+    # A word inside $( ... ) is a VARIABLE name, not a field: Qlik expands it
+    # before parsing, so bracketing it breaks every call (Adam 2026-09-16).
+    in_dollar <- dollar_expansion_idx(t_type, t_text)
+
+    bare <- which(in_field & t_type == "WORD" & !call_pos & !in_dollar &
                     !(tolower(t_text) %in% QLIK_KEYWORDS))
 
     for (i in bare) {

@@ -304,6 +304,55 @@ next_non_trivia_idx <- function(type) {
   nt[findInterval(seq_len(n), nt) + 1L]
 }
 
+#' Which tokens lie inside a `$( ... )` dollar-sign expansion.
+#'
+#' Qlik expands `$(vName)` (a variable) and `$(=expr)` (an expression) BEFORE
+#' the script is parsed, so the word inside is a VARIABLE name and never a
+#' field reference. Bracketing it - `$([vName])` - changes what the script
+#' reads and breaks every call at once.
+#'
+#' Nothing else marks these spans: `$` is an OTHER token that merely happens
+#' to be followed by an LPAREN, and the word inside is an ordinary WORD
+#' sitting in a LOAD field list, which is precisely what
+#' enforce_bracket_references.R acts on. Found by Adam 2026-09-16 on a real
+#' app; 21 of the 670 expansions in the local corpus were being corrupted.
+#'
+#' Nesting counts, so `$(=$(vA))` is one span with another inside it. The `$`
+#' and both parens are marked as well, so a caller can test a single token
+#' without also inspecting its neighbours.
+#'
+#' GOTCHA: an UNTERMINATED `$(` marks the rest of the stream. That only
+#' happens in a script whose parens are already unbalanced, and the failure
+#' direction is the safe one - passes leave tokens alone rather than rewrite
+#' them on a guess.
+#'
+#' @param type token type vector.
+#' @param text matching token text vector.
+#' @return logical vector, one per token; TRUE where the token is inside an
+#'   expansion.
+dollar_expansion_idx <- function(type, text) {
+  n <- length(type)
+  inside <- logical(n)
+  if (!n) return(inside)
+  depth <- 0L
+  i <- 1L
+  while (i <= n) {
+    if (depth > 0L) {
+      inside[i] <- TRUE
+      if (type[i] == "LPAREN") depth <- depth + 1L
+      else if (type[i] == "RPAREN") depth <- depth - 1L
+    } else if (type[i] == "OTHER" && text[i] == "$" && i < n &&
+               type[i + 1L] == "LPAREN") {
+      inside[i] <- TRUE
+      inside[i + 1L] <- TRUE
+      depth <- 1L
+      i <- i + 1L
+    }
+    i <- i + 1L
+  }
+  inside
+}
+
 #' Strip a reference token's delimiters, unescaping any doubled quote char.
 #'
 #' Promoted 2026-08-20 from three private twins that had drifted apart:
