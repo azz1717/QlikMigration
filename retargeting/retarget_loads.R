@@ -79,14 +79,30 @@ source(file.path(.RL_ROOT, "styling", "enforce_alias_alignment.R"))
     key <- substr(norm, pos + attr(pos, "match.length"), nchar(norm))
     return(list(scope = "azure", key = key))
   }
-  if (grepl("geospatial", lower, fixed = TRUE)) return(list(scope = "geospatial", key = NA_character_))
+  # GEOSPATIAL IS MAPPABLE (Adam, 2026-09-16, correcting DESIGN §6.6's park).
+  # Geospatial qvds are ordinary qvds, used extensively, and the Geospatial
+  # QVD Generator builds most of them from AzureDbProdNIAADL and
+  # AzureDbDevGeospatial - real SQL sources with real lineage. What is out of
+  # scope is GEOANALYTICS, a different thing that happens to share the word:
+  # the 516 `non-niaa-source` rows in the map are its shapefile inputs, and
+  # they fall out as not-in-map here without needing a rule of their own.
+  # The map keys these as "Geospatial/<name>.qvd", which is the path with the
+  # connection prefix dropped - so the key starts AT the word, not after it.
+  is_geo <- grepl("^lib://appdataprod/geospatial/", lower) ||
+            grepl("^lib://appdata/prod/geospatial/", lower)
+  if (is_geo) {
+    pos <- regexpr("geospatial/", lower, fixed = TRUE)
+    return(list(scope = "azure", key = substr(norm, pos, nchar(norm))))
+  }
   if (grepl("^lib://curated data store", lower)) return(list(scope = "curated", key = NA_character_))
   list(scope = "other", key = NA_character_)
 }
 
+# No `geospatial` status any more: those paths are scope "azure" and take the
+# ordinary map lookup, so they come back retargeted or not-in-map like every
+# other qvd (Adam, 2026-09-16).
 .rl_scope_status <- function(scope) {
   switch(scope,
-    geospatial = "geospatial",
     curated    = "already-mapped",
     "out-of-scope")
 }
