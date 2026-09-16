@@ -54,8 +54,11 @@ main <- function(args) {
 	if (!is.na(start)) ok <- ok[ok >= start]
 	if (!length(ok)) { cat("No ' AS ' lines at or after that line.\n"); return(1L) }
 
-	# one contiguous block, capped so the whole answer fits on a screen
-	run <- ok[c(TRUE, diff(ok) == 1L)]
+	# ONE contiguous block: stop at the first gap. Two LOAD blocks legitimately
+	# align to different columns, so running them together would report a
+	# raggedness that is not there - which this probe did until 2026-09-16.
+	brk <- which(diff(ok) != 1L)
+	run <- if (!length(brk)) ok else ok[seq_len(brk[1])]
 	run <- run[seq_len(min(length(run), 16L))]
 
 	cat("file: ", basename(f), "   lines ", run[1], "-",
