@@ -31,6 +31,12 @@ source(file.path(.RL_ROOT, "shared", "csv_read.R"))
 source(file.path(.RL_ROOT, "retargeting", "retarget_shared.R"))
 # Pass 7 runs again as this pipeline's LAST step - see the call site.
 source(file.path(.RL_ROOT, "styling", "enforce_alias_alignment.R"))
+# The comment substream - how a commented-out LOAD becomes a token stream we
+# can retarget, and gets written back. See rl_retarget_comment_loads(). It
+# classifies field-shaped lines against QLIK_KEYWORDS, so the word list has
+# to come with it.
+source(file.path(.RL_ROOT, "shared", "qlik_reserved_words.R"))
+source(file.path(.RL_ROOT, "styling", "comment_substream.R"))
 
 # Qlik Cloud connection ("lib://...") name is environment config (the tenant
 # connection is provisioned per-environment, it is not part of the qvd field
@@ -541,6 +547,56 @@ retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
   list(tokens = tokens, report = report, fields = fields)
 }
 
+# ---- commented-out loads --------------------------------------------------
+
+#' Retarget the LOAD blocks that are commented out.
+#'
+#' DESIGN §6.6 said these were out of scope because "the rewriter cannot see
+#' the path inside a comment" - true when it was written, and NOT true since
+#' the comment substream landed (PLAN-comment-substream.md). Adam, 2026-09-16:
+#' that work was done precisely so commented code could be reached, which is
+#' why it is now formatted correctly, and retargeting was simply never
+#' revisited. This is the same extract -> transform -> serialize round trip
+#' `style_comment_substream()` performs, with `retarget_tokens()` in place of
+#' the styling passes.
+#'
+#' Why it matters: a developer who uncomments a block after migration
+#' otherwise resurrects an on-prem path inside a Cloud app.
+#'
+#' REVERSE SOURCE ORDER, for the identical reason the styling driver gives:
+#' `serialize_comment_run()` splices rows into the parent, so every later
+#' index shifts - walking backwards keeps the runs still to be done valid.
+#'
+#' @return list(tokens, report, handled_lines). `report` uses the run's own
+#'   status vocabulary prefixed `commented-`, so a rewritten commented load is
+#'   never counted as a live one. `handled_lines` are the PARENT lines whose
+#'   plain `commented` rows the caller should drop in favour of these.
+rl_retarget_comment_loads <- function(tokens, map_df, store_prefix) {
+  ex <- extract_comment_runs(tokens)
+  work <- tokens
+  rep <- NULL
+  handled <- integer(0)
+  for (r in rev(ex$runs)) {
+    if (!identical(r$status, "extracted")) next
+    if (!identical(r$kind, "load_block")) next
+    res <- tryCatch(retarget_tokens(r$tokens, map_df, store_prefix = store_prefix),
+                    error = function(e) NULL)
+    # A child that will not retarget is left exactly as it was: a commented
+    # block is dead code, and mangling it is strictly worse than leaving it.
+    if (is.null(res) || !nrow(res$report)) next
+    r$tokens <- res$tokens
+    work <- serialize_comment_run(work, r)
+    rr <- res$report
+    # child line 1 IS the run's first parent line
+    rr$line <- as.integer(r$line_start) + as.integer(rr$line) - 1L
+    rr$status <- paste0("commented-", rr$status)
+    rr$kind <- "comment-load"
+    handled <- c(handled, rr$line)
+    rep <- rbind(rep, rr)
+  }
+  list(tokens = work, report = rep, handled_lines = unique(handled))
+}
+
 # ---- where a line is, in the editor's terms -------------------------------
 
 #' Absolute line -> the section (`///$tab`) it is in, and its line WITHIN that
@@ -808,6 +864,26 @@ rl_main <- function() {
     cat(sprintf("COVERAGE CHECK FAILED: independent scan found %d lib:// occurrences, report covers %d\n",
                 n_independent, n_covered))
     quit(status = 1)
+  }
+
+  # Commented-out LOAD blocks, AFTER the coverage check (which counts raw
+  # lib:// occurrences in the ORIGINAL text, and must keep doing so) and
+  # BEFORE the guard (which reads live aliases only, so rewriting inside
+  # comments cannot move it either way - running it after keeps that true of
+  # the bytes actually written). Adam, 2026-09-16: the substream exists
+  # precisely so these can be reached.
+  cmt <- rl_retarget_comment_loads(result$tokens, map_df, store_prefix)
+  if (!is.null(cmt$report) && nrow(cmt$report)) {
+    result$tokens <- cmt$tokens
+    keep <- !(result$report$status == "commented" &
+                result$report$line %in% cmt$handled_lines)
+    result$report <- rbind(result$report[keep, , drop = FALSE],
+                           cmt$report[, names(result$report), drop = FALSE])
+    result$report <- result$report[order(result$report$line), , drop = FALSE]
+    rownames(result$report) <- NULL
+    # tab/tab_line were computed against the pre-comment-pass stream; the
+    # merged report spans both, so recompute once over what will be written.
+    result$report <- rl_add_tab_columns(result$report, result$tokens)
   }
 
   guard <- rl_check_alias_guard(before_tokens, result$tokens)
