@@ -59,6 +59,12 @@
 
 .eaa_tab_width <- 4L
 
+#' Spaces needed to nudge each column to the next tab boundary: 0 when it is
+#' already on one, else 1-3. The whole point of the alias padding being
+#' boundary-anchored - see the emission site for why.
+.eaa_boundary_pad <- function(cols)
+  (.eaa_tab_width - as.integer(cols) %% .eaa_tab_width) %% .eaa_tab_width
+
 # A field whose own column (indent + content, right before AS) reaches this
 # many characters or more is treated like a wrapped field: excluded from
 # the block's column calculation and left untouched. Adam 2026-08-17, tied
@@ -218,10 +224,17 @@ enforce_alias_alignment <- function(tokens, context = NULL) {
         given_col <- as.integer(ctx_col)
       }
     }
+    # Each field is first nudged to the next tab boundary with 0-3 SPACES
+    # (.eaa_boundary_pad), and only then padded with whole tabs. See the
+    # rationale at the tab emission below: from a boundary, both readings of
+    # a tab advance the same 4 columns, so the column holds either way.
+    # The target must therefore clear the widest BOUNDARY-PADDED field by a
+    # full tab, or that widest field would need zero tabs and overshoot.
+    bpad <- .eaa_boundary_pad(cols)
     target_col <- if (!is.na(given_col)) {
       given_col   # given, not derived - never widened by cols
     } else {
-      (max(cols[narrow]) %/% .eaa_tab_width + 1L) * .eaa_tab_width
+      max((cols + bpad)[narrow]) + .eaa_tab_width
     }
 
     for (k in seq_along(elig)) {
@@ -233,10 +246,23 @@ enforce_alias_alignment <- function(tokens, context = NULL) {
       # Tabs are inserted BEFORE the existing single space, not instead of
       # it (Adam 2026-08-17): intraline spacing already guarantees exactly
       # one space before AS, and that space is kept - this pass only adds
-      # tab padding ahead of it. AS itself therefore lands one column past
-      # every tab stop, not on it.
-      n_tabs <- ceiling((target_col - cols[k]) / .eaa_tab_width)
-      new_ws <- paste0(strrep("\t", max(1L, n_tabs)), " ")
+      # padding ahead of it. AS itself therefore lands one column past the
+      # target, not on it.
+      #
+      # 0-3 SPACES FIRST, then whole tabs (Adam 2026-09-16, from a real app).
+      # Editors do not agree on what a tab does: some advance to the next
+      # multiple of the tab width, others always advance exactly one width.
+      # Those two readings differ whenever the text before the tab does not
+      # end on a boundary - which is most lines, and is why half the AS in a
+      # block looked a tab out on the tenant even though every one of them
+      # was on the same column by this pass's own arithmetic. Nudging to the
+      # boundary with spaces first removes the disagreement: from a boundary
+      # BOTH readings advance exactly .eaa_tab_width, so the column holds in
+      # either kind of editor and this code never has to know which. At most
+      # 3 spaces are ever emitted; the gap is still tabs.
+      pad_sp <- bpad[k]
+      n_tabs <- (target_col - cols[k] - pad_sp) %/% .eaa_tab_width
+      new_ws <- paste0(strrep(" ", pad_sp), strrep("\t", max(1L, n_tabs)), " ")
 
       before <- t_text[ws_idx]
       if (identical(before, new_ws)) next

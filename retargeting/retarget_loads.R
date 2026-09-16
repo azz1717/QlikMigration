@@ -29,6 +29,8 @@
 source(file.path(.RL_ROOT, "shared", "qlik_tokenizer.R"))
 source(file.path(.RL_ROOT, "shared", "csv_read.R"))
 source(file.path(.RL_ROOT, "retargeting", "retarget_shared.R"))
+# Pass 7 runs again as this pipeline's LAST step - see the call site.
+source(file.path(.RL_ROOT, "styling", "enforce_alias_alignment.R"))
 
 # Qlik Cloud connection ("lib://...") name is environment config (the tenant
 # connection is provisioned per-environment, it is not part of the qvd field
@@ -714,7 +716,15 @@ rl_main <- function() {
     quit(status = 1)
   }
 
-  out_lines <- detokenize(result$tokens)
+  # RE-ALIGN, last thing before writing (Adam 2026-09-16). Retargeting
+  # rewrites the field side of a load - `[Table.Field%]` becomes `[Field]` with
+  # the old name carried over as the alias - so every tab of padding the
+  # styling pipeline computed for the OLD text is now the wrong width for the
+  # new one, and the AS column it produced is gone. Pass 7 is idempotent and
+  # touches whitespace only, so it cannot disturb the alias guard checked
+  # above; it just re-measures the block it is now looking at.
+  aligned <- enforce_alias_alignment(result$tokens)
+  out_lines <- detokenize(aligned$tokens)
   con <- file(out_path, open = "w", encoding = "UTF-8")
   writeLines(out_lines, con, useBytes = TRUE)
   close(con)
