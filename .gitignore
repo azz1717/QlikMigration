@@ -120,3 +120,7 @@ fleet/apps/
 fleet/audit.log
 fleet/spaces.csv
 fleet/map_check_status.csv
+
+# The apps the last `add` picked (fleet.R --selected). A local run record
+# like spaces.csv, rewritten by every add.
+fleet/selection.csv

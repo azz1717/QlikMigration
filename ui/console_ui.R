@@ -84,16 +84,39 @@ open(.cui_stdin, "r")
 	}
 }
 
-# How many ledger rows this space has. Presentation only - it is what the
-# confirmation sentence counts; the selection itself is fleet.R's job.
-.cui_count <- function(space_id) {
-	p <- file.path("fleet", "manifest.csv")
+# How many apps the last `add` picked - what the confirmation sentence counts.
+# Presentation only; the selection itself is fleet.R's job (--selected).
+.cui_count <- function() {
+	p <- file.path("fleet", "selection.csv")
 	if (!file.exists(p)) return(0L)
-	m <- tryCatch(utils::read.csv(p, colClasses = "character",
+	s <- tryCatch(utils::read.csv(p, colClasses = "character",
 	                              stringsAsFactors = FALSE),
 	              error = function(e) NULL)
-	if (is.null(m) || !nrow(m) || is.null(m$space_id)) return(0L)
-	sum(m$space_id == space_id)
+	if (is.null(s)) 0L else nrow(s)
+}
+
+# "1,3-5" or "all", expanded into the index list `add --apps` takes. The ONE
+# piece of parsing this menu owns, and it is presentation: the operator typed
+# a range at a prompt, and a range is not something a CLI flag should have to
+# understand. Returns "all", a comma list, or "" when the input makes no sense.
+.cui_expand_sel <- function(s) {
+	s <- tolower(trimws(s))
+	if (!nzchar(s)) return("")
+	if (s == "all") return("all")
+	out <- integer(0)
+	for (part in trimws(strsplit(s, ",", fixed = TRUE)[[1]])) {
+		if (!nzchar(part)) next
+		if (grepl("^[0-9]+-[0-9]+$", part)) {
+			ab <- as.integer(strsplit(part, "-", fixed = TRUE)[[1]])
+			if (ab[1] > ab[2]) return("")
+			out <- c(out, ab[1]:ab[2])
+		} else if (grepl("^[0-9]+$", part)) {
+			out <- c(out, as.integer(part))
+		} else return("")
+	}
+	out <- sort(unique(out))
+	if (!length(out) || any(out < 1L)) return("")
+	paste(out, collapse = ",")
 }
 
 .cui_finished <- function() {
@@ -118,22 +141,47 @@ open(.cui_stdin, "r")
 	src <- .cui_ask_space(sp, "Space number (or Q to quit): ")
 	if (is.null(src)) return(FALSE)
 
-	cat("\nStep 2 of 4 - Unbuilding every app in \"", src$name, "\"\n", sep = "")
-	if (.cui_fleet("add", "--space", shQuote(src$id), "--all") != 0) return(FALSE)
-	.cui_fleet("fetch", "--space", shQuote(src$id), "--live")
+	cat("\nStep 2 of 4 - Which apps in \"", src$name, "\"?\n", sep = "")
+	if (.cui_fleet("apps", "--space", shQuote(src$id)) != 0) return(FALSE)
+	sel <- .cui_expand_sel(.cui_read_line(
+		"Apps to migrate (e.g. 1,3-5, or all; Q to quit): "))
+	if (!nzchar(sel) || identical(toupper(sel), "Q")) return(FALSE)
+	add <- if (identical(sel, "all")) "--all" else c("--apps", shQuote(sel))
+	if (.cui_fleet("add", "--space", shQuote(src$id), add) != 0) return(FALSE)
+
+	# From here every step says --selected, which is exactly the apps `add`
+	# just wrote down - never the whole space, and never another run's apps.
+	pick <- "--selected"
+	cat("\nUnbuilding them\n")
+	.cui_fleet("fetch", pick, "--live")
 
 	cat("\nStep 3 of 4 - What do you want done to them?\n")
-	cat("[1] Format + retarget the scripts, then rebuild the apps in the cloud\n")
+	cat("[1] Format + retarget the scripts\n")
 	cat("[2] Report only - review + tech-debt report per app; nothing in the",
 	    " cloud changes\n", sep = "")
 	what <- .cui_ask_choice(c("1", "2"), "Choice (or Q to quit): ")
 	if (is.null(what)) return(FALSE)
 	if (what == "2") {
-		.cui_fleet("report", "--space", shQuote(src$id))
+		.cui_fleet("report", pick)
 		cat("\nDone. Each app's report is fleet/apps/<app name>/report.html\n")
 		return(TRUE)
 	}
-	.cui_fleet("process", "--space", shQuote(src$id))
+	.cui_fleet("process", pick)
+
+	# Formatting and reporting are independent, so after a retarget the
+	# reports are still worth having - and wanting them is the usual case
+	# (Adam, 2026-09-16). Asked, never run automatically, and asked again
+	# after each action so both can be had without walking the space twice.
+	repeat {
+		cat("\nWhat next?\n")
+		cat("[1] Run the reports on these apps\n")
+		cat("[2] Upload them to the cloud\n")
+		nxt <- .cui_ask_choice(c("1", "2"), "Choice (or Q to quit): ")
+		if (is.null(nxt)) return(FALSE)
+		if (nxt == "2") break
+		.cui_fleet("report", pick)
+		cat("\nDone. Each app's report is fleet/apps/<app name>/report.html\n")
+	}
 
 	cat("\nStep 4 of 4 - Where do the rebuilt apps go?\n")
 	cat("[1] Overwrite the originals in \"", src$name, "\"\n", sep = "")
@@ -148,7 +196,7 @@ open(.cui_stdin, "r")
 		if (is.null(dest)) return(FALSE)
 	}
 
-	n <- .cui_count(src$id)
+	n <- .cui_count()
 	if (where == "2")
 		cat("\nAbout to upload ", n, " app(s) as copies into \"", dest$name,
 		    "\".\n", sep = "")
@@ -162,9 +210,8 @@ open(.cui_stdin, "r")
 	}
 	mode <- if (where == "2") "copy" else "overwrite"
 	to <- if (where == "2") c("--to-space", shQuote(dest$id)) else NULL
-	sel <- c("--space", shQuote(src$id))
-	.cui_fleet("upload", "--mode", mode, to, sel, "--live")
-	.cui_fleet("verify", sel, "--live")
+	.cui_fleet("upload", "--mode", mode, to, pick, "--live")
+	.cui_fleet("verify", pick, "--live")
 	.cui_finished()
 	TRUE
 }

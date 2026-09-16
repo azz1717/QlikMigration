@@ -30,17 +30,20 @@ walk-through asks you to type YES once, before the upload).
 `fleet/spaces.csv`. Everything after this is scoped to the one space:
 `--space <id>` (or `--space <n>`, the number from that list) selects it.
 
-## Step 2 of 4 — unbuild every app in the space
-    Rscript fleet/fleet.R add --space <space id> --all
-    Rscript fleet/fleet.R fetch --space <space id> --live
-`add` writes one row per app to `fleet/manifest.csv`, the ledger; every
-later step reads and updates it. Use `--apps 1,3-5` instead of `--all`
-for a subset. `fetch` downloads each app's script and objects into
-`fleet/apps/<app name>/`. Both are tenant READS — nothing changes in
-the cloud.
+## Step 2 of 4 — which apps, then unbuild them
+    Rscript fleet/fleet.R apps --space <space id>
+    Rscript fleet/fleet.R add --space <space id> --apps 1,3-5
+    Rscript fleet/fleet.R fetch --selected --live
+`apps` lists the space's apps numbered; `add` takes those numbers (or
+`--all`) and writes one row per app to `fleet/manifest.csv`, the ledger.
+It also records the pick in `fleet/selection.csv`, which is what
+`--selected` means from then on — use it for every later step so a
+3-app migration stays 3 apps. `fetch` downloads each app's script and
+objects into `fleet/apps/<app name>/`. Both are tenant READS — nothing
+changes in the cloud.
 
 ## Step 3 of 4 — format and retarget, or report only
-    Rscript fleet/fleet.R process --space <space id>
+    Rscript fleet/fleet.R process --selected
 Runs the styling passes, then rewrites every on-prem QVD load to its
 cloud view using `retargeting/qvd_field_map.csv`. Per app it writes
 `script_styled.qvs`, `script_retargeted.qvs`, `retarget_report.csv`
@@ -53,16 +56,16 @@ cloud, and nothing here blocks.
 Report only — independent of the line above, and it can run the day the
 apps are fetched:
 
-    Rscript fleet/fleet.R report --space <space id>
+    Rscript fleet/fleet.R report --selected
 Per app: `report.html` (the readable review), `usage-tables.csv`,
 `usage-fields.csv`, `usage-vars.csv` (unused tables, fields, variables,
 dimensions, measures), `flags.csv` (GeoAnalytics, Inphinity, REST,
 NPrinting hint, section access, unknown sources).
 
 ## Step 4 of 4 — where the rebuilt apps go
-    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --space <src id>
-    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --space <src id> --live
-    Rscript fleet/fleet.R verify --space <src id> --live
+    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --selected
+    Rscript fleet/fleet.R upload --mode copy --to-space <staging id> --selected --live
+    Rscript fleet/fleet.R verify --selected --live
 Copies each app into staging as "<name> [mig]", builds the retargeted
 script into the copy (script only, no reload), then `verify` pulls the
 copy back and confirms the script matches. `--mode overwrite` builds
@@ -102,6 +105,7 @@ disagree (`fleet/tag_drift.csv`).
 | What | Where |
 |---|---|
 | Ledger | fleet/manifest.csv |
+| The apps you picked | fleet/selection.csv (what `--selected` means) |
 | Master list | fleet/master.csv, master_loads.csv, master_unused.csv |
 | Per-app outputs | fleet/apps/<app name>/ |
 | Which folder is whose | fleet/apps/index.csv (app id -> folder) |

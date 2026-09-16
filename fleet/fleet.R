@@ -39,6 +39,11 @@ source("fleet/qlik_api.R")
 FLEET_DIR <- "fleet"
 MANIFEST_DEFAULT <- file.path(FLEET_DIR, "manifest.csv")
 SPACES_CSV <- file.path(FLEET_DIR, "spaces.csv")
+# The apps the operator last picked out of a space listing. `add` writes it,
+# `--selected` reads it, and that is what lets the console walk-through act on
+# the 3 apps that were chosen rather than every app the ledger holds for that
+# space - including ones added by an earlier run (Adam, 2026-09-16).
+SELECTION_CSV <- file.path(FLEET_DIR, "selection.csv")
 SCREEN_W <- 72L
 
 # Ordered. `blocked` is deliberately NOT in this vector: it is a state a row
@@ -169,8 +174,8 @@ manifest_upsert <- function(m, rows) {
 .FL_VALUE_FLAGS <- c("--manifest", "--apps", "--stage", "--space", "--name",
                      "--type", "--limit", "--to-space", "--mode", "--dir",
                      "--app")
-.FL_BOOL_FLAGS <- c("--dry-run", "--live", "--all", "--digest", "--no-rollup",
-                    "--no-style", "--adopt", "--help")
+.FL_BOOL_FLAGS <- c("--dry-run", "--live", "--all", "--selected", "--digest",
+                    "--no-rollup", "--no-style", "--adopt", "--help")
 
 #' Split argv into a verb and an options list. Returns
 #' list(verb, opts, error): `error` non-empty means usage, and the caller
@@ -395,6 +400,9 @@ fleet_parse_args <- function(argv) {
 	}
 	if (!nrow(df)) { .fl_say("nothing selected"); return(0L) }
 	items <- .fl_item_ids(df$id)
+	# What `--selected` will mean from here until the next `add`.
+	.fl_write_csv(data.frame(app_id = df$id, app_name = df$name,
+	                         stringsAsFactors = FALSE), SELECTION_CSV)
 	rows <- data.frame(space_id = sid, space_name = sname, app_id = df$id,
 	                   app_name = df$name, item_id = unname(items[df$id]),
 	                   stage = "listed", stringsAsFactors = FALSE)
@@ -654,10 +662,18 @@ fleet_bundle_dirs <- function(root) {
 	if (!is.null(stg))
 		return(m[m$stage %in% trimws(strsplit(stg, ",", fixed = TRUE)[[1]]), , drop = FALSE])
 	if (!is.null(sp)) return(m[m$space_id == sp, , drop = FALSE])
+	# The apps the last `add` picked. Missing or empty file selects nothing
+	# rather than everything: "the set I chose" must never silently widen.
+	if (isTRUE(opts[["selected"]])) {
+		s <- if (file.exists(SELECTION_CSV))
+			tryCatch(read_csv_any(SELECTION_CSV), error = function(e) NULL) else NULL
+		ids <- if (is.null(s) || is.null(s$app_id)) character(0) else s$app_id
+		return(m[m$app_id %in% ids, , drop = FALSE])
+	}
 	if (isTRUE(opts[["all"]])) return(m)
 	NULL
 }
-.FL_SELECTION <- "--all, --apps <id,id>, --stage <s> or --space <id|#>"
+.FL_SELECTION <- "--all, --selected, --apps <id,id>, --stage <s> or --space <id|#>"
 
 # --- import-unbuilt -------------------------------------------------------
 .fl_verb_import_unbuilt <- function(opts, pos = NULL) {
@@ -2116,7 +2132,8 @@ fleet_script_diff <- function(downloaded, local) {
 	.fl_say("verbs later: ", paste(names(.FL_TODO), collapse = " "))
 	.fl_say("options: --manifest f --space id|# --app id --apps i,j|id,id")
 	.fl_say("         --name s")
-	.fl_say("         --type t --dir d --all --stage s --digest --no-rollup")
+	.fl_say("         --type t --dir d --all --selected --stage s --digest")
+	.fl_say("         --no-rollup")
 	.fl_say("         --no-style --adopt --dry-run --live")
 	.fl_say("         --mode copy|overwrite --to-space id")
 }
