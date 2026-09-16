@@ -104,6 +104,77 @@
   splice_tokens(tokens, insertions)
 }
 
+#' Recompute every token's `line` from the newlines actually in the stream.
+#'
+#' Needed only by .qvl_break_first_field(), which ADDS a newline: every token
+#' after it then sits one line lower than its recorded number, and pass 7
+#' groups a LOAD's fields BY LINE, so a stale number silently misaligns the
+#' block it was meant to fix. `.qvl_join_orphan_semicolons()` above needs no
+#' such thing - it moves a ';' onto the previous line without removing the
+#' newline, so no later token shifts.
+.qvl_renumber <- function(tokens) {
+  n <- nrow(tokens)
+  if (n == 0L) return(tokens)
+  nl <- vapply(gregexpr("\n", tokens$text, fixed = TRUE),
+               function(m) if (m[1L] == -1L) 0L else length(m), integer(1))
+  # a token sits on the line its own text STARTS on, which is 1 plus every
+  # newline in everything before it - the same rule tokenize_qlik() applies.
+  tokens$line <- c(1L, 1L + cumsum(nl)[-n])
+  tokens
+}
+
+#' Move a LOAD list's first field onto its own line.
+#'
+#' DESIGN 4.5 says the true first field gets a two-space pad after its 2-tab
+#' indent, which presumes it HAS its own line. Where the source wrote
+#' `LOAD [Id] AS [Id%]` on one line, nothing moved it: find_block_structure()
+#' marks `first_field` on LINE STARTS only, so a field sharing the LOAD line
+#' is not a line, gets no indent, and - the visible symptom - is skipped by
+#' enforce_alias_alignment, leaving its AS short of the column every other
+#' field in the block lines up on. Adam, 2026-09-16: 234 such lines across
+#' the 21-app corpus, one per affected block, and it is the one line the eye
+#' lands on first.
+#'
+#' Only a real field list is broken. `LOAD *` and `LOAD * INLINE [...]` keep
+#' their line: there is no column there to line anything up with, and moving
+#' the `*` would be churn for its own sake.
+.qvl_break_first_field <- function(tokens) {
+  n <- nrow(tokens)
+  if (n == 0L) return(tokens)
+  t_type <- tokens$type
+  t_text <- tokens$text
+  t_line <- tokens$line
+  lower <- tolower(t_text)
+  in_select <- in_select_region(t_type, lower)
+  PREV <- prev_non_trivia_idx(t_type)
+  found <- find_load_segments(tokens)
+  if (!length(found$segments)) return(tokens)
+
+  changed <- FALSE
+  for (seg in found$segments) {
+    lo <- seg$content_idx[1L]
+    if (is.na(lo) || in_select[lo]) next
+    p <- PREV[lo]
+    # the segment's own content sits directly after the LOAD keyword: this is
+    # the list's TRUE first field, the same test find_block_structure() makes.
+    if (is.na(p) || t_type[p] != "WORD" || lower[p] != "load") next
+    if (t_line[p] != t_line[lo]) next            # already on its own line
+    content <- seg$content_idx[t_type[seg$content_idx] != "VOID"]
+    if (length(content) == 1L && t_text[content] == "*") next
+    ws <- (p + 1L):(lo - 1L)
+    ws <- ws[t_type[ws] == "WS"]
+    if (!length(ws)) next
+    # One newline, no indent: the layout loop below owns indentation and will
+    # give this line the field indent plus DESIGN 4.5's two-space pad.
+    t_text[ws] <- ""
+    t_text[ws[length(ws)]] <- "\n"
+    changed <- TRUE
+  }
+  if (!changed) return(tokens)
+  tokens$text <- t_text
+  .qvl_renumber(tokens)
+}
+
 #' Count of newline characters in a whitespace token's text - used to
 #' reproduce a gap's original blank-line count exactly, when that count is
 #' being left untouched rather than normalised (DESIGN §4.8).
@@ -184,6 +255,7 @@ enforce_vertical_layout <- function(tokens, context = NULL) {
   bd_pad <- if (bd_is_vec) NULL else strrep("\t", base_depth)
 
   tokens <- .qvl_join_orphan_semicolons(tokens)
+  tokens <- .qvl_break_first_field(tokens)
   bs <- find_block_structure(tokens)
   L <- bs$lines
   warn <- bs$warnings
