@@ -490,9 +490,63 @@ retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
 
   report <- report[order(report$line), , drop = FALSE]
   rownames(report) <- NULL
+  report <- rl_add_tab_columns(report, tokens)
   if (nrow(fields)) { fields <- fields[order(fields$line), , drop = FALSE]; rownames(fields) <- NULL }
 
   list(tokens = tokens, report = report, fields = fields)
+}
+
+# ---- where a line is, in the editor's terms -------------------------------
+
+#' Absolute line -> the section (`///$tab`) it is in, and its line WITHIN that
+#' section.
+#'
+#' An absolute line number is useless to a developer (Adam, 2026-09-16): the
+#' data load editor shows one section per tab and restarts numbering in each,
+#' so "line 312" names neither the tab to open nor the line to look at once
+#' it is open. The unbuilt script joins the sections with `///$tab <name>`
+#' markers, and those markers are not part of any section's own text - so a
+#' section's line 1 is the line AFTER its marker, which is exactly what the
+#' editor puts on its line 1.
+#'
+#' Anything before the first marker (a script with no sections at all) gets
+#' tab `""` and keeps its absolute number, which is also what the editor shows.
+#'
+#' @param lines character vector of the script's lines.
+#' @return data.frame(tab, tab_line), one row per line.
+rl_tab_index <- function(lines) {
+  n <- length(lines)
+  if (!n) return(data.frame(tab = character(0), tab_line = integer(0),
+                            stringsAsFactors = FALSE))
+  marks <- grep("^[ \t]*///\\$tab[ \t]", lines)
+  if (!length(marks))
+    return(data.frame(tab = rep("", n), tab_line = seq_len(n),
+                      stringsAsFactors = FALSE))
+  nms <- trimws(sub("^[ \t]*///\\$tab[ \t]+", "", lines[marks]))
+  k <- findInterval(seq_len(n), marks)
+  data.frame(
+    tab = ifelse(k == 0L, "", nms[pmax(k, 1L)]),
+    tab_line = seq_len(n) - ifelse(k == 0L, 0L, marks[pmax(k, 1L)]),
+    stringsAsFactors = FALSE)
+}
+
+#' One report row's position as the data load editor shows it: `tab "X" line
+#' N`, falling back to the absolute line for a script with no sections.
+.rl_where <- function(row) {
+  tb <- if (is.null(row$tab)) "" else as.character(row$tab)[1]
+  tl <- if (is.null(row$tab_line)) NA_integer_ else as.integer(row$tab_line)[1]
+  if (!length(tb) || is.na(tb) || !nzchar(tb) || is.na(tl))
+    return(sprintf("line %d", as.integer(row$line)[1]))
+  sprintf("tab \"%s\" line %d", tb, tl)
+}
+
+#' Add `tab` / `tab_line` to a report keyed by absolute `line`.
+rl_add_tab_columns <- function(report, tokens) {
+  idx <- rl_tab_index(detokenize(tokens))
+  ln <- pmin(pmax(as.integer(report$line), 1L), nrow(idx))
+  report$tab <- if (nrow(idx)) idx$tab[ln] else ""
+  report$tab_line <- if (nrow(idx)) idx$tab_line[ln] else report$line
+  report
 }
 
 # ---- DEV NOTES (developer-facing summary) ---------------------------------
@@ -602,7 +656,9 @@ rl_build_dev_notes <- function(report, map_df, store_prefix) {
   lines <- c("DEV NOTES", headline)
   for (i in seq_len(nrow(untouched))) {
     row <- untouched[i, ]
-    lines <- c(lines, sprintf("  line %d  %s — %s", row$line,
+    # WHERE THE EDITOR SHOWS IT, not where the file has it: tab name, then
+    # the line within that tab (Adam, 2026-09-16).
+    lines <- c(lines, sprintf("  %s  %s — %s", .rl_where(row),
                                .rl_key_from_old_path(row$old_path),
                                .rl_lead_for_row(row, map_df, store_prefix)))
   }

@@ -1169,8 +1169,15 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 		rows <- rbind(rows, row)
 
 		if (!is.null(rr) && nrow(rr))
+			# `tab` / `tab_line` are where the DATA LOAD EDITOR shows the line;
+			# `line` is where the file has it. A report written before
+			# 2026-09-16 has neither, so both are filled blank rather than
+			# dropping the row (Adam: an absolute line names neither the tab
+			# to open nor the line to find once it is open).
 			loads <- rbind(loads, data.frame(
 				app_id = id, app_name = nm,
+				tab = if (is.null(rr$tab)) "" else rr$tab,
+				tab_line = if (is.null(rr$tab_line)) NA_integer_ else rr$tab_line,
 				line = rr$line, onprem_qvd = rr$old_path, status = rr$status,
 				cloud_target = rr$new_path, note = rr$detail,
 				stringsAsFactors = FALSE))
@@ -1202,7 +1209,8 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 		rows <- rows[order(-rows$readiness, rows$app_name), , drop = FALSE]
 	.fl_write_csv(rows, MASTER_CSV)
 	.fl_write_csv(if (is.null(loads)) data.frame(
-		app_id = character(0), app_name = character(0), line = character(0),
+		app_id = character(0), app_name = character(0), tab = character(0),
+		tab_line = integer(0), line = character(0),
 		onprem_qvd = character(0), status = character(0),
 		cloud_target = character(0), note = character(0),
 		stringsAsFactors = FALSE) else loads, MASTER_LOADS_CSV)
@@ -1213,6 +1221,13 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 	.fl_say("rollup: ", nrow(rows), " app(s), ",
 	        if (is.null(loads)) 0L else nrow(loads), " load row(s), ",
 	        if (is.null(unused)) 0L else nrow(unused), " unused row(s)")
+	# An empty master_unused.csv is almost always "report has not run", not
+	# "nothing is unused" - a bare header looks like a broken tool otherwise
+	# (Adam found exactly that, 2026-09-16). The unused counts come from the
+	# per-app usage-*.csv files, which only `report` writes.
+	if (is.null(unused) && nrow(rows))
+		.fl_say("  (nothing unused to report yet - run 'fleet.R report' first; ",
+		        "that is what writes the per-app usage CSVs this reads)")
 	0L
 }
 

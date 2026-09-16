@@ -80,9 +80,13 @@ Three files in `fleet/`, the record of the whole migration:
   what is still outstanding (`blockers` column), one column per flag,
   unused-object counts. Sort by readiness to see who is nearest done.
 - `master_loads.csv` — every load statement in every app and its
-  status. Filter status != retargeted for the outstanding work.
+  status. Filter status != retargeted for the outstanding work. `tab`
+  and `tab_line` are WHERE THE EDITOR SHOWS IT — open that tab and go
+  to that line; `line` is the line in the whole .qvs file, which the
+  editor never shows.
 - `master_unused.csv` — every unused table, field, variable, dimension
-  and measure, by app.
+  and measure, by app. EMPTY until you run the report step: the counts
+  come from the per-app `usage-*.csv` files, which only `report` writes.
 
 ## Tags in the hub
     Rscript fleet/fleet.R stamp --space <space id> --live

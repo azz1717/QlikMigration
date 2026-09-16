@@ -237,8 +237,11 @@ if (!have) {
 	.t1_ok("map_check_findings is carried onto every row",
 	       all(nzchar(ms$map_check_findings)))
 	ml <- read_csv_any(MASTER_LOADS_CSV)
+	# tab/tab_line added 2026-09-16: an absolute line names neither the tab to
+	# open in the data load editor nor the line to find once it is open.
 	.t1_ok("master_loads.csv has exactly section 5's columns",
-	       identical(names(ml), c("app_id", "app_name", "line", "onprem_qvd",
+	       identical(names(ml), c("app_id", "app_name", "tab", "tab_line",
+	                              "line", "onprem_qvd",
 	                              "status", "cloud_target", "note")))
 	mu <- read_csv_any(MASTER_UNUSED_CSV)
 	.t1_ok("master_unused.csv has exactly section 5's columns",
