@@ -116,10 +116,14 @@ pf <- fleet_upload_preflight(.t3_row(APP1), d_ok, "copy", SPACE3)
 .t3_ok("a retargeted app with a clean report passes", isTRUE(pf$ok), pf$reason)
 .t3_ok("and the target space comes back with it", identical(pf$space, SPACE3))
 
+# NO STAGE GATE (Adam, 2026-09-23). A half-processed app uploads what it has:
+# refusing it threw away a good styling pass because retargeting failed, and
+# delivered 0% instead of some. The stage is reported, never a veto.
 .t3_app(APP2, "Grants QVD Generator", "unbuilt")
 pf <- fleet_upload_preflight(.t3_row(APP2), .fl_app_dir(APP2), "copy", SPACE3)
-.t3_ok("a stage other than retargeted is refused",
-       !pf$ok && grepl("not formatted and retargeted yet", pf$reason), pf$reason)
+.t3_ok("a stage other than retargeted still uploads", isTRUE(pf$ok), pf$reason)
+.t3_ok("and it says which script it fell back to",
+       identical(pf$kind, "retargeted") || nzchar(pf$kind), pf$kind)
 
 LOCAL <- "local:not-on-tenant"
 .t3_app(LOCAL, "Not On Tenant", "retargeted")
@@ -127,15 +131,24 @@ pf <- fleet_upload_preflight(.t3_row(LOCAL), .fl_app_dir(LOCAL), "copy", SPACE3)
 .t3_ok("a local: key has no tenant app to upload to",
        !pf$ok && grepl("not matched to an app on the tenant", pf$reason), pf$reason)
 
+# The ONLY script refusal left: the folder holds nothing sendable at all.
+# An empty file is not a script - sending it would blank the app's script,
+# which is the one outcome worse than not uploading.
 EMPTY <- "e0000000-0000-0000-0000-00000000000e"
 de <- .t3_app(EMPTY, "Empty Script", "retargeted", script = NULL)
+unlink(file.path(de, c("script_styled.qvs", "script.qvs")))
 pf <- fleet_upload_preflight(.t3_row(EMPTY), de, "copy", SPACE3)
-.t3_ok("a missing script_retargeted.qvs is refused",
-       !pf$ok && grepl("script_retargeted", pf$reason), pf$reason)
+.t3_ok("a folder with no script at all is refused",
+       !pf$ok && grepl("no script of any kind", pf$reason), pf$reason)
 file.create(file.path(de, "script_retargeted.qvs"))
 pf <- fleet_upload_preflight(.t3_row(EMPTY), de, "copy", SPACE3)
-.t3_ok("an EMPTY script_retargeted.qvs is refused too",
-       !pf$ok && grepl("empty", pf$reason), pf$reason)
+.t3_ok("an EMPTY script is not a script either",
+       !pf$ok && grepl("no script of any kind", pf$reason), pf$reason)
+# ... but a styled script beside it IS sendable, and is what goes.
+writeLines("LOAD 1 AS x AUTOGENERATE 1;", file.path(de, "script_styled.qvs"))
+pf <- fleet_upload_preflight(.t3_row(EMPTY), de, "copy", SPACE3)
+.t3_ok("with retargeting missing, the styled script is sent instead",
+       isTRUE(pf$ok) && identical(pf$kind, "styled"), pf$kind)
 
 UNRES <- "f0000000-0000-0000-0000-00000000000f"
 du <- .t3_app(UNRES, "Unresolved Loads", "retargeted",

@@ -1780,20 +1780,34 @@ fleet_upload_target_name <- function(app_name, suffix = UPLOAD_SUFFIX) {
 #' carries on to the next app. Unresolved loads are NOT checked here: the
 #' script is uploaded with them and dev_notes.txt says which they are.
 fleet_upload_preflight <- function(row, app_dir, mode = "copy", to_space = NULL) {
-	no <- function(why) list(ok = FALSE, reason = why, space = "", script = "")
+	no <- function(why) list(ok = FALSE, reason = why, space = "", script = "",
+	                         kind = "")
 	id <- .fl_str(row$app_id)
 	if (!nzchar(id) || startsWith(id, "local:"))
 		return(no("not matched to an app on the tenant yet (fleet.R reconcile-ids)"))
-	if (!identical(.fl_str(row$stage), "retargeted"))
-		return(no(paste0("not formatted and retargeted yet (it is at '",
-		                 .fl_str(row$stage, "none"), "')")))
-	script <- file.path(app_dir, "script_retargeted.qvs")
-	if (!file.exists(script) || file.size(script) <= 0)
-		return(no("no script_retargeted.qvs, or it is empty"))
+	# THE BEST SCRIPT THIS APP HAS, never a refusal for not having the best
+	# one (Adam, 2026-09-23): "an app that is 30% styled and 20% remapped is
+	# better than a refused upload and 0% styled or retargeted". The stage
+	# gate that used to sit here refused anything not at 'retargeted', so one
+	# failed retarget threw away a perfectly good styling pass as well.
+	#
+	# Falling back cannot make an app worse than it is now: script_styled.qvs
+	# carries the app's OWN paths, unchanged, so in overwrite mode the app
+	# gets back the paths it already had, formatted. script.qvs is what came
+	# down from the app in the first place.
+	cand <- c(retargeted = "script_retargeted.qvs",
+	          styled     = "script_styled.qvs",
+	          original   = "script.qvs")
+	paths <- file.path(app_dir, cand)
+	have <- file.exists(paths) & file.size(paths) > 0
+	if (!any(have, na.rm = TRUE))
+		return(no("no script of any kind in its folder - run fetch"))
+	k <- which(have)[1]
 	space <- .fl_str(to_space, .fl_str(row$space_id))
 	if (identical(mode, "copy") && !nzchar(space))
 		return(no("no space to copy into (--to-space <id>)"))
-	list(ok = TRUE, reason = "", space = space, script = script)
+	list(ok = TRUE, reason = "", space = space, script = paths[k],
+	     kind = names(cand)[k])
 }
 
 #' The `lib://<connection>` names a retargeted script needs, deduplicated.
@@ -1883,6 +1897,11 @@ fleet_space_connections <- function(space_id) {
 		}
 		if (!dry) .fl_say(if (identical(mode, "copy")) "copying + rebuilding: "
 		                  else "rebuilding in place: ", .fl_label(m, id))
+		# Said out loud, every time it is not the full article: an app that
+		# goes up part-processed must never look like one that went up whole.
+		if (!dry && !identical(pf$kind, "retargeted"))
+			.fl_warn("  sending the ", pf$kind, " script - this app is NOT fully",
+			         " processed, but it is going up anyway")
 		.fl_conn_warn(pf$script, pf$space)
 		target <- id
 		nm <- fleet_upload_target_name(sel$app_name[i])

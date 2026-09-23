@@ -32,15 +32,45 @@ open(.cui_stdin, "r")
 # Every step is one fleet.R run. Nothing is echoed while things go well - the
 # operator is reading fleet.R's own sentences, not a transcript of commands.
 # A bad exit prints the command so the failure can be reproduced by hand.
-# Status 2 is "some apps blocked", which is information, not a failure.
+#
+# Status 2 is "some apps did not complete this step". It used to be listed
+# beside 0 as an acceptable exit and printed NOTHING, so a run where an app
+# was refused ended exactly like a clean one - the operator's whole complaint
+# (Adam, 2026-09-23: "it reported it exactly the same way as the two apps it
+# uploaded successfully"). It is now called out here and named per app by
+# .cui_not_done() before the walk-through claims to be finished. It is still
+# not a step failure: the other apps carried on, which is the point.
 .cui_fleet <- function(...) {
 	args <- c(shQuote(file.path("fleet", "fleet.R")), ...)
 	status <- system2(RSCRIPT, args)
-	if (!status %in% c(0, 2))
+	if (identical(status, 2L) || identical(status, 2))
+		cat("\n  *** Some apps did not complete that step - see the lines",
+		    " above. ***\n", sep = "")
+	else if (status != 0)
 		cat("That step failed (fleet.R exit ", status, "). Command: ",
 		    "Rscript fleet/fleet.R ", paste(args[-1], collapse = " "), "\n",
 		    sep = "")
 	invisible(status)
+}
+
+# The apps in this run that are NOT at `stage`, with the reason each stopped.
+# Read from the ledger rather than tracked in the UI: fleet.R is what knows,
+# and a second copy here would be the twin CLAUDE.md forbids.
+.cui_not_done <- function(stage = "verified") {
+	sel <- file.path("fleet", "selection.csv")
+	man <- file.path("fleet", "manifest.csv")
+	if (!file.exists(sel) || !file.exists(man)) return(NULL)
+	rd <- function(p) tryCatch(utils::read.csv(p, colClasses = "character",
+	                                           stringsAsFactors = FALSE),
+	                           error = function(e) NULL)
+	s <- rd(sel); m <- rd(man)
+	if (is.null(s) || is.null(m) || !nrow(s) || is.null(m$stage)) return(NULL)
+	m <- m[m$app_id %in% s$app_id, , drop = FALSE]
+	if (!nrow(m)) return(NULL)
+	bad <- m[!(m$stage %in% stage), , drop = FALSE]
+	if (!nrow(bad)) return(NULL)
+	if (is.null(bad$last_error)) bad$last_error <- ""
+	bad
 }
 
 # The space list fleet.R cached on its last `spaces` run (index, id, name,
@@ -120,6 +150,18 @@ open(.cui_stdin, "r")
 }
 
 .cui_finished <- function() {
+	# Named BEFORE the word "Finished", because "Finished" is what the
+	# operator reads and stops reading at. A run that left apps behind does
+	# not get to look like one that did not.
+	bad <- .cui_not_done()
+	if (!is.null(bad)) {
+		cat("\n", nrow(bad), " app(s) did NOT reach the cloud:\n", sep = "")
+		for (i in seq_len(nrow(bad)))
+			cat("  - ", bad$app_name[i], " (stopped at '", bad$stage[i], "')",
+			    if (nzchar(bad$last_error[i])) paste0(": ", bad$last_error[i]) else "",
+			    "\n", sep = "")
+		cat("  Their files are still in fleet/apps/ - nothing was lost.\n")
+	}
 	cat("\nFinished.\n")
 	cat("  Each app's files:        fleet/apps/<app name>/\n")
 	cat("  Loads that need a hand:  fleet/apps/<app name>/dev_notes.txt\n")
