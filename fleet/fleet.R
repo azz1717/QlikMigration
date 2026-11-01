@@ -1426,6 +1426,9 @@ FETCH_FAILED <- "fetch: "
 		file.copy(list.files(stage_dir, full.names = TRUE), dest,
 		          recursive = TRUE, overwrite = TRUE, copy.date = TRUE)
 		unlink(stage_dir, recursive = TRUE)
+		# A fresh script.qvs makes the last run's derived scripts stale: if
+		# process then fails, upload must not find and send an old one.
+		unlink(file.path(dest, c("script_styled.qvs", "script_retargeted.qvs")))
 		props <- tryCatch(json_read(file.path(dest, "app-properties.json")),
 		                  error = function(e) NULL)
 		title <- .fl_str(if (is.null(props)) NULL else props[["qTitle"]],
