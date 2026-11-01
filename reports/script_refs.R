@@ -1,7 +1,7 @@
 # script_refs.R — how the SCRIPT itself uses the tables it builds.
 #
 # Phase 2, step 4a (DESIGN §6.5). NOT part of the styling pipeline; nothing in
-# run_pipeline.R sources this. Base R only.
+# run_styling.R sources this. Base R only.
 #
 # Why this exists: cross-referencing the app against the script alone would
 # mark every intermediate table unreferenced and recommend deleting it. A
@@ -119,7 +119,7 @@ script_disposals <- function(tokens, table_names) {
 
 main <- function(args) {
   if (length(args) == 0L) stop("usage: Rscript script_refs.R <script>")
-  source("analysis/script_loads.R")
+  source("reports/script_loads.R")
   tok <- read_qlik_script(args[1L])
   l   <- script_loads(tok)$loads
   own <- unique(l[!is.na(l$table), c("table", "line_start", "line_end")])

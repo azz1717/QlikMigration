@@ -1,7 +1,7 @@
 # script_debt.R — the signals the report calls out as debt.
 #
 # Phase 2 (DESIGN §7.1). NOT part of the styling pipeline; nothing in
-# run_pipeline.R sources this. Base R only.
+# run_styling.R sources this. Base R only.
 #
 # Admission test for anything in here (Adam, 2026-08-18): **if retargeting
 # fixes it, it is not report material.** A DEV connection string is fixed by
@@ -202,7 +202,7 @@ sql_targets <- function(tokens, tabs = NULL) {
 
 main <- function(args) {
   if (!length(args)) stop("usage: Rscript script_debt.R <script>")
-  source("analysis/script_loads.R")
+  source("reports/script_loads.R")
   tok  <- read_qlik_script(args[1L])
   tabs <- .sl_tabs(tok)
   l    <- script_loads(tok)$loads

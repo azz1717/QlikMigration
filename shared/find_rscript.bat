@@ -7,7 +7,7 @@ rem Sets RS empty and exits 1 if nothing is found.
 rem
 rem WHY DISCOVERY RATHER THAN A PINNED VERSION. The VM has only R-4.3.1 while
 rem this dev machine has 4.5.2, so any pinned path is wrong on one of them -
-rem which forced a local edit to launch_console_ui.bat on the VM, and that edit
+rem which forced a local edit to the launcher .bat on the VM, and that edit
 rem was silently reverted by every pull. One shared lookup, no pin, no twin.
 rem
 rem PATH is checked LAST and only as a courtesy: qlik-cli's VM has no R on PATH

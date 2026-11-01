@@ -2,17 +2,17 @@
 # retarget_loads.R
 #
 # Mechanically retarget on-prem QVD loads in a STYLED Qlik script to their
-# Qlik Cloud equivalents, driven ONLY by retargeting/qvd_field_map.csv.
+# Qlik Cloud equivalents, driven ONLY by 3_retargeting/qvd_field_map.csv.
 # Base R only. See docs/DESIGN.md sec 6.7 for the retargeting rule this
 # implements verbatim.
 #
 # Usage:
-#   Rscript retargeting/retarget_loads.R <styled_in.qvs> <out.qvs>
-#       [--map retargeting/qvd_field_map.csv]
+#   Rscript 3_retargeting/retarget_loads.R <styled_in.qvs> <out.qvs>
+#       [--map 3_retargeting/qvd_field_map.csv]
 #       [--report <report.csv>] [--fields-report <fields.csv>]
 #       [--store <prefix>]   (full "lib://...:DataFiles/.../" prefix, must
 #                              end in '/'; overrides .RL_STORE_PREFIX below)
-#   Rscript retargeting/retarget_loads.R --selftest
+#   Rscript 3_retargeting/retarget_loads.R --selftest
 
 # ---- locate and source shared helpers -----------------------------------
 
@@ -24,19 +24,19 @@
 .rl_file <- sub("^--file=", "", .rl_argv[grepl("^--file=", .rl_argv)])
 .RL_DIR  <- if (length(.rl_file) == 1 && nzchar(.rl_file))
   dirname(normalizePath(.rl_file, winslash = "/")) else getwd()
-# this file lives at <root>/retargeting/retarget_loads.R
-.RL_ROOT <- if (basename(.RL_DIR) == "retargeting") dirname(.RL_DIR) else getwd()
+# this file lives at <root>/3_retargeting/retarget_loads.R
+.RL_ROOT <- if (basename(.RL_DIR) == "3_retargeting") dirname(.RL_DIR) else getwd()
 source(file.path(.RL_ROOT, "shared", "qlik_tokenizer.R"))
 source(file.path(.RL_ROOT, "shared", "csv_read.R"))
-source(file.path(.RL_ROOT, "retargeting", "retarget_shared.R"))
+source(file.path(.RL_ROOT, "3_retargeting", "retarget_shared.R"))
 # Pass 7 runs again as this pipeline's LAST step - see the call site.
-source(file.path(.RL_ROOT, "styling", "enforce_alias_alignment.R"))
+source(file.path(.RL_ROOT, "2_styling", "07_alias_alignment.R"))
 # The comment substream - how a commented-out LOAD becomes a token stream we
 # can retarget, and gets written back. See rl_retarget_comment_loads(). It
 # classifies field-shaped lines against QLIK_KEYWORDS, so the word list has
 # to come with it.
 source(file.path(.RL_ROOT, "shared", "qlik_reserved_words.R"))
-source(file.path(.RL_ROOT, "styling", "comment_substream.R"))
+source(file.path(.RL_ROOT, "shared", "comment_substream.R"))
 
 # Qlik Cloud connection ("lib://...") name is environment config (the tenant
 # connection is provisioned per-environment, it is not part of the qvd field
@@ -815,7 +815,7 @@ rl_main <- function() {
   if ("--selftest" %in% args) { rl_selftest(); return(invisible(NULL)) }
 
   pos <- character(0)
-  map_path <- file.path(.RL_ROOT, "retargeting", "qvd_field_map.csv")
+  map_path <- file.path(.RL_ROOT, "3_retargeting", "qvd_field_map.csv")
   report_path <- NA_character_
   fields_report_path <- NA_character_
   store_prefix <- .RL_STORE_PREFIX
@@ -834,7 +834,7 @@ rl_main <- function() {
   }
 
   if (length(pos) < 2) {
-    cat("Usage: Rscript retarget_loads.R <styled_in.qvs> <out.qvs> [--map retargeting/qvd_field_map.csv] [--report <report.csv>] [--fields-report <fields.csv>] [--store <prefix>] [--notes <file>]\n")
+    cat("Usage: Rscript retarget_loads.R <styled_in.qvs> <out.qvs> [--map 3_retargeting/qvd_field_map.csv] [--report <report.csv>] [--fields-report <fields.csv>] [--store <prefix>] [--notes <file>]\n")
     cat("       Rscript retarget_loads.R --selftest\n")
     quit(status = 1)
   }

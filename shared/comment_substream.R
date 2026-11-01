@@ -7,14 +7,14 @@
 # plan's suggested sequencing: the isolated extract/serialize layer, built
 # and proved before any style pass is touched.
 #
-# NOT a pass, NOT in the pipeline - run_pipeline.R does not source this yet
+# NOT a pass, NOT in the pipeline - run_styling.R does not source this yet
 # (the recursive driver that will is a later task). No styling pass is
 # called, modified or threaded here. Base R only.
 #
 # Source shared/qlik_tokenizer.R and shared/qlik_reserved_words.R first:
 #   source("shared/qlik_tokenizer.R")
 #   source("shared/qlik_reserved_words.R")
-#   source("styling/comment_substream.R")
+#   source("shared/comment_substream.R")
 #
 # ---------------------------------------------------------------------
 # THE MODEL
@@ -295,7 +295,7 @@ find_comment_runs <- function(tokens) {
 #'                   by serialize_comment_run() by default (an unmodified/
 #'                   identity run round-trips byte-identically, same as
 #'                   leading_sep) - a styling pass that wants to drop it
-#'                   (comment_style_driver.R does, once a run's own
+#'                   (08_commented_code.R does, once a run's own
 #'                   leading-comma convention on the field after it already
 #'                   supplies the separation) calls set_trailing_separator()
 #'                   with NA, same pattern as leading.
@@ -349,7 +349,7 @@ find_comment_runs <- function(tokens) {
 #' serialize_comment_run() choose whether to re-supply it (verbatim, for an
 #' unstyled/identity run - preserves P1's round trip) or drop it (a styled
 #' run's leading-comma convention on the field that follows already
-#' supplies the separation - comment_style_driver.R's job, not this file's).
+#' supplies the separation - 08_commented_code.R's job, not this file's).
 #'
 #' @param child a child token stream (text/type/line), already
 #'   leading-stripped.

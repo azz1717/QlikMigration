@@ -257,7 +257,7 @@ writeLines(c("///$tab Main", "LET vRoot = 'lib://AzureDataLake/curated/';",
              "Sales:", "LOAD [Id] AS [Id]",
              "FROM [lib://AzureDataLake/curated/sales.qvd] (qvd);"), cov_in)
 cov_out <- file.path(TMP, "cov_out.qvs")
-cr <- .fl_child(c("retargeting/retarget_loads.R", cov_in, cov_out,
+cr <- .fl_child(c("3_retargeting/retarget_loads.R", cov_in, cov_out,
                   "--report", file.path(TMP, "cov_report.csv")),
                 file.path(TMP, "cov.log"))
 .tv_ok("retarget exits 0 when the scanner saw fewer lib:// than the text has",

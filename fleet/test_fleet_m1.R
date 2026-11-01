@@ -197,7 +197,7 @@ if (!have) {
 	       file.exists(file.path(d1, "retarget_report.csv")))
 	.t1_ok("stderr and stdout of every child landed in log.txt",
 	       file.exists(file.path(d1, "log.txt")) &&
-	       	any(grepl("run_pipeline.R", readLines(file.path(d1, "log.txt"), warn = FALSE),
+	       	any(grepl("run_styling.R", readLines(file.path(d1, "log.txt"), warn = FALSE),
 	       	          fixed = TRUE)))
 	mp <- manifest_read(MANIFEST_DEFAULT)
 	.t1_ok("a successful app reached stage retargeted",

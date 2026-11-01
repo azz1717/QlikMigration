@@ -1,9 +1,9 @@
-# run_pipeline.R — reformat a Qlik load script to the house style guide.
+# run_styling.R — reformat a Qlik load script to the house style guide.
 #
 # HOW TO RUN IT (from a terminal, not from inside R). If Rscript is not on
 # PATH, use its full install path instead, or find_rscript.bat's lookup:
 #
-#   Rscript run_pipeline.R in.qvs out.qvs
+#   Rscript run_styling.R in.qvs out.qvs
 #
 # Add --help for the usage text, or --changes to also get a CSV per pass
 # listing every edit it made. Both file names are REQUIRED — no default
@@ -64,11 +64,11 @@
 # confusing "cannot open file" errors.
 #
 # EXTRA dirname() (2026-08-21 reorg): this script now lives one folder
-# below repo root (styling/), but PROJECT_DIR must still resolve to the
-# TRUE root, not to styling/ - every source() call below and every
+# below repo root (2_styling/), but PROJECT_DIR must still resolve to the
+# TRUE root, not to 2_styling/ - every source() call below and every
 # user-supplied relative input/output path is resolved against whatever
-# this ends up being. Landing on styling/ instead would silently break
-# both: source() calls would need rewriting to be styling/-relative, and a
+# this ends up being. Landing on 2_styling/ instead would silently break
+# both: source() calls would need rewriting to be 2_styling/-relative, and a
 # user typing a path relative to the repo root (as README shows) would
 # have it misresolved one level down with no error, just a wrong or
 # missing file.
@@ -79,9 +79,9 @@ PROJECT_DIR <- if (length(.file_arg)) {
 } else NA
 if (is.na(PROJECT_DIR) || !dir.exists(PROJECT_DIR)) {
   stop("could not determine the project folder from the running script's ",
-       "path. Run this via 'Rscript run_pipeline.R' (not pasted into an ",
+       "path. Run this via 'Rscript run_styling.R' (not pasted into an ",
        "interactive session), or hardcode PROJECT_DIR at the top of ",
-       "run_pipeline.R as a fallback.",
+       "run_styling.R as a fallback.",
        call. = FALSE)
 }
 setwd(PROJECT_DIR)
@@ -95,15 +95,15 @@ setwd(PROJECT_DIR)
 # README. Rewriting them breaks that check silently.
 source("shared/qlik_tokenizer.R")
 source("shared/qlik_reserved_words.R")
-source("styling/ensure_explicit_aliases.R")
-source("styling/enforce_bracket_references.R")
-source("styling/enforce_leading_commas.R")
-source("styling/enforce_intraline_spacing.R")
-source("styling/enforce_reserved_word_case.R")
-source("styling/enforce_vertical_layout.R")
-source("styling/enforce_alias_alignment.R")
-source("styling/comment_substream.R")
-source("styling/comment_style_driver.R")
+source("2_styling/01_explicit_aliases.R")
+source("2_styling/02_bracket_references.R")
+source("2_styling/03_leading_commas.R")
+source("2_styling/04_spacing.R")
+source("2_styling/05_keyword_case.R")
+source("2_styling/06_vertical_layout.R")
+source("2_styling/07_alias_alignment.R")
+source("shared/comment_substream.R")
+source("2_styling/08_commented_code.R")
 
 # Used for error messages and for --changes file names, so the wording of a
 # pass name lives in exactly one place.
@@ -114,7 +114,7 @@ PASS_LABELS <- c("explicit aliases", "bracket references", "leading commas",
 USAGE <- paste(
   "Reformat a Qlik load script to the house style guide.",
   "",
-  "  Rscript run_pipeline.R [options] input-file output-file",
+  "  Rscript run_styling.R [options] input-file output-file",
   "",
   "Arguments — BOTH required, positional (order matters). No default input:",
   "  input-file    script to read",
@@ -265,6 +265,6 @@ if (want_changes) {
 # To poke at the results by hand instead, open R at the REPO ROOT (not this
 # folder - PROJECT_DIR above only self-locates under `Rscript file.R`, not
 # source(), so this file's own guard would otherwise stop it) and run
-#   source("styling/run_pipeline.R")
+#   source("2_styling/run_styling.R")
 # then inspect r1$changes ... r7$changes directly (head(r4$changes), and so
 # on). Sourcing keeps the objects alive; running via Rscript does not.

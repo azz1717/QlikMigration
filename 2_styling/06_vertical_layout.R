@@ -1,4 +1,4 @@
-# enforce_vertical_layout.R
+# 06_vertical_layout.R
 #
 # Style-guide pass: normalises line breaks, indentation and blank lines
 # between statements - the "vertical layout" pass, DESIGN §3.4/§4.5/§4.8/§6.2.

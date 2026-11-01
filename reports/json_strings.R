@@ -1,7 +1,7 @@
 # json_strings.R — pull every string literal out of a JSON file.
 #
 # Phase 2, step 1 (DESIGN §6.5). NOT part of the styling pipeline; nothing in
-# run_pipeline.R sources this.
+# run_styling.R sources this.
 #
 # This is deliberately NOT a JSON parser. Phase 2 never consults the document
 # structure — it treats every string in objects/*.json as possible expression

@@ -1,28 +1,28 @@
-# comment_style_driver.R
+# 08_commented_code.R
 #
 # The recursive driver from docs/PLAN-comment-substream.md section 3: for
-# each extracted comment-substream child (styling/comment_substream.R), runs
+# each extracted comment-substream child (shared/comment_substream.R), runs
 # the REAL styling passes over it, in canonical order (1,2,3,4,5,6,7 -
 # DESIGN 2.5: 3 before 4, 3 before 6, all of 1-6 before 7), threading
 # context derived from where the run sits in the PARENT, then serializes
 # the styled result back into the parent's COMMENT tokens.
 #
-# NOT wired into run_pipeline.R yet, and pass 8 is untouched - both happen
+# NOT wired into run_styling.R yet, and pass 8 is untouched - both happen
 # together in a later task (wiring this in while pass 8 still runs would
 # double-style comments). Base R only.
 #
 # Caller sources, in order:
 #   source("shared/qlik_tokenizer.R")
 #   source("shared/qlik_reserved_words.R")
-#   source("styling/ensure_explicit_aliases.R")
-#   source("styling/enforce_bracket_references.R")
-#   source("styling/enforce_leading_commas.R")
-#   source("styling/enforce_intraline_spacing.R")
-#   source("styling/enforce_reserved_word_case.R")
-#   source("styling/enforce_vertical_layout.R")
-#   source("styling/enforce_alias_alignment.R")
-#   source("styling/comment_substream.R")
-#   source("styling/comment_style_driver.R")
+#   source("2_styling/01_explicit_aliases.R")
+#   source("2_styling/02_bracket_references.R")
+#   source("2_styling/03_leading_commas.R")
+#   source("2_styling/04_spacing.R")
+#   source("2_styling/05_keyword_case.R")
+#   source("2_styling/06_vertical_layout.R")
+#   source("2_styling/07_alias_alignment.R")
+#   source("shared/comment_substream.R")
+#   source("2_styling/08_commented_code.R")
 #
 # ---------------------------------------------------------------------
 # THE SCAFFOLD (Adam, 2026-08-24 ruling). A field_run child has no LOAD
@@ -791,7 +791,7 @@ make_comment_styler <- function(parent) {
 #' genuinely reflow), not by inspection: forward order left 14/34 runs
 #' silently re-extracting to the WRONG (shifted-into) text.
 #'
-#' NOT the pipeline entry point - run_pipeline.R does not call this yet
+#' NOT the pipeline entry point - run_styling.R does not call this yet
 #' (a later task wires it in, replacing pass 8). This is what
 #' verify_substream.R's idempotence/coverage checks call directly.
 #'

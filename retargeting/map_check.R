@@ -50,7 +50,7 @@ source(file.path(.MC_ROOT, "retargeting", "map_upkeep.R"))
 .mc_main <- function(args) {
   map_check_flags(args, .MC_KNOWN)
   root <- .MC_ROOT
-  map_path     <- map_opt(args, "--map",     file.path(root, "retargeting", "qvd_field_map.csv"))
+  map_path     <- map_opt(args, "--map",     file.path(root, "3_retargeting", "qvd_field_map.csv"))
   db_path      <- map_opt(args, "--db",      file.path(root, "fixtures", "DBfixture1.csv"))
   schemas_path <- map_opt(args, "--schemas", file.path(root, "fixtures", "loaded_schemas.csv"))
   out_path     <- map_opt(args, "--out",     file.path(root, "retargeting", "map_check_findings.csv"))

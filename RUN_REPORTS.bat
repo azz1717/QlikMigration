@@ -1,7 +1,8 @@
 @echo off
 rem RUN_REPORTS.bat - the per-app review + tech-debt reports, kept OUT of the
-rem migration walk-through (launch_console_ui.bat). Runs on the apps last
-rem picked there (fleet/selection.csv); nothing in the cloud changes.
+rem migration (RUN_MIGRATION.bat). Asks which space and which apps every
+rem time, downloads them (a read - nothing in the cloud changes) and writes
+rem fleet\apps\(app name)\report.html for each.
 cd /d "%~dp0"
 call "%~dp0shared\find_rscript.bat"
 if errorlevel 1 (
@@ -10,7 +11,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-"%RS%" fleet/fleet.R report --selected
-echo.
-echo Each app's report: fleet\apps\(app name)\report.html
+"%RS%" fleet/console_ui.R --reports
 pause

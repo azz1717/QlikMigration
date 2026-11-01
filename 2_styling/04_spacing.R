@@ -1,4 +1,4 @@
-# enforce_intraline_spacing.R
+# 04_spacing.R
 #
 # Style-guide pass: normalises intra-line whitespace. See DESIGN.md §4.7.
 #
@@ -117,7 +117,7 @@ enforce_intraline_spacing <- function(tokens) {
   is_comma <- t_type == "COMMA" & !in_select
 
   # ---- field-separator commas: the ones exempt from shrinking -----------
-  # Recomputed the same way enforce_leading_commas.R finds them (seg$end+1),
+  # Recomputed the same way 03_leading_commas.R finds them (seg$end+1),
   # since find_load_segments() reports segment bounds, not the separators
   # between them.
   found <- find_load_segments(tokens)

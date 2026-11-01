@@ -8,5 +8,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-"%RS%" ui/console_ui.R
+"%RS%" fleet/console_ui.R
 pause

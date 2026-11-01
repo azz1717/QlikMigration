@@ -1,7 +1,7 @@
 # qlik_reserved_words.R
 #
 # The Qlik script vocabulary, split by how a casing pass is allowed to treat
-# each word. Data only - no logic. Sourced by enforce_reserved_word_case.R,
+# each word. Data only - no logic. Sourced by 05_keyword_case.R,
 # and available to any later pass that needs to recognise Qlik vocabulary.
 #
 # WHY TWO LISTS

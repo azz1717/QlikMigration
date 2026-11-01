@@ -248,7 +248,7 @@ void_token <- function(tokens, idx) {
 # Position-only helpers needed by more than one pass. Promoted here (rather
 # than left as a private copy in whichever pass wrote them first) per the
 # "shared scanners" principle in DESIGN.md - the SELECT skip used to live
-# only inside enforce_reserved_word_case.R; enforce_intraline_spacing.R
+# only inside 05_keyword_case.R; 04_spacing.R
 # needed the identical logic, so it moved here instead of forking a second
 # copy that could drift.
 
@@ -290,8 +290,8 @@ prev_non_trivia_idx <- function(type) {
 #' Index of the next non-trivia token for every position, or NA.
 #'
 #' Symmetric with prev_non_trivia_idx() above. Promoted from a private
-#' `.next_content_type` in enforce_reserved_word_case.R (2026-08-17) when
-#' enforce_bracket_references.R needed the identical call-position test -
+#' `.next_content_type` in 05_keyword_case.R (2026-08-17) when
+#' 02_bracket_references.R needed the identical call-position test -
 #' both passes must tell a bare word used AS a function/SUB call (skip it)
 #' from one used as a field/alias reference (act on it), and both use the
 #' same test: is the next non-trivia token an LPAREN.
@@ -314,7 +314,7 @@ next_non_trivia_idx <- function(type) {
 #' Nothing else marks these spans: `$` is an OTHER token that merely happens
 #' to be followed by an LPAREN, and the word inside is an ordinary WORD
 #' sitting in a LOAD field list, which is precisely what
-#' enforce_bracket_references.R acts on. Found by Adam 2026-09-16 on a real
+#' 02_bracket_references.R acts on. Found by Adam 2026-09-16 on a real
 #' app; 21 of the 670 expansions in the local corpus were being corrupted.
 #'
 #' Nesting counts, so `$(=$(vA))` is one span with another inside it. The `$`
@@ -677,7 +677,7 @@ find_block_structure <- function(tokens, segments = NULL) {
   # Perf (2026-08-25, stage 3): a caller that has ALREADY run
   # find_load_segments() on this EXACT (unmutated) `tokens` may pass that
   # result in directly via `segments`, skipping this second, identical
-  # derivation - e.g. enforce_alias_alignment.R (pass 7), which needs both
+  # derivation - e.g. 07_alias_alignment.R (pass 7), which needs both
   # scanners on the same unedited tokens. NULL (default) derives exactly as
   # before. Caller's responsibility: `segments` must come from
   # find_load_segments(tokens) on this SAME tokens, not a mutated copy -

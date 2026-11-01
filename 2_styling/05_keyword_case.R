@@ -1,4 +1,4 @@
-# enforce_reserved_word_case.R
+# 05_keyword_case.R
 #
 # Style-guide pass: uppercases Qlik reserved words - both statement keywords
 # and built-in functions.

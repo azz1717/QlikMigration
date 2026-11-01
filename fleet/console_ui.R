@@ -7,8 +7,9 @@
 #
 # It HOLDS NO LOGIC: every step is one `fleet.R` verb run in its own process,
 # so the same migration is reproducible from a command line (RUNBOOK.md).
-# Reports are NOT part of this flow (Adam, 2026-11-02) - RUN_REPORTS.bat runs
-# `fleet.R report --selected` on the apps last picked here.
+# Reports are NOT part of this flow (Adam, 2026-11-02). RUN_REPORTS.bat runs
+# this file with --reports: the same space and app questions, then download
+# and `fleet.R report` on that pick, ending on the report screen.
 #
 # QUIET BY DESIGN (Adam, 2026-11-02: "i don't need all the verbose console
 # readouts"): each verb's whole output goes to fleet/last_run.log, and the
@@ -143,9 +144,10 @@ open(.cui_stdin, "r")
 	paste(out, collapse = ",")
 }
 
-# The three questions and the confirmation. Returns list(src, dest, copy)
-# when the operator typed YES, NULL when they stopped.
-.cui_ask <- function() {
+# Questions 1 and 2, shared by the migration and the reports: which space,
+# which apps, and `add` records the pick (fleet/selection.csv, which every
+# later `--selected` reads). Returns list(src, sp), or NULL when stopped.
+.cui_pick <- function() {
 	cat("\n1. Which space are the apps in?\n")
 	r <- .cui_fleet("spaces")
 	sp <- if (r$status == 0L) .cui_spaces() else NULL
@@ -180,6 +182,15 @@ open(.cui_stdin, "r")
 		cat(.cui_clip(paste0("Could not record the pick: ", .cui_why(r))), "\n", sep = "")
 		return(NULL)
 	}
+	list(src = src, sp = sp)
+}
+
+# The migration's three questions and the confirmation. Returns
+# list(src, dest, copy) when the operator typed YES, NULL when they stopped.
+.cui_ask <- function() {
+	pk <- .cui_pick()
+	if (is.null(pk)) return(NULL)
+	src <- pk$src; sp <- pk$sp
 
 	cat("\n3. Where should the finished apps go?\n")
 	cat(.cui_clip(paste0("[1] Back into \"", src$name, "\" - overwrite the originals")),
@@ -242,14 +253,44 @@ open(.cui_stdin, "r")
 	invisible(r$status)
 }
 
+# RUN_REPORTS.bat (`console_ui.R --reports`): the same two questions, then
+# download the picked apps (a tenant READ - nothing in the cloud changes) and
+# write each one's report. Ends on the screen `report` prints.
+.cui_reports <- function() {
+	pk <- .cui_pick()
+	if (is.null(pk)) return(invisible(NULL))
+	stages <- list(
+		list("Downloading the apps", c("fetch", "--selected", "--live")),
+		list("Writing the reports", c("report", "--selected")))
+	cat("\nRunning. Every detail goes to ", RUN_LOG, "\n", sep = "")
+	r <- NULL
+	for (k in seq_along(stages)) {
+		cat(sprintf("  %d/%d %s ...\n", k, length(stages), stages[[k]][[1]]))
+		r <- do.call(.cui_fleet, as.list(stages[[k]][[2]]))
+		if (!r$status %in% c(0L, 2L)) {
+			cat(.cui_clip(paste0("  STOPPED: that step failed (exit ", r$status, "): ",
+			                     .cui_why(r))), "\n", sep = "")
+			return(invisible(NULL))
+		}
+	}
+	cat("\n")
+	at <- grep("^=+$", r$out)
+	if (length(at)) cat(r$out[at[1]:length(r$out)], sep = "\n")
+	cat("Full log of this run: ", RUN_LOG, "\n", sep = "")
+	invisible(NULL)
+}
+
 main <- function() {
-	cat("Qlik app migration\n")
+	reports <- "--reports" %in% commandArgs(trailingOnly = TRUE)
+	cat(if (reports) "Qlik app reports\n" else "Qlik app migration\n")
 	.cui_rule()
 	dir.create("fleet", showWarnings = FALSE)
 	cat("=== console run ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n", sep = "",
 	    file = RUN_LOG)
-	plan <- .cui_ask()
-	if (!is.null(plan)) .cui_run(plan)
+	if (reports) .cui_reports() else {
+		plan <- .cui_ask()
+		if (!is.null(plan)) .cui_run(plan)
+	}
 	cat("Bye.\n")
 }
 

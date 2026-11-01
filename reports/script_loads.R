@@ -1,7 +1,7 @@
 # script_loads.R — what every LOAD in the script produces.
 #
 # Phase 2, step 3 (DESIGN §6.5). NOT part of the styling pipeline; nothing in
-# run_pipeline.R sources this. Base R only.
+# run_styling.R sources this. Base R only.
 #
 # The app side (app_usage.R) says which names are referenced. This side says
 # which names exist and which table holds them, so step 4 can cross-reference

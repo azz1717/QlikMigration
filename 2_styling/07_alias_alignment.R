@@ -1,8 +1,8 @@
-# enforce_alias_alignment.R
+# 07_alias_alignment.R
 #
 # Style-guide pass: aligns every field's AS to one column within its own
 # LOAD block - DESIGN §4.6, pass 7. Must run LAST, after vertical layout
-# (run_pipeline.R already documents this ordering requirement): the column
+# (run_styling.R already documents this ordering requirement): the column
 # this pass computes depends on each field's FINAL indentation.
 #
 #   - Padding is TABS, always (Adam 2026-08-17, non-negotiable: the scripts
@@ -85,7 +85,7 @@
 }
 
 #' Index of the WS token whose text immediately precedes token idx, skipping
-#' VOID leftovers. No longer the twin of enforce_vertical_layout.R's helper:
+#' VOID leftovers. No longer the twin of 06_vertical_layout.R's helper:
 #' that one became .preceding_ws_run() on 2026-08-20 and returns the whole WS
 #' run, because a gap can arrive split as WS/VOID/WS. This pass has the same
 #' latent bug but no observed case - its gaps are intra-line and pass 6 has

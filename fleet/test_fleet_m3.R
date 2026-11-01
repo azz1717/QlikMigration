@@ -371,7 +371,7 @@ rc <- fleet_main(c("upload", "--mode", "overwrite", "--apps", UNRES,
 .t3_ok("upload and verify no longer report themselves as unimplemented",
        !any(c("upload", "verify") %in% names(.FL_TODO)))
 .t3_ok("the console UI is the four-step walk-through, holding no logic", {
-	ui <- readLines("ui/console_ui.R", warn = FALSE)
+	ui <- readLines("fleet/console_ui.R", warn = FALSE)
 	live <- grep("--live", ui, fixed = TRUE, value = TRUE)
 	length(live) > 0L &&
 		all(grepl("upload|fetch|verify", live)) &&

@@ -1,7 +1,7 @@
 # app_usage.R — what the app's own definition references.
 #
 # Phase 2, step 2 (DESIGN §6.5). NOT part of the styling pipeline; nothing in
-# run_pipeline.R sources this. Base R only.
+# run_styling.R sources this. Base R only.
 #
 # Every string value in app*-unbuilt/**.json is treated as possible expression
 # text and run through the tokenizer. Enumerating the keys whose values hold
@@ -18,7 +18,7 @@
 
 source("shared/qlik_tokenizer.R")
 source("shared/qlik_reserved_words.R")
-source("analysis/json_strings.R")
+source("reports/json_strings.R")
 
 #' Field references in one piece of expression text.
 #'
@@ -34,7 +34,7 @@ source("analysis/json_strings.R")
 #' separated, because the report must not claim `Yes` is a field.
 #'
 #' SQUOTE is a literal and is skipped — the `AS`-adjacent alias exception that
-#' enforce_bracket_references.R handles cannot arise here, as an app expression
+#' 02_bracket_references.R handles cannot arise here, as an app expression
 #' has no field list to alias into.
 expression_references <- function(text) {
   none <- data.frame(ref = character(0), kind = character(0),
@@ -49,7 +49,7 @@ expression_references <- function(text) {
   delimited <- tok$type %in% c("BRACKET", "DQUOTE")
   dkind     <- ifelse(tok$type[delimited] == "BRACKET", "bracketed", "quoted")
 
-  # Same two guards as the bare-word branch of enforce_bracket_references.R,
+  # Same two guards as the bare-word branch of 02_bracket_references.R,
   # for the same reasons: a keyword is not a field, and a word in call position
   # is a function even when a field shares its name (Year, Left, Replace).
   nxt  <- next_non_trivia_idx(tok$type)

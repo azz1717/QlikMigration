@@ -1,4 +1,4 @@
-# ensure_explicit_aliases.R
+# 01_explicit_aliases.R
 #
 # Style-guide pass: ensures every field in a Qlik LOAD statement has an
 # explicit AS alias.
@@ -12,7 +12,7 @@
 #         "Grant Activity.Source System Id%" AS "Grant Activity.Source System Id%",
 #   - A bare single-quoted token ('...') is NOT treated as a field reference
 #     here: on the left of AS, a single-quoted token is a string literal,
-#     not a field name (see enforce_bracket_references.R for the one
+#     not a field name (see 02_bracket_references.R for the one
 #     confirmed exception - a single-quoted alias on the RIGHT of AS). A
 #     literal with no alias has no well-defined default field name, so it
 #     falls through to the "un-aliased expression" case below instead of

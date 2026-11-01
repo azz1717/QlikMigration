@@ -1,4 +1,4 @@
-# enforce_bracket_references.R
+# 02_bracket_references.R
 #
 # Style-guide pass: ensures every field name / alias reference is enclosed
 # in square brackets rather than quotation marks or nothing at all.
@@ -24,7 +24,7 @@
 #     EXCEPT a reserved keyword (AS, AND, DISTINCT... - never a valid field
 #     name) or a word in CALL position (next non-trivia token is "(" - a
 #     function or SUB invocation, not a reference). That second guard is
-#     the one enforce_reserved_word_case.R already needed for the same
+#     the one 05_keyword_case.R already needed for the same
 #     reason: app-unbuilt/script.qvs:837 has a bare field named `Year`,
 #     textually identical to the Year() function - DESIGN §1.3/§1.7.
 #     SCOPE, DELIBERATELY NARROW: only inside a LOAD field list

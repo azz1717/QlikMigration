@@ -6,7 +6,7 @@
 # NAMES, so nothing here may key on a name). The console UI added in M1 is a
 # menu that shells out to these same verbs, so every action stays
 # reproducible without the UI and testable offline against
-# diagnostics/mock_qlik.bat (fleet/test_fleet.R).
+# the offline mock (diagnostics/mock_qlik.bat, git tag pre-restructure) (fleet/test_fleet.R).
 #
 # M0 implemented spaces / apps / add / status. M1 adds import-unbuilt /
 # process / report / rollup and turns `status` into a reader of master.csv.
@@ -626,7 +626,7 @@ fleet_bundle_dirs <- function(root) {
 }
 
 #' Run one child pipeline as its own Rscript process, exactly as
-#' ui/console_ui.R does, and append everything it said to `log`.
+#' fleet/console_ui.R does, and append everything it said to `log`.
 #'
 #' stdout and stderr are CAPTURED and then written, rather than redirected to
 #' the same file by system2(): one file named as both `stdout` and `stderr`
@@ -817,7 +817,7 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 			blocked <- blocked + 1L; next
 		}
 		if (!isTRUE(opts[["no-style"]])) {
-			r <- .fl_child(c("styling/run_pipeline.R", src, styled, "--changes"), log)
+			r <- .fl_child(c("2_styling/run_styling.R", src, styled, "--changes"), log)
 			if (r$status != 0L) {
 				m <- .fl_block(m, id, paste0("style exit ", r$status, ": ",
 				                             .fl_tail_msg(r$out)))
@@ -830,7 +830,7 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 		}
 		m <- manifest_upsert(m, data.frame(app_id = id, stage = "styled",
 		                                   stringsAsFactors = FALSE))
-		r2 <- .fl_child(c("retargeting/retarget_loads.R", styled,
+		r2 <- .fl_child(c("3_retargeting/retarget_loads.R", styled,
 		                  file.path(dir, "script_retargeted.qvs"),
 		                  "--report", file.path(dir, "retarget_report.csv"),
 		                  "--fields-report", file.path(dir, "retarget_fields_report.csv"),
@@ -880,9 +880,9 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 .fl_need_scanners <- function() {
 	if (.FL_SCANNERS) return(invisible(TRUE))
 	source("shared/qlik_tokenizer.R")
-	source("analysis/json_strings.R")
-	source("analysis/script_debt.R")
-	source("analysis/script_refs.R")
+	source("reports/json_strings.R")
+	source("reports/script_debt.R")
+	source("reports/script_refs.R")
 	.FL_SCANNERS <<- TRUE
 	invisible(TRUE)
 }
@@ -921,7 +921,7 @@ fleet_flags_read <- function(path = FLAGS_CSV)
 #'   script      live (non-COMMENT) token text, regrouped per source line
 #'   comments    COMMENT token text
 #'   objects     string VALUES from objects/*.json + dimensions/measures/
-#'               variables.json, via analysis/json_strings.R
+#'               variables.json, via reports/json_strings.R
 #'   connections connections.yml read as lines - it is YAML, and this repo has
 #'               no YAML scanner to reuse; said plainly rather than pretended
 #'   report      COMPUTED (see .fl_unknown_src), never pattern-matched
@@ -1000,31 +1000,52 @@ fleet_app_flags <- function(app_dir, script_path, flags) {
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
 	flags <- fleet_flags_read()
 	blocked <- 0L; done <- 0L; skipped <- 0L
+	# One line per app for the screen RUN_REPORTS.bat ends on (2026-11-02).
+	shown <- data.frame(res = character(0), app = character(0), why = character(0),
+	                    stringsAsFactors = FALSE)
+	show <- function(res, why) {
+		lab <- .fl_label(m, id)
+		if (sum(sel$app_name == sel$app_name[i]) > 1L) lab <- basename(dir)
+		shown[nrow(shown) + 1L, ] <<- c(res, lab, why)
+	}
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
 		dir <- .fl_app_dir(id, name = sel$app_name[i])
-		if (!dir.exists(dir)) { skipped <- skipped + 1L; next }
+		# An old folder after a failed download is not the app as it is now.
+		if (.fl_fetch_failed(sel[i, , drop = FALSE])) {
+			show("FAILED", sel$last_error[i])
+			blocked <- blocked + 1L; next
+		}
+		if (!dir.exists(dir)) {
+			show("SKIPPED", "not downloaded - nothing to report on")
+			skipped <- skipped + 1L; next
+		}
 		log <- file.path(dir, "log.txt")
 		src <- file.path(dir, "script.qvs")
 		styled <- file.path(dir, "script_styled.qvs")
 		# The STYLED script where there is one: script_loads.R reads a produced
 		# name off an explicit alias, which passes 1-2 are what guarantee.
 		script <- if (file.exists(styled)) styled else src
-		if (!file.exists(script)) { skipped <- skipped + 1L; next }
+		if (!file.exists(script)) {
+			show("SKIPPED", "no script.qvs in its folder - nothing to report on")
+			skipped <- skipped + 1L; next
+		}
 		cat("\n=== report ", id, " [", .fl_now(), "]\n", sep = "",
 		    file = log, append = TRUE)
-		r <- .fl_child(c("analysis/render_report.R", dir, "--script", script,
+		r <- .fl_child(c("reports/render_report.R", dir, "--script", script,
 		                 "--out", file.path(dir, "report.html")), log)
 		if (r$status != 0L) {
 			m <- .fl_block(m, id, paste0("render_report exit ", r$status, ": ",
 			                             .fl_tail_msg(r$out)))
+			show("FAILED", m$last_error[match(id, m$app_id)])
 			blocked <- blocked + 1L; next
 		}
-		r2 <- .fl_child(c("analysis/usage_report.R", dir, "--script", script,
+		r2 <- .fl_child(c("reports/usage_report.R", dir, "--script", script,
 		                  "--csv", file.path(dir, "usage")), log)
 		if (r2$status != 0L) {
 			m <- .fl_block(m, id, paste0("usage_report exit ", r2$status, ": ",
 			                             .fl_tail_msg(r2$out)))
+			show("FAILED", m$last_error[match(id, m$app_id)])
 			blocked <- blocked + 1L; next
 		}
 		# In-process work, so a stop() here would take the whole batch down the
@@ -1038,14 +1059,41 @@ fleet_app_flags <- function(app_dir, script_path, flags) {
 		}, error = function(e) conditionMessage(e))
 		if (nzchar(fa)) {
 			m <- .fl_block(m, id, paste0("flags/summary: ", substr(fa, 1L, 120L)))
+			show("FAILED", m$last_error[match(id, m$app_id)])
 			blocked <- blocked + 1L; next
 		}
+		show("ok", file.path(dir, "report.html"))
 		done <- done + 1L
 	}
 	manifest_write(m, path)
 	.fl_say(done, " reported, ", blocked, " blocked, ", skipped, " skipped (no bundle)")
 	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
+	.fl_report_screen(shown)
 	if (blocked > 0L) 2L else 0L
+}
+
+# The last thing `report` prints: every app, ok / SKIPPED / FAILED, with
+# where its report is or why there is none. 72 columns, ASCII, laid out like
+# `results`. console_ui.R --reports shows it from the === rule down.
+.fl_report_screen <- function(shown) {
+	cat(strrep("=", SCREEN_W), "\n", sep = "")
+	cat("REPORTS - ", nrow(shown), " app(s)\n", sep = "")
+	cat(strrep("-", SCREEN_W), "\n", sep = "")
+	for (k in seq_len(nrow(shown))) {
+		lab <- sprintf("%-7s %s", shown$res[k], shown$app[k])
+		if (nchar(lab) > SCREEN_W) lab <- paste0(substr(lab, 1L, SCREEN_W - 3L), "...")
+		cat(lab, "\n", sep = "")
+		w <- strwrap(gsub("[\r\n\t]+", " ", shown$why[k]), width = SCREEN_W,
+		             indent = 8L, exdent = 8L)
+		if (length(w) > 4L)
+			w <- c(w[1:3], paste0(strrep(" ", 8L), "... (the rest is in fleet/last_run.log)"))
+		cat(w, sep = "\n")
+	}
+	cat(strrep("-", SCREEN_W), "\n", sep = "")
+	n_ok <- sum(shown$res == "ok")
+	cat(n_ok, " ok, ", nrow(shown) - n_ok,
+	    " not ok.  Open each report.html in a browser.\n", sep = "")
+	invisible(NULL)
 }
 
 #' The two per-app counts master.csv needs that no other csv carries.
@@ -1272,7 +1320,7 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 # =========================================================================
 # M2: fetch (unbuild from the tenant) and reconcile-ids (D12).
 # PLAN-fleet.md section 3. Every tenant call goes through fleet/qlik_api.R,
-# so the whole of this section is provable against diagnostics/mock_qlik.bat.
+# so the whole of this section is provable against the offline mock (diagnostics/mock_qlik.bat, git tag pre-restructure).
 # =========================================================================
 
 # A FAILED DOWNLOAD FAILS THE APP (2026-11-02). The row keeps last_error

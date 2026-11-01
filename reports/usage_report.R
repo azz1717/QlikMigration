@@ -1,7 +1,7 @@
 # usage_report.R — the cross-reference: what the app never uses.
 #
 # Phase 2, step 4a (DESIGN §6.5). NOT part of the styling pipeline; nothing in
-# run_pipeline.R sources this. Base R only. Nothing here deletes anything.
+# run_styling.R sources this. Base R only. Nothing here deletes anything.
 #
 # Joins three sources into one reviewable table:
 #   app_usage.R    what the app's own definition references
@@ -12,9 +12,9 @@
 # removal or a DROP is automated or left to a developer is undecided
 # (DESIGN §6.5, Adam 2026-08-18).
 
-source("analysis/app_usage.R")
-source("analysis/script_loads.R")
-source("analysis/script_refs.R")
+source("reports/app_usage.R")
+source("reports/script_loads.R")
+source("reports/script_refs.R")
 
 # Every encoding choice here widens or narrows the `unreferenced` list, so each
 # is spelled out in DESIGN §6.5 rather than left in the code:
