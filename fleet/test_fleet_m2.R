@@ -117,7 +117,7 @@ m <- manifest_read(MANIFEST_DEFAULT)
 .t2_ok("add recorded an item_id for each (M4 needs it)", all(nzchar(m$item_id)))
 
 .t2_reset_calls()
-rc <- fleet_main(c("fetch", "--stage", "listed", "--no-rollup"))
+rc <- fleet_main(c("fetch", "--stage", "listed", "--no-rollup", "--dry-run"))
 .t2_ok("a dry fetch exits 0", rc == 0L)
 .t2_ok("a dry fetch issues NO call at all",
        !any(grepl("app unbuild", .t2_calls(), fixed = TRUE)),
@@ -304,7 +304,7 @@ pl <- fleet_stamp_plan(c("mig:processed", "mig:inphinity"),
 
 .t2_set_stage(APP1, "styled")
 .t2_set_stage(APP1, "retargeted")
-rc <- fleet_main(c("stamp", "--apps", APP1))
+rc <- fleet_main(c("stamp", "--apps", APP1, "--dry-run"))
 .t2_ok("a dry stamp exits 0", rc == 0L)
 .t2_ok("a dry stamp writes NO collection at all",
        !any(grepl("collection create|collection item", .t2_calls())),

@@ -77,6 +77,16 @@ if (nzchar(.log)) {
 .APP_SPACE <- c(1L, 1L, 1L, 2L)
 .APP_MOD   <- c("2026-08-25T00:13:48Z", "2026-08-25T01:02:03Z",
                 "2026-08-26T09:00:00Z", "2026-07-01T12:00:00Z")
+# MOCK_QLIK_TWIN (set to anything) adds a SECOND app with the same name as
+# app 3, in the same space - the VM's real case (2026-09-23: two apps called
+# "10 - Grant Activity Review Information" in one space, different ids).
+# Unset, the canned tenant is exactly the four apps above.
+if (nzchar(Sys.getenv("MOCK_QLIK_TWIN", ""))) {
+	.APP_ID    <- c(.APP_ID, "c0000000-0000-0000-0000-00000000000c")
+	.APP_NAME  <- c(.APP_NAME, "05 - Grant Acquittals Report")
+	.APP_SPACE <- c(.APP_SPACE, 1L)
+	.APP_MOD   <- c(.APP_MOD, "2026-09-23T06:32:26Z")
+}
 
 .q <- function(s) paste0('"', gsub('"', '\\\\"', s), '"')
 .obj <- function(...) paste0("{", paste(c(...), collapse = ","), "}")
@@ -135,6 +145,36 @@ if (nzchar(.log)) {
 .FAIL <- Sys.getenv("MOCK_QLIK_FAIL", "")
 .mk_store_path <- function(id)
 	file.path(.APPS_STORE, paste0(gsub("[^A-Za-z0-9._-]", "_", id), ".qvs"))
+
+# WHERE A COPY LANDED (2026-11-02). `app copy` records the new app's space and
+# name beside the store as <id>.meta (two lines), so `app ls --spaceId` and
+# `item ls` can answer for it the way a tenant would. MOCK_QLIK_COPY says how
+# the tenant treats --attributes-spaceId:
+#   unset          honoured - the copy is in the space that was asked for
+#   ignore-space   ignored - the copy lands in the personal space, which is
+#                  the "copy produced no app and no error" case on the VM
+# MOCK_QLIK_MOVE=fail makes `app space update` refuse, as a tenant without
+# the right would. MOCK_QLIK_BUILD=error-exit0 makes `app build` print an
+# Error line, change nothing and still exit 0.
+.COPY_MODE <- Sys.getenv("MOCK_QLIK_COPY", "")
+.mk_meta_path <- function(id)
+	file.path(.APPS_STORE, paste0(gsub("[^A-Za-z0-9._-]", "_", id), ".meta"))
+.mk_meta_write <- function(id, space, name) {
+	if (!nzchar(.APPS_STORE)) return(invisible(NULL))
+	dir.create(.APPS_STORE, recursive = TRUE, showWarnings = FALSE)
+	writeLines(c(space, name, id), .mk_meta_path(id))
+}
+# Every copy the store knows: data.frame(id, space, name).
+.mk_copies <- function() {
+	none <- data.frame(id = character(0), space = character(0), name = character(0),
+	                   stringsAsFactors = FALSE)
+	if (!nzchar(.APPS_STORE) || !dir.exists(.APPS_STORE)) return(none)
+	fs <- list.files(.APPS_STORE, pattern = "[.]meta$", full.names = TRUE)
+	if (!length(fs)) return(none)
+	x <- lapply(fs, readLines, warn = FALSE)
+	data.frame(id = vapply(x, `[`, "", 3L), space = vapply(x, `[`, "", 1L),
+	           name = vapply(x, `[`, "", 2L), stringsAsFactors = FALSE)
+}
 
 # Data connections are SPACE-level in cloud (PLAN-fleet.md section 0), which
 # is why `upload`'s connection check asks per space. INFERRED flag, marked as
@@ -242,7 +282,32 @@ if (nzchar(.log)) {
 			.obj(.fld("id", .APP_ID[k]), .fld("name", .APP_NAME[k]),
 			     .fld("modifiedDate", .APP_MOD[k]),
 			     .fld("spaceId", .SPACE_ID[.APP_SPACE[k]])), character(1))
+		# Copies made during this test run live where `app copy` put them.
+		cp <- .mk_copies()
+		if (!is.na(sp)) cp <- cp[cp$space == sp, , drop = FALSE]
+		if (nrow(cp))
+			items <- c(items, vapply(seq_len(nrow(cp)), function(k)
+				.obj(.fld("id", cp$id[k]), .fld("name", cp$name[k]),
+				     .fld("modifiedDate", "2026-11-02T00:00:00Z"),
+				     .fld("spaceId", cp$space[k])), character(1)))
 		cat(.page(items, .page_no()), "\n", sep = "")
+		return(invisible(NULL))
+	}
+	if (sub == "space") {
+		act <- if (length(w) >= 3L) w[3] else ""
+		if (act != "update" || length(w) < 4L)
+			.mk_die(paste("unknown app space command:", paste(w, collapse = " ")))
+		sp <- .mk_val("--spaceId")
+		if (is.na(sp)) .mk_die("app space update needs --spaceId")
+		if (identical(Sys.getenv("MOCK_QLIK_MOVE", ""), "fail"))
+			.mk_die("403 Forbidden: you do not have permission to move apps into that space")
+		cp <- .mk_copies()
+		k <- match(w[4], cp$id)
+		if (is.na(k)) .mk_die(paste("no such app:", w[4]))
+		.mk_meta_write(cp$id[k], sp, cp$name[k])
+		cat(.obj(paste0(.q("attributes"), ":",
+		                .obj(.fld("id", cp$id[k]), .fld("name", cp$name[k]))),
+		         .fld("spaceId", sp)), "\n", sep = "")
 		return(invisible(NULL))
 	}
 	if (sub == "unbuild") {
@@ -284,6 +349,10 @@ if (nzchar(.log)) {
 		if (is.na(id)) .mk_die("app build needs --app")
 		if (is.na(script) || !file.exists(script)) .mk_die(paste("no such script file:", script))
 		if (is.na(match(id, .APP_ID)) && !startsWith(id, "copy-")) .mk_die(paste("no such app:", id))
+		if (identical(Sys.getenv("MOCK_QLIK_BUILD", ""), "error-exit0")) {
+			cat("Error: could not save app ", id, " (mock: MOCK_QLIK_BUILD)\n", sep = "")
+			return(invisible(NULL))
+		}
 		# The script is KEPT (when there is a store) so `app unbuild` can hand
 		# the very same bytes back - which is the whole of what `verify` checks.
 		if (nzchar(.APPS_STORE)) {
@@ -300,6 +369,8 @@ if (nzchar(.log)) {
 			if (length(w) < 3L) .mk_die("app copy needs an app id") else w[3]
 		} else "new"
 		newid <- paste0("copy-", substr(gsub("[^A-Za-z0-9]", "", src), 1L, 8L), "-0001")
+		if (identical(.COPY_MODE, "ignore-space")) sp <- .SPACE_ID[4]
+		.mk_meta_write(newid, sp, nm)
 		cat(.obj(paste0(.q("attributes"), ":",
 		                .obj(.fld("id", newid), .fld("name", nm), .fld("spaceId", sp)))),
 		    "\n", sep = "")
@@ -322,7 +393,15 @@ if (nzchar(.log)) {
 		        else which(.APP_ID %in% strsplit(ids, ",", fixed = TRUE)[[1]])
 		items <- vapply(keep, function(k)
 			.obj(.fld("id", .item_id(.APP_ID[k])), .fld("resourceId", .APP_ID[k]),
-			     .fld("resourceType", "app"), .fld("name", .APP_NAME[k])), character(1))
+			     .fld("resourceType", "app"), .fld("name", .APP_NAME[k]),
+			     .fld("spaceId", .SPACE_ID[.APP_SPACE[k]])), character(1))
+		cp <- .mk_copies()
+		if (!is.na(ids)) cp <- cp[cp$id %in% strsplit(ids, ",", fixed = TRUE)[[1]], , drop = FALSE]
+		if (nrow(cp))
+			items <- c(items, vapply(seq_len(nrow(cp)), function(k)
+				.obj(.fld("id", .item_id(cp$id[k])), .fld("resourceId", cp$id[k]),
+				     .fld("resourceType", "app"), .fld("name", cp$name[k]),
+				     .fld("spaceId", cp$space[k])), character(1)))
 		if (!.mk_has("--json")) {
 			for (k in keep) cat(.item_id(.APP_ID[k]), " ", .APP_NAME[k], "\n", sep = "")
 			return(invisible(NULL))

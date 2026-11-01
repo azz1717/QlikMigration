@@ -1,18 +1,26 @@
-# console_ui.R - the Qlik app migration walk-through, four steps, one line
-# of travel. Step 1 picks the space, step 2 unbuilds every app in it, step 3
-# asks what to do with them (format + retarget, or report only), step 4 asks
-# where the rebuilt apps go and takes the one confirmation this tool has.
+# console_ui.R - the Qlik app migration walk-through. Three questions, one
+# confirmation, then it runs and ends on one results screen:
+#   1. which space the apps are in
+#   2. which apps (all, or by number)
+#   3. where they go: back over the originals, or as copies into another space
+# then download -> format + retarget -> upload -> check, one line per stage.
 #
 # It HOLDS NO LOGIC: every step is one `fleet.R` verb run in its own process,
-# so the same migration is reproducible from a command line without this
-# walk-through; RUNBOOK.md has the same four steps written as commands. The
-# other verbs (status, stamp, reconcile, doctor, rollup, single-app styling
-# and reports) are command-line only - see RUNBOOK.md.
+# so the same migration is reproducible from a command line (RUNBOOK.md).
+# Reports are NOT part of this flow (Adam, 2026-11-02) - RUN_REPORTS.bat runs
+# `fleet.R report --selected` on the apps last picked here.
+#
+# QUIET BY DESIGN (Adam, 2026-11-02: "i don't need all the verbose console
+# readouts"): each verb's whole output goes to fleet/last_run.log, and the
+# screen gets one line per stage plus `fleet.R results`, which names every
+# app that did not reach the cloud with the reason in qlik's own words.
 #
 # 72 columns, ASCII only (DESIGN.md section 8.5: the return channel from the
 # VM is a photograph of the screen).
 
 RSCRIPT <- file.path(R.home("bin"), "Rscript")
+RUN_LOG <- file.path("fleet", "last_run.log")
+SCREEN_W <- 72L
 
 # One persistent stdin connection for the whole run. GOTCHA (verified
 # 2026-08-19): readLines("stdin", n=1) called repeatedly reopens a fresh
@@ -24,53 +32,39 @@ RSCRIPT <- file.path(R.home("bin"), "Rscript")
 open(.cui_stdin, "r")
 
 .cui_read_line <- function(prompt) {
-	cat(prompt)
+	cat(prompt, "\n", sep = "")
 	v <- readLines(.cui_stdin, n = 1)
 	if (!length(v)) "" else v
 }
 
-# Every step is one fleet.R run. Nothing is echoed while things go well - the
-# operator is reading fleet.R's own sentences, not a transcript of commands.
-# A bad exit prints the command so the failure can be reproduced by hand.
-#
-# Status 2 is "some apps did not complete this step". It used to be listed
-# beside 0 as an acceptable exit and printed NOTHING, so a run where an app
-# was refused ended exactly like a clean one - the operator's whole complaint
-# (Adam, 2026-09-23: "it reported it exactly the same way as the two apps it
-# uploaded successfully"). It is now called out here and named per app by
-# .cui_not_done() before the walk-through claims to be finished. It is still
-# not a step failure: the other apps carried on, which is the point.
+.cui_clip <- function(s) ifelse(nchar(s) > SCREEN_W,
+                                paste0(substr(s, 1L, SCREEN_W - 3L), "..."), s)
+.cui_rule <- function() cat(strrep("-", SCREEN_W), "\n", sep = "")
+
+# One fleet.R run, its output captured into RUN_LOG instead of the screen.
+# stdout and stderr are captured together and then written, never both
+# redirected to one file (on Windows the second handle truncates the first -
+# fleet.R's .fl_child() has the same rule). Returns list(status, out).
 .cui_fleet <- function(...) {
 	args <- c(shQuote(file.path("fleet", "fleet.R")), ...)
-	status <- system2(RSCRIPT, args)
-	if (identical(status, 2L) || identical(status, 2))
-		cat("\n  *** Some apps did not complete that step - see the lines",
-		    " above. ***\n", sep = "")
-	else if (status != 0)
-		cat("That step failed (fleet.R exit ", status, "). Command: ",
-		    "Rscript fleet/fleet.R ", paste(args[-1], collapse = " "), "\n",
-		    sep = "")
-	invisible(status)
+	out <- tryCatch(suppressWarnings(system2(RSCRIPT, args, stdout = TRUE,
+	                                         stderr = TRUE)),
+	                error = function(e) structure(conditionMessage(e), status = -1L))
+	st <- attr(out, "status")
+	if (is.null(st)) st <- 0L
+	out <- as.character(out)
+	cat("\n$ Rscript fleet/fleet.R ", paste(args[-1], collapse = " "), "  [",
+	    format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "] exit ", st, "\n", sep = "",
+	    file = RUN_LOG, append = TRUE)
+	if (length(out)) cat(out, sep = "\n", file = RUN_LOG, append = TRUE)
+	list(status = as.integer(st), out = out)
 }
 
-# The apps in this run that are NOT at `stage`, with the reason each stopped.
-# Read from the ledger rather than tracked in the UI: fleet.R is what knows,
-# and a second copy here would be the twin CLAUDE.md forbids.
-.cui_not_done <- function(stage = "verified") {
-	sel <- file.path("fleet", "selection.csv")
-	man <- file.path("fleet", "manifest.csv")
-	if (!file.exists(sel) || !file.exists(man)) return(NULL)
-	rd <- function(p) tryCatch(utils::read.csv(p, colClasses = "character",
-	                                           stringsAsFactors = FALSE),
-	                           error = function(e) NULL)
-	s <- rd(sel); m <- rd(man)
-	if (is.null(s) || is.null(m) || !nrow(s) || is.null(m$stage)) return(NULL)
-	m <- m[m$app_id %in% s$app_id, , drop = FALSE]
-	if (!nrow(m)) return(NULL)
-	bad <- m[!(m$stage %in% stage), , drop = FALSE]
-	if (!nrow(bad)) return(NULL)
-	if (is.null(bad$last_error)) bad$last_error <- ""
-	bad
+# The last thing a failed verb said, for the one line the screen gives it.
+.cui_why <- function(r) {
+	o <- trimws(r$out[nzchar(trimws(r$out))])
+	if (!length(o)) return("(no output)")
+	paste(utils::tail(o, 2L), collapse = " | ")
 }
 
 # The space list fleet.R cached on its last `spaces` run (index, id, name,
@@ -89,7 +83,7 @@ open(.cui_stdin, "r")
 
 .cui_show_spaces <- function(s) {
 	for (i in seq_len(nrow(s)))
-		cat(sprintf("[%d] %s  (%s)\n", i, s$name[i], s$type[i]))
+		cat(.cui_clip(sprintf("[%d] %s  (%s)", i, s$name[i], s$type[i])), "\n", sep = "")
 }
 
 # A number from the list, or blank/Q to stop. Returns the row, or NULL.
@@ -149,123 +143,113 @@ open(.cui_stdin, "r")
 	paste(out, collapse = ",")
 }
 
-.cui_finished <- function() {
-	# Named BEFORE the word "Finished", because "Finished" is what the
-	# operator reads and stops reading at. A run that left apps behind does
-	# not get to look like one that did not.
-	bad <- .cui_not_done()
-	if (!is.null(bad)) {
-		cat("\n", nrow(bad), " app(s) did NOT reach the cloud:\n", sep = "")
-		for (i in seq_len(nrow(bad)))
-			cat("  - ", bad$app_name[i], " (stopped at '", bad$stage[i], "')",
-			    if (nzchar(bad$last_error[i])) paste0(": ", bad$last_error[i]) else "",
-			    "\n", sep = "")
-		cat("  Their files are still in fleet/apps/ - nothing was lost.\n")
-	}
-	cat("\nFinished.\n")
-	cat("  Each app's files:        fleet/apps/<app name>/\n")
-	cat("  Loads that need a hand:  fleet/apps/<app name>/dev_notes.txt\n")
-	cat("                           (all apps together: fleet/master_loads.csv)\n")
-	cat("  What is at what stage:   fleet/master.csv\n")
-}
-
-# One pass of the walk-through. TRUE when it ran to the end (so the operator
-# is asked whether to do another space), FALSE when they stopped it.
-.cui_walk <- function() {
-	cat("\nStep 1 of 4 - Which space are the apps in?\n")
-	if (.cui_fleet("spaces") != 0) return(FALSE)
-	sp <- .cui_spaces()
+# The three questions and the confirmation. Returns list(src, dest, copy)
+# when the operator typed YES, NULL when they stopped.
+.cui_ask <- function() {
+	cat("\n1. Which space are the apps in?\n")
+	r <- .cui_fleet("spaces")
+	sp <- if (r$status == 0L) .cui_spaces() else NULL
 	if (is.null(sp)) {
-		cat("Could not list spaces - is qlik-cli signed in?",
-		    " (qlik context use <name>)\n", sep = "")
-		return(FALSE)
+		cat(.cui_clip(paste0("Could not list spaces: ", .cui_why(r))), "\n",
+		    "Is qlik-cli signed in? (qlik context use <name>)\n", sep = "")
+		return(NULL)
 	}
-	src <- .cui_ask_space(sp, "Space number (or Q to quit): ")
-	if (is.null(src)) return(FALSE)
+	.cui_show_spaces(sp)
+	src <- .cui_ask_space(sp, "Space number (Q to quit):")
+	if (is.null(src)) return(NULL)
 
-	cat("\nStep 2 of 4 - Which apps in \"", src$name, "\"?\n", sep = "")
-	if (.cui_fleet("apps", "--space", shQuote(src$id)) != 0) return(FALSE)
-	sel <- .cui_expand_sel(.cui_read_line(
-		"Apps to migrate (e.g. 1,3-5, or all; Q to quit): "))
-	if (!nzchar(sel) || identical(toupper(sel), "Q")) return(FALSE)
-	add <- if (identical(sel, "all")) "--all" else c("--apps", shQuote(sel))
-	if (.cui_fleet("add", "--space", shQuote(src$id), add) != 0) return(FALSE)
-
-	# From here every step says --selected, which is exactly the apps `add`
-	# just wrote down - never the whole space, and never another run's apps.
-	pick <- "--selected"
-	cat("\nUnbuilding them\n")
-	.cui_fleet("fetch", pick, "--live")
-
-	cat("\nStep 3 of 4 - What do you want done to them?\n")
-	cat("[1] Format + retarget the scripts\n")
-	cat("[2] Report only - review + tech-debt report per app; nothing in the",
-	    " cloud changes\n", sep = "")
-	what <- .cui_ask_choice(c("1", "2"), "Choice (or Q to quit): ")
-	if (is.null(what)) return(FALSE)
-	if (what == "2") {
-		.cui_fleet("report", pick)
-		cat("\nDone. Each app's report is fleet/apps/<app name>/report.html\n")
-		return(TRUE)
+	cat("\n2. Which apps in \"", src$name, "\"?\n", sep = "")
+	r <- .cui_fleet("apps", "--space", shQuote(src$id))
+	if (r$status != 0L) {
+		cat(.cui_clip(paste0("Could not list the apps: ", .cui_why(r))), "\n", sep = "")
+		return(NULL)
 	}
-	.cui_fleet("process", pick)
-
-	# Formatting and reporting are independent, so after a retarget the
-	# reports are still worth having - and wanting them is the usual case
-	# (Adam, 2026-09-16). Asked, never run automatically, and asked again
-	# after each action so both can be had without walking the space twice.
+	rows <- grep("^\\[[0-9]+\\] ", r$out, value = TRUE)
+	if (!length(rows)) { cat("That space has no apps.\n"); return(NULL) }
+	cat(.cui_clip(rows), sep = "\n")
 	repeat {
-		cat("\nWhat next?\n")
-		cat("[1] Run the reports on these apps\n")
-		cat("[2] Upload them to the cloud\n")
-		nxt <- .cui_ask_choice(c("1", "2"), "Choice (or Q to quit): ")
-		if (is.null(nxt)) return(FALSE)
-		if (nxt == "2") break
-		.cui_fleet("report", pick)
-		cat("\nDone. Each app's report is fleet/apps/<app name>/report.html\n")
+		v <- .cui_read_line("Apps: all, or numbers like 1,3-5 (Q to quit):")
+		if (identical(toupper(trimws(v)), "Q") || !nzchar(trimws(v))) return(NULL)
+		sel <- .cui_expand_sel(v)
+		if (nzchar(sel)) break
+		cat("Type all, or numbers from the list (1,3-5), or Q to quit.\n")
+	}
+	add <- if (identical(sel, "all")) "--all" else c("--apps", shQuote(sel))
+	r <- .cui_fleet("add", "--space", shQuote(src$id), add)
+	if (r$status != 0L) {
+		cat(.cui_clip(paste0("Could not record the pick: ", .cui_why(r))), "\n", sep = "")
+		return(NULL)
 	}
 
-	cat("\nStep 4 of 4 - Where do the rebuilt apps go?\n")
-	cat("[1] Overwrite the originals in \"", src$name, "\"\n", sep = "")
-	cat("[2] Upload as copies, named \"<app> [mig]\", into another space\n")
-	where <- .cui_ask_choice(c("1", "2"), "Choice (or Q to quit): ")
-	if (is.null(where)) return(FALSE)
+	cat("\n3. Where should the finished apps go?\n")
+	cat(.cui_clip(paste0("[1] Back into \"", src$name, "\" - overwrite the originals")),
+	    "\n", sep = "")
+	cat("[2] Into another space - as copies named \"<app> [mig]\"\n")
+	where <- .cui_ask_choice(c("1", "2"), "Choice (Q to quit):")
+	if (is.null(where)) return(NULL)
 	dest <- src
 	if (where == "2") {
 		cat("Which space should the copies go to?\n")
 		.cui_show_spaces(sp)
-		dest <- .cui_ask_space(sp, "Space number (or Q to quit): ")
-		if (is.null(dest)) return(FALSE)
+		dest <- .cui_ask_space(sp, "Space number (Q to quit):")
+		if (is.null(dest)) return(NULL)
 	}
 
 	n <- .cui_count()
-	if (where == "2")
-		cat("\nAbout to upload ", n, " app(s) as copies into \"", dest$name,
-		    "\".\n", sep = "")
-	else
-		cat("\nAbout to upload ", n, " app(s), overwriting the originals in \"",
-		    dest$name, "\".\n", sep = "")
+	cat("\n")
+	.cui_rule()
+	cat(.cui_clip(paste0(n, " app(s) from \"", src$name, "\"")), "\n", sep = "")
+	cat(.cui_clip(if (where == "2") paste0("  -> copies in \"", dest$name, "\"")
+	              else "  -> overwrite the originals in place"), "\n", sep = "")
+	cat("Download, format + retarget, upload, then check each upload.\n")
+	.cui_rule()
 	if (!identical(trimws(.cui_read_line(
-		"Type YES to go ahead, anything else to stop: ")), "YES")) {
+		"Type YES to start, anything else to stop:")), "YES")) {
 		cat("Stopped. Nothing in the cloud was changed.\n")
-		return(FALSE)
+		return(NULL)
 	}
-	mode <- if (where == "2") "copy" else "overwrite"
-	to <- if (where == "2") c("--to-space", shQuote(dest$id)) else NULL
-	.cui_fleet("upload", "--mode", mode, to, pick, "--live")
-	.cui_fleet("verify", pick, "--live")
-	.cui_finished()
-	TRUE
+	list(src = src, dest = dest, copy = where == "2")
+}
+
+# Download -> format + retarget -> upload -> check, then the results screen.
+# A stage that exits 2 ("some apps did not make it") carries on - the others
+# are still worth doing, and `results` names the ones that stopped. Any other
+# non-zero exit is the step itself failing, and the run stops there.
+.cui_run <- function(plan) {
+	pick <- "--selected"
+	mode <- if (plan$copy) c("--mode", "copy", "--to-space", shQuote(plan$dest$id))
+	        else c("--mode", "overwrite")
+	stages <- list(
+		list("Downloading the apps", c("fetch", pick, "--live")),
+		list("Formatting + retargeting", c("process", pick)),
+		list("Uploading", c("upload", mode, pick, "--live")),
+		list("Checking each upload", c("verify", pick, "--live")))
+	cat("\nRunning. Every detail goes to ", RUN_LOG, "\n", sep = "")
+	for (k in seq_along(stages)) {
+		cat(sprintf("  %d/%d %s ...\n", k, length(stages), stages[[k]][[1]]))
+		r <- do.call(.cui_fleet, as.list(stages[[k]][[2]]))
+		if (!r$status %in% c(0L, 2L)) {
+			cat(.cui_clip(paste0("  STOPPED: that step failed (exit ", r$status, "): ",
+			                     .cui_why(r))), "\n", sep = "")
+			break
+		}
+	}
+	cat("\n")
+	r <- .cui_fleet("results", pick)
+	cat(r$out, sep = "\n")
+	cat("Full log of this run: ", RUN_LOG, "\n", sep = "")
+	cat("Each app's qlik replies: fleet/apps/<app name>/upload.log\n")
+	invisible(r$status)
 }
 
 main <- function() {
 	cat("Qlik app migration\n")
-	repeat {
-		if (!.cui_walk()) break
-		again <- toupper(trimws(
-			.cui_read_line("\nDo another space? Enter = yes, Q = quit: ")))
-		if (again == "Q") break
-	}
+	.cui_rule()
+	dir.create("fleet", showWarnings = FALSE)
+	cat("=== console run ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n", sep = "",
+	    file = RUN_LOG)
+	plan <- .cui_ask()
+	if (!is.null(plan)) .cui_run(plan)
 	cat("Bye.\n")
 }
 

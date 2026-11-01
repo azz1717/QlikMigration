@@ -2,12 +2,14 @@
 
 Everything runs from the repo root on a machine that has R and, for the
 cloud steps, qlik-cli signed in (`qlik context use <name>` done once).
-Double-click `launch_console_ui.bat`: it walks the four steps below.
+Double-click `launch_console_ui.bat`: it asks which space, which apps and
+where they go, takes one YES, runs the steps below and ends on a results
+screen. Reports are separate: `RUN_REPORTS.bat`.
 Command line: every step is `Rscript fleet/fleet.R <verb>`; use it for
 unattended runs, and for the verbs the walk-through does not offer
-(`status`, `rollup`, `stamp`, `reconcile`, `doctor`). Cloud-writing steps
-print their commands and do nothing until you add `--live` (the
-walk-through asks you to type YES once, before the upload).
+(`status`, `rollup`, `stamp`, `reconcile`, `doctor`). Commands are LIVE by
+default - cloud-writing steps write. Add `--dry-run` to only print what they
+would do. (`--live` is still accepted and changes nothing.)
 
 ## 1. One-time setup
 1. Put the path to qlik.exe in `qlik_cli_path.txt` (copy the .example).

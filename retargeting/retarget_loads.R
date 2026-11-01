@@ -859,14 +859,19 @@ rl_main <- function() {
 
   result <- retarget_tokens(tokens, map_df, store_prefix = store_prefix)
 
+  # INFORMATIONAL ONLY (Adam, 2026-11-02: "we are retargeting all apps and
+  # taking whatever coverage we can get. if only 5% of tables are retargeted
+  # that's still 5% we didn't have to do manually."). This used to quit(1)
+  # when the load scanner saw fewer lib:// occurrences than a raw text count -
+  # e.g. a path built by LET into a variable - which threw away every load it
+  # HAD retargeted. A lib:// the scanner never saw is left exactly as written,
+  # so writing the rest cannot harm it; the shortfall is said, never fatal.
   n_covered <- nrow(result$report)
-  if (n_covered != n_independent) {
-    cat(sprintf("COVERAGE CHECK FAILED: independent scan found %d lib:// occurrences, report covers %d\n",
-                n_independent, n_covered))
-    quit(status = 1)
-  }
+  if (n_covered != n_independent)
+    cat(sprintf("NOTE: %d lib:// occurrence(s) in the text, %d seen as loads - the other %d are left exactly as written (not a failure)\n",
+                n_independent, n_covered, n_independent - n_covered))
 
-  # Commented-out LOAD blocks, AFTER the coverage check (which counts raw
+  # Commented-out LOAD blocks, AFTER the coverage count (which counts raw
   # lib:// occurrences in the ORIGINAL text, and must keep doing so) and
   # BEFORE the guard (which reads live aliases only, so rewriting inside
   # comments cannot move it either way - running it after keeps that true of
@@ -909,8 +914,8 @@ rl_main <- function() {
   if (!is.na(report_path)) rt_write_csv(result$report, report_path)
   if (!is.na(fields_report_path)) rt_write_csv(result$fields, fields_report_path)
 
-  cat(sprintf("Wrote %s (%d lib:// occurrences covered, %d rewritten loads)\n",
-              out_path, n_independent,
+  cat(sprintf("Wrote %s (%d of %d lib:// occurrences seen as loads, %d rewritten loads)\n",
+              out_path, n_covered, n_independent,
               sum(result$report$status %in% c("retargeted", "retargeted-pending-import"))))
 
   notes_lines <- rl_build_dev_notes(result$report, map_df, store_prefix)

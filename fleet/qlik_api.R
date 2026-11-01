@@ -258,7 +258,22 @@ qc_write <- function(args, json = TRUE, label = "",
 	parsed <- tryCatch(json_parse(paste(r$out, collapse = "\n")),
 	                   error = function(e) NULL)
 	if (is.null(parsed)) return(r$out)
+	# The tenant's own words ride along (2026-11-02): a parsed reply used to
+	# lose them, so a copy that "worked" left nothing to show WHERE it went.
+	# qc_out() reads them back; json_get() and qc_expect() never see it.
+	attr(parsed, "qc_out") <- r$out
 	parsed
+}
+
+#' The raw text a qc_write() reply came from: the attribute on a parsed reply,
+#' the text itself when it did not parse, a qc_error's output.
+qc_out <- function(reply) {
+	if (is.null(reply)) return(character(0))
+	if (qc_failed(reply)) return(as.character(reply$out))
+	o <- attr(reply, "qc_out")
+	if (!is.null(o)) return(as.character(o))
+	if (is.character(reply)) return(reply)
+	character(0)
 }
 
 #' `app unbuild` into `dir`, with the long timeout one whole app definition

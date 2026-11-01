@@ -226,7 +226,7 @@ DRY_RUN <- TRUE
 unlink(CALLS)
 out <- capture.output(rc <- fleet_main(c("upload", "--mode", "copy",
                                          "--to-space", SPACE3,
-                                         "--apps", APP1, "--no-rollup")))
+                                         "--apps", APP1, "--no-rollup", "--dry-run")))
 cmds <- grep("^DRY RUN", out, value = TRUE)
 .t3_ok("a dry copy exits 0", rc == 0L, paste("exit", rc))
 .t3_ok("it prints exactly two command lines", length(cmds) == 2L, cmds)
@@ -250,7 +250,7 @@ cmds <- grep("^DRY RUN", out, value = TRUE)
        any(grepl("DRYRUN", readLines(AUDIT_LOG, warn = FALSE), fixed = TRUE)))
 
 out <- capture.output(rc <- fleet_main(c("upload", "--mode", "overwrite",
-                                         "--apps", APP1, "--no-rollup")))
+                                         "--apps", APP1, "--no-rollup", "--dry-run")))
 cmds <- grep("^DRY RUN", out, value = TRUE)
 .t3_ok("a dry overwrite exits 0", rc == 0L)
 .t3_ok("an overwrite is ONE command line: the build onto the source app",
@@ -259,7 +259,7 @@ cmds <- grep("^DRY RUN", out, value = TRUE)
 .t3_ok("an overwrite never copies", !any(grepl("app.*copy", cmds)), cmds)
 
 out <- capture.output(rc <- fleet_main(c("upload", "--apps", UNRES,
-                                         "--to-space", SPACE3, "--no-rollup")))
+                                         "--to-space", SPACE3, "--no-rollup", "--dry-run")))
 cmds <- grep("^DRY RUN", out, value = TRUE)
 .t3_ok("an app with unresolved loads is planned like any other: exit 0, two lines",
        rc == 0L && length(cmds) == 2L, paste("exit", rc, "lines", length(cmds)))
@@ -296,7 +296,7 @@ rc <- fleet_main(c("verify", "--apps", APP1, "--live", "--no-rollup"))
 
 DRY_RUN <- TRUE
 unlink(CALLS)
-out <- capture.output(rc <- fleet_main(c("verify", "--apps", APP1, "--no-rollup")))
+out <- capture.output(rc <- fleet_main(c("verify", "--apps", APP1, "--no-rollup", "--dry-run")))
 .t3_ok("a dry verify issues no call and moves nothing",
        rc == 0L && !any(grepl("app unbuild", .t3_calls())) &&
        	identical(.t3_stage(APP1), "verified"), .t3_calls())

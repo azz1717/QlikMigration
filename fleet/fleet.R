@@ -345,8 +345,18 @@ fleet_parse_args <- function(argv) {
 	if (is.null(sid)) { .fl_warn("apps needs --space <id|index from 'spaces'>"); return(1L) }
 	df <- .fl_app_rows(sid, .fl_opt(opts, "name"))
 	if (qc_failed(df)) { .fl_warn("app ls failed: ", .fl_fail_msg(df)); return(1L) }
+	# Two apps with ONE name used to print as two identical lines, and the
+	# operator had no way to tell which twin a number meant (VM 2026-09-23:
+	# two "10 - Grant Activity Review Information" in one space). A twin now
+	# carries the tail of its id and its last-changed date.
+	lab <- df$name
+	twin <- df$name %in% df$name[duplicated(df$name)]
+	if (any(twin))
+		lab[twin] <- sprintf("%s  (twin: id ..%s %s)", df$name[twin],
+		                     substring(df$id[twin], pmax(1L, nchar(df$id[twin]) - 5L)),
+		                     substr(df$modified[twin], 1L, 10L))
 	.fl_rule()
-	for (i in seq_len(nrow(df))) .fl_say(sprintf("[%d] %s", i, df$name[i]))
+	for (i in seq_len(nrow(df))) .fl_say(sprintf("[%d] %s", i, lab[i]))
 	.fl_rule()
 	.fl_say(nrow(df), " apps in the space (ledger untouched)")
 	0L
@@ -409,6 +419,10 @@ fleet_parse_args <- function(argv) {
 	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
 	m <- manifest_upsert(manifest_read(path), rows)
 	manifest_write(m, path)
+	# `add` starts a run: the last run's upload results stop being "this
+	# run's", and folders deleted since then stop reserving names (bug 3).
+	unlink(.fl_results_path(path))
+	.fl_index_prune()
 	.fl_say(nrow(rows), " app(s) upserted into ", path, "; ", nrow(m), " row(s) total")
 	0L
 }
@@ -538,6 +552,25 @@ APPS_INDEX <- "index.csv"
 	                                   stringsAsFactors = FALSE)),
 	              file.path(apps_dir, APPS_INDEX))
 	file.path(apps_dir, d)
+}
+
+#' Forget the index entries whose folder is gone. Returns the dropped rows.
+#'
+#' BUG (VM, 2026-09-23): index.csv lives INSIDE fleet/apps/ and outlived the
+#' folders it names. Its entries are permanent, so once a same-named twin app
+#' had taken "X", the other app was "X (2)" forever - deleting the folders did
+#' nothing, because the index still reserved "X" for an app with no folder
+#' and still pinned "X (2)" on the twin. Run ONCE, by `add`, at the start of a
+#' run: nothing in the new run has been given a folder yet, so a missing
+#' folder can only mean "deleted", never "allocated a moment ago and not yet
+#' created" (which .fl_app_dir() legitimately leaves for its caller to do).
+.fl_index_prune <- function(apps_dir = APPS_DIR) {
+	ix <- .fl_index_read(apps_dir)
+	if (!nrow(ix)) return(invisible(ix))
+	gone <- !dir.exists(file.path(apps_dir, ix$dir))
+	if (any(gone))
+		.fl_write_csv(ix[!gone, , drop = FALSE], file.path(apps_dir, APPS_INDEX))
+	invisible(ix[gone, , drop = FALSE])
 }
 
 #' reconcile-ids gives a `local:` row its real tenant id: the folder keeps its
@@ -1302,7 +1335,7 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 	}
 	if (dry) {
 		.fl_say(planned, " app(s) would be fetched, ", skipped,
-		        " skipped (no tenant id); ledger untouched. Re-run with --live.")
+		        " skipped (no tenant id); ledger untouched (--dry-run). Run without --dry-run to do it.")
 		return(0L)
 	}
 	manifest_write(m, path)
@@ -1866,9 +1899,119 @@ fleet_space_connections <- function(space_id) {
 	invisible(miss)
 }
 
+# --- what THIS run did, per app (2026-11-02) ------------------------------
+# The ledger is cumulative; the operator's last screen needs what this run
+# did. `upload` writes one row per selected app to last_upload.csv BESIDE THE
+# LEDGER, `verify` updates it, `results` prints it, and `add` deletes it, so
+# a row from an earlier run can never read as this run's outcome. result is
+# ok / CHECK (it went up, but something about it is unconfirmed) / FAILED.
+RESULT_COLS <- c("app_id", "app_name", "mode", "to_space", "result", "sent",
+                 "script", "target_app_id", "target_name", "verified", "reason",
+                 "log")
+
+.fl_results_path <- function(manifest_path = MANIFEST_DEFAULT)
+	file.path(dirname(manifest_path), "last_upload.csv")
+
+.fl_results_read <- function(manifest_path = MANIFEST_DEFAULT) {
+	p <- .fl_results_path(manifest_path)
+	if (!file.exists(p)) return(NULL)
+	r <- tryCatch(read_csv_any(p), error = function(e) NULL)
+	if (is.null(r) || !is.data.frame(r) || !nrow(r)) return(NULL)
+	for (cn in RESULT_COLS) {
+		v <- if (is.null(r[[cn]])) rep("", nrow(r)) else as.character(r[[cn]])
+		v[is.na(v)] <- ""
+		r[[cn]] <- v
+	}
+	r[, RESULT_COLS, drop = FALSE]
+}
+
+#' Every qlik call upload/verify makes for one app, with the tenant's WHOLE
+#' reply, appended to <app folder>/upload.log. The screen gets one line; this
+#' file is the evidence a VM run brings back.
+.fl_upload_log <- function(dir, what, args, reply = NULL, note = "") {
+	if (!nzchar(dir) || !dir.exists(dir)) return(invisible(NULL))
+	f <- file.path(dir, "upload.log")
+	st <- if (qc_failed(reply)) reply$status else 0L
+	cat("\n=== ", what, " [", .fl_now(), "]",
+	    if (length(args)) paste0(" exit ", st, "\n$ qlik ", paste(args, collapse = " ")),
+	    "\n", sep = "", file = f, append = TRUE)
+	out <- qc_out(reply)
+	if (length(out)) cat(out, sep = "\n", file = f, append = TRUE)
+	if (nzchar(note)) cat(note, "\n", sep = "", file = f, append = TRUE)
+	invisible(f)
+}
+
+#' The tenant's reply as one short line, for the screen and the ledger.
+.fl_reply_text <- function(reply, n = 200L) {
+	s <- gsub("[[:space:]]+", " ", paste(trimws(qc_out(reply)), collapse = " "))
+	s <- trimws(s)
+	if (!nzchar(s)) return("(empty reply)")
+	if (nchar(s) > n) paste0(substr(s, 1L, n), "...") else s
+}
+
+#' A build that exits 0 but SAYS it failed. qlik-cli prints "Error: ..." on
+#' its failures, and an exit-0 build whose output nobody read used to count
+#' as built (STATE, 2026-09-23: "app build silent failures ... output never
+#' read"). "" when the output carries no such line.
+.fl_build_error <- function(out) {
+	e <- grep("^[[:space:]]*(error|fatal)\\b", as.character(out),
+	          ignore.case = TRUE, value = TRUE)
+	if (!length(e)) return("")
+	paste(trimws(utils::head(e, 2L)), collapse = " | ")
+}
+
+#' A space id as a person reads it: its name from the `spaces` cache, else the
+#' id; "" (no space) is the operator's personal space.
+.fl_space_label <- function(id) {
+	id <- .fl_str(id)
+	if (!nzchar(id)) return("a personal space")
+	s <- if (file.exists(SPACES_CSV))
+		tryCatch(read_csv_any(SPACES_CSV), error = function(e) NULL) else NULL
+	k <- if (is.null(s) || is.null(s$id)) NA_integer_ else match(id, s$id)
+	if (is.na(k)) id else paste0("\"", s$name[k], "\"")
+}
+
+#' Where did a copy ACTUALLY land? (BUG 1, VM 2026-09-23)
+#'
+#' Nothing used to ask. A copy counted as done on exit 0 plus an id in the
+#' reply, and `verify` then proved the script on THAT id - so a tenant that
+#' ignored --attributes-spaceId (copy dropped in a personal space) ended the
+#' run "verified" while the target space stayed empty: "no app and no visible
+#' error". The judge is `app ls --spaceId`, the very call the walk-through
+#' makes on the tenant every run to list the apps, so it is proven there.
+#'
+#' Returns list(ok, where, name, msg): ok TRUE = the copy is listed in
+#' `space_id`; FALSE = it is not (where = the space `item ls` reports, ""
+#' when personal or unknown); NA = the space could not be listed, so the
+#' placement is UNCONFIRMED.
+fleet_copy_placement <- function(app_id, space_id) {
+	rows <- .fl_app_rows(space_id)
+	if (qc_failed(rows))
+		return(list(ok = NA, where = "", name = "",
+		            msg = paste("could not list the target space to confirm the copy:",
+		                        .fl_fail_msg(rows))))
+	k <- match(app_id, rows$id)
+	if (!is.na(k))
+		return(list(ok = TRUE, where = space_id, name = rows$name[k], msg = ""))
+	where <- ""; nm <- ""; known <- FALSE
+	it <- qc_pages(c("item", "ls", "--resourceIds", app_id, "--resourceType", "app"))
+	if (!qc_failed(it)) {
+		for (x in it) if (identical(.fl_str(x[["resourceId"]]), app_id)) {
+			where <- .fl_str(x[["spaceId"]]); nm <- .fl_str(x[["name"]]); known <- TRUE
+			break
+		}
+	}
+	list(ok = FALSE, where = where, name = nm,
+	     msg = paste0("the copy landed in ",
+	                  if (known) .fl_space_label(where) else "a space this tool cannot see",
+	                  ", NOT in ", .fl_space_label(space_id), " (copy id ", app_id,
+	                  if (nzchar(nm)) paste0(", named \"", nm, "\""), ")"))
+}
+
 #' `upload` - copy the app (D2) or overwrite it, then build the retargeted
 #' script onto the target. Never a reload (D3a), never anything but the
-#' script (D5a).
+#' script (D5a). Every call and its reply go to the app's upload.log; one row
+#' per app goes to last_upload.csv for the final screen.
 .fl_verb_upload <- function(opts) {
 	mode <- .fl_opt(opts, "mode", "copy")
 	if (!mode %in% UPLOAD_MODES) {
@@ -1886,12 +2029,23 @@ fleet_space_connections <- function(space_id) {
 	dry <- .qc_dry()
 	to_space <- .fl_opt(opts, "to-space")
 	done <- 0L; blocked <- 0L; refused <- 0L; planned <- 0L
+	res <- vector("list", nrow(sel))
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
 		dir <- .fl_app_dir(id, name = sel$app_name[i])
 		pf <- fleet_upload_preflight(sel[i, , drop = FALSE], dir, mode, to_space)
+		row <- as.list(setNames(rep("", length(RESULT_COLS)), RESULT_COLS))
+		row$app_id <- id; row$app_name <- .fl_label(m, id); row$mode <- mode
+		row$to_space <- if (identical(mode, "copy")) pf$space else .fl_str(sel$space_id[i])
+		row$sent <- pf$kind; row$script <- pf$script
+		row$log <- file.path(dir, "upload.log")
+		fail <- function(msg) {
+			row$result <- "FAILED"; row$reason <- msg
+			row
+		}
 		if (!pf$ok) {
 			.fl_warn(.fl_label(m, id), ": ", pf$reason)
+			res[[i]] <- fail(paste("not sent:", pf$reason))
 			refused <- refused + 1L
 			next
 		}
@@ -1904,10 +2058,12 @@ fleet_space_connections <- function(space_id) {
 			         " processed, but it is going up anyway")
 		.fl_conn_warn(pf$script, pf$space)
 		target <- id
+		note <- ""
 		nm <- fleet_upload_target_name(sel$app_name[i])
 		if (identical(mode, "copy")) {
-			r <- qc_write(c("app", "copy", id, "--attributes-spaceId", pf$space,
-			                "--attributes-name", nm), label = paste("copy", id))
+			cargs <- c("app", "copy", id, "--attributes-spaceId", pf$space,
+			           "--attributes-name", nm)
+			r <- qc_write(cargs, label = paste("copy", id))
 			if (dry) {
 				# The build's --app is the id the copy would return, which does
 				# not exist yet. Printed as a placeholder rather than invented.
@@ -1918,19 +2074,28 @@ fleet_space_connections <- function(space_id) {
 				planned <- planned + 1L
 				next
 			}
+			.fl_upload_log(dir, "copy", c(cargs, "--json"), r)
 			if (qc_failed(r)) {
-				m <- .fl_block(m, id, paste0("copy: ", .fl_fail_msg(r)))
+				msg <- paste0("copy: ", .fl_fail_msg(r))
+				m <- .fl_block(m, id, msg)
+				res[[i]] <- fail(msg)
 				blocked <- blocked + 1L
 				next
 			}
-			tgt <- qc_expect(r, list(c("attributes", "id"), "id"), "app copy")
+			# A reply that did not parse is TEXT; asking it for keys used to
+			# report "got keys: (character)" and throw the text away.
+			tgt <- if (is.list(r)) qc_expect(r, list(c("attributes", "id"), "id"), "app copy")
+			       else qc_shape_error("app copy", "attributes.id", r)
 			target <- if (qc_failed(tgt)) "" else .fl_str(tgt)
 			if (!nzchar(target)) {
-				m <- .fl_block(m, id, paste0("copy: ", if (qc_failed(tgt))
-					.fl_fail_msg(tgt) else "no app id in the reply"))
+				msg <- paste0("copy: no app id in the reply - qlik said: ",
+				              .fl_reply_text(r))
+				m <- .fl_block(m, id, msg)
+				res[[i]] <- fail(msg)
 				blocked <- blocked + 1L
 				next
 			}
+			row$target_app_id <- target; row$target_name <- nm
 			# WRITTEN BEFORE THE BUILD, and flushed to disk. A build that fails
 			# after a successful copy has still created an app on the tenant;
 			# a target id nobody recorded is an orphan nobody can find again.
@@ -1938,13 +2103,49 @@ fleet_space_connections <- function(space_id) {
 			                                   target_name = nm,
 			                                   stringsAsFactors = FALSE))
 			manifest_write(m, path)
+			# BUG 1: is the copy where it was asked to go?
+			pl <- fleet_copy_placement(target, pf$space)
+			.fl_upload_log(dir, "placement check", character(0), NULL,
+			               note = if (isTRUE(pl$ok)) paste("in the target space as", pl$name)
+			                      else pl$msg)
+			if (isFALSE(pl$ok)) {
+				# One attempt to put it where the operator asked. UNVERIFIED
+				# command (DESIGN 8.7 rule: not yet run on the tenant) - its reply
+				# is logged, and only the listing above decides whether it worked.
+				margs <- c("app", "space", "update", target, "--spaceId", pf$space)
+				mv <- qc_write(margs, label = paste("move", target))
+				.fl_upload_log(dir, "move into the target space", c(margs, "--json"), mv)
+				pl2 <- if (qc_failed(mv)) pl else fleet_copy_placement(target, pf$space)
+				if (!isTRUE(pl2$ok)) {
+					msg <- paste0("copy: ", pl$msg, ". Moving it there failed: ",
+					              if (qc_failed(mv)) .fl_fail_msg(mv) else pl2$msg,
+					              ". Copy reply: ", .fl_reply_text(r, 120L))
+					m <- .fl_block(m, id, msg)
+					res[[i]] <- fail(msg)
+					blocked <- blocked + 1L
+					next
+				}
+				pl <- pl2
+				note <- paste0("the copy first landed in ", .fl_space_label(pl$where),
+				               " and was moved in")
+			} else if (is.na(pl$ok)) {
+				note <- pl$msg
+			}
+			if (isTRUE(pl$ok) && nzchar(pl$name) && !identical(pl$name, nm))
+				note <- paste0(if (nzchar(note)) paste0(note, "; ") else "",
+				               "the copy is named \"", pl$name, "\", not \"", nm, "\"")
 		}
-		rb <- qc_write(c("app", "build", "--app", target, "--script", pf$script,
-		                 "--no-reload", "--silent"), json = FALSE,
-		               label = paste("build", target))
+		bargs <- c("app", "build", "--app", target, "--script", pf$script,
+		           "--no-reload", "--silent")
+		rb <- qc_write(bargs, json = FALSE, label = paste("build", target))
 		if (dry) { planned <- planned + 1L; next }
-		if (qc_failed(rb)) {
-			m <- .fl_block(m, id, paste0("build: ", .fl_fail_msg(rb)))
+		.fl_upload_log(dir, "build", bargs, rb)
+		berr <- if (qc_failed(rb)) "" else .fl_build_error(rb)
+		if (qc_failed(rb) || nzchar(berr)) {
+			msg <- if (qc_failed(rb)) paste0("build: ", .fl_fail_msg(rb))
+			       else paste0("build exited 0 but said: ", berr)
+			m <- .fl_block(m, id, msg)
+			res[[i]] <- fail(msg)
 			blocked <- blocked + 1L
 			next
 		}
@@ -1954,14 +2155,24 @@ fleet_space_connections <- function(space_id) {
 		                                   target_name = if (identical(mode, "copy")) nm
 		                                                 else .fl_str(sel$app_name[i]),
 		                                   stringsAsFactors = FALSE))
+		row$target_app_id <- target
+		row$target_name <- if (identical(mode, "copy")) nm else .fl_str(sel$app_name[i])
+		row$result <- if (nzchar(note) && grepl("could not list", note, fixed = TRUE))
+			"CHECK" else "ok"
+		row$reason <- note
+		res[[i]] <- row
 		done <- done + 1L
 	}
 	if (dry) {
 		.fl_say(planned, " app(s) would be uploaded (--mode ", mode, "), ", refused,
-		        " not ready; ledger untouched. Re-run with --live.")
+		        " not ready; ledger untouched (--dry-run). Run without --dry-run to do it.")
 		return(if (refused > 0L) 2L else 0L)
 	}
 	manifest_write(m, path)
+	res <- Filter(Negate(is.null), res)
+	if (length(res))
+		.fl_write_csv(do.call(rbind, lapply(res, as.data.frame, stringsAsFactors = FALSE)),
+		              .fl_results_path(path))
 	.fl_say(done, " app(s) rebuilt in the cloud, ", blocked, " failed, ", refused,
 	        " not ready")
 	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
@@ -2009,11 +2220,27 @@ fleet_script_diff <- function(downloaded, local) {
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
 	dry <- .qc_dry()
+	# THIS run's uploads, when there are any (2026-11-02). Without them verify
+	# read target_app_id off the ledger - which keeps the target of an EARLIER
+	# successful upload - so an app whose upload failed today was re-checked
+	# against last week's copy, passed, and had today's error cleared. And it
+	# compared against script_retargeted.qvs even when upload had sent the
+	# styled script. With a row, the target and the file are the ones this run
+	# actually used, and an app that did not go up is not "verified".
+	rs <- .fl_results_read(path)
 	good <- 0L; bad <- 0L; skipped <- 0L; planned <- 0L
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
-		target <- .fl_str(sel$target_app_id[i])
-		local <- file.path(.fl_app_dir(id, name = sel$app_name[i]), "script_retargeted.qvs")
+		dir <- .fl_app_dir(id, name = sel$app_name[i])
+		k <- if (is.null(rs)) NA_integer_ else match(id, rs$app_id)
+		if (!is.na(k)) {
+			if (!rs$result[k] %in% c("ok", "CHECK")) { skipped <- skipped + 1L; next }
+			target <- rs$target_app_id[k]
+			local <- rs$script[k]
+		} else {
+			target <- .fl_str(sel$target_app_id[i])
+			local <- file.path(dir, "script_retargeted.qvs")
+		}
 		# Only apps that were actually uploaded are checked; the rest are
 		# passed over quietly - verify runs over a whole space at a time.
 		if (!nzchar(target) || !file.exists(local)) {
@@ -2025,18 +2252,28 @@ fleet_script_diff <- function(downloaded, local) {
 		r <- qc_unbuild(target, tmp)
 		if (dry) { planned <- planned + 1L; next }
 		if (qc_failed(r)) {
-			m <- .fl_block(m, id, paste0("verify: unbuild ", .fl_fail_msg(r)))
+			msg <- paste0("verify: unbuild ", .fl_fail_msg(r))
+			.fl_upload_log(dir, "verify (unbuild the target)", r$args, r)
+			m <- .fl_block(m, id, msg)
+			if (!is.na(k)) { rs$verified[k] <- "could not check"; rs$result[k] <- "CHECK"
+			                 rs$reason[k] <- msg }
 			bad <- bad + 1L
 			next
 		}
 		d <- fleet_script_diff(file.path(tmp, "script.qvs"), local)
 		unlink(tmp, recursive = TRUE)
+		.fl_upload_log(dir, "verify", character(0), NULL,
+		               note = paste0("target ", target, " vs ", local, ": ", d$summary))
 		.fl_say("checked ", .fl_label(m, id), ": ", d$summary)
 		if (!d$same) {
-			m <- .fl_block(m, id, paste0("verify: ", d$summary))
+			msg <- paste0("verify: the script in the cloud ", d$summary)
+			m <- .fl_block(m, id, msg)
+			if (!is.na(k)) { rs$verified[k] <- "differs"; rs$result[k] <- "FAILED"
+			                 rs$reason[k] <- msg }
 			bad <- bad + 1L
 			next
 		}
+		if (!is.na(k)) rs$verified[k] <- "yes"
 		m <- .fl_clear_error(m, id)
 		m <- manifest_upsert(m, data.frame(app_id = id, stage = "verified",
 		                                   stringsAsFactors = FALSE))
@@ -2044,13 +2281,79 @@ fleet_script_diff <- function(downloaded, local) {
 	}
 	if (dry) {
 		.fl_say(planned, " app(s) would be verified, ", skipped,
-		        " skipped; ledger untouched. Re-run with --live.")
+		        " skipped; ledger untouched (--dry-run). Run without --dry-run to do it.")
 		return(0L)
 	}
+	if (!is.null(rs)) .fl_write_csv(rs, .fl_results_path(path))
 	manifest_write(m, path)
 	.fl_say(good, " app(s) verified, ", bad, " differ, ", skipped, " not uploaded")
 	if (!isTRUE(opts[["no-rollup"]])) .fl_verb_rollup(opts)
 	if (bad > 0L) 2L else 0L
+}
+
+# --- results --------------------------------------------------------------
+#' `results` - the ONE screen a run ends on (2026-11-02): every selected app,
+#' ok / CHECK / FAILED, and for anything not ok the reason in the tenant's own
+#' words. 72 columns, ASCII (DESIGN 8.5: the return channel is a photograph).
+#' Read from last_upload.csv (this run) and the ledger (why an app never got
+#' as far as the upload). Exit 0 when every app is ok, 2 otherwise.
+.fl_verb_results <- function(opts) {
+	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
+	m <- manifest_read(path)
+	sel <- .fl_select(m, opts)
+	if (is.null(sel)) {
+		.fl_warn("results needs ", .FL_SELECTION)
+		return(1L)
+	}
+	rs <- .fl_results_read(path)
+	clip <- function(s, n) if (nchar(s) > n) paste0(substr(s, 1L, n - 3L), "...") else s
+	head <- if (is.null(rs)) "upload did not run" else {
+		md <- rs$mode[1]; sp <- rs$to_space[nzchar(rs$to_space)][1]
+		if (identical(md, "copy")) paste0("copies into ", .fl_space_label(sp))
+		else paste0("overwritten in ", if (is.na(sp)) "place" else .fl_space_label(sp))
+	}
+	cat(strrep("=", SCREEN_W), "\n", sep = "")
+	cat(clip(paste0("RESULTS - ", nrow(sel), " app(s), ", head), SCREEN_W), "\n", sep = "")
+	cat(strrep("-", SCREEN_W), "\n", sep = "")
+	n_ok <- 0L; n_bad <- 0L
+	for (i in seq_len(nrow(sel))) {
+		id <- sel$app_id[i]
+		k <- if (is.null(rs)) NA_integer_ else match(id, rs$app_id)
+		if (is.na(k)) {
+			res <- "FAILED"
+			why <- paste0("never reached the upload",
+			              if (nzchar(sel$last_error[i])) paste0(": ", sel$last_error[i])
+			              else paste0(" (stage '", sel$stage[i], "')"))
+		} else {
+			res <- rs$result[k]
+			why <- rs$reason[k]
+			if (identical(res, "ok") && !identical(rs$sent[k], "retargeted"))
+				why <- paste0("sent the ", rs$sent[k], " script - not fully retargeted",
+				              if (nzchar(why)) paste0("; ", why) else "")
+			if (identical(res, "ok") && !nzchar(rs$verified[k]))
+				why <- paste0(if (nzchar(why)) paste0(why, "; ") else "",
+				              "not checked by verify")
+			if (!identical(res, "ok") && nzchar(rs$log[k]))
+				why <- paste0(why, " [detail: ", rs$log[k], "]")
+		}
+		if (identical(res, "ok")) n_ok <- n_ok + 1L else n_bad <- n_bad + 1L
+		# Twins (one name, two apps) are shown by their FOLDER name, which is
+		# the one the operator sees on disk and the only thing telling them apart.
+		lab <- .fl_label(m, id)
+		if (sum(sel$app_name == sel$app_name[i]) > 1L)
+			lab <- basename(.fl_app_dir(id, name = sel$app_name[i]))
+		cat(clip(sprintf("%-7s %s", res, lab), SCREEN_W), "\n", sep = "")
+		if (nzchar(why)) {
+			w <- strwrap(gsub("[\r\n\t]+", " ", why), width = SCREEN_W, indent = 8L,
+			             exdent = 8L)
+			if (length(w) > 5L) w <- c(w[1:4], paste0(strrep(" ", 8L),
+			                                         "... (the rest is in the detail file)"))
+			cat(w, sep = "\n")
+		}
+	}
+	cat(strrep("-", SCREEN_W), "\n", sep = "")
+	cat(n_ok, " ok, ", n_bad, " not ok.  Per-app files: fleet/apps/<app name>/\n", sep = "")
+	if (n_bad > 0L) 2L else 0L
 }
 
 # --- doctor ---------------------------------------------------------------
@@ -2162,13 +2465,13 @@ fleet_script_diff <- function(downloaded, local) {
 	.fl_say("usage: Rscript fleet/fleet.R <verb> [options]")
 	.fl_say("verbs now:   doctor spaces apps add import-unbuilt fetch")
 	.fl_say("             reconcile-ids process report rollup status stamp")
-	.fl_say("             reconcile upload verify")
+	.fl_say("             reconcile upload verify results")
 	.fl_say("verbs later: ", paste(names(.FL_TODO), collapse = " "))
 	.fl_say("options: --manifest f --space id|# --app id --apps i,j|id,id")
 	.fl_say("         --name s")
 	.fl_say("         --type t --dir d --all --selected --stage s --digest")
 	.fl_say("         --no-rollup")
-	.fl_say("         --no-style --adopt --dry-run --live")
+	.fl_say("         --no-style --adopt --dry-run (live is the default; --live is a no-op)")
 	.fl_say("         --mode copy|overwrite --to-space id")
 }
 
@@ -2179,8 +2482,13 @@ fleet_main <- function(argv) {
 	p <- fleet_parse_args(argv)
 	if (nzchar(p$error)) { .fl_warn(p$error); .fl_usage(); return(1L) }
 	if (isTRUE(p$opts[["help"]]) || p$verb %in% c("help", "--help")) { .fl_usage(); return(0L) }
-	if (isTRUE(p$opts[["live"]])) DRY_RUN <<- FALSE
-	if (isTRUE(p$opts[["dry-run"]])) DRY_RUN <<- TRUE
+	# LIVE IS THE DEFAULT (Adam, 2026-11-02). Every fleet.R command does what it
+	# says unless --dry-run is given; --live is still accepted, as a no-op, so
+	# old command lines and the walk-through keep working. Set on EVERY call,
+	# so one --dry-run run never leaves the next command in the same session
+	# dry. (qlik_api.R's own default stays TRUE for code that sources it
+	# without going through here.)
+	DRY_RUN <<- isTRUE(p$opts[["dry-run"]])
 	switch(p$verb,
 	       doctor = .fl_verb_doctor(p$opts),
 	       spaces = .fl_verb_spaces(p$opts),
@@ -2194,6 +2502,7 @@ fleet_main <- function(argv) {
 	       reconcile = .fl_verb_reconcile(p$opts),
 	       upload = .fl_verb_upload(p$opts),
 	       verify = .fl_verb_verify(p$opts),
+	       results = .fl_verb_results(p$opts),
 	       process = .fl_verb_process(p$opts),
 	       report = .fl_verb_report(p$opts),
 	       rollup = .fl_verb_rollup(p$opts),
