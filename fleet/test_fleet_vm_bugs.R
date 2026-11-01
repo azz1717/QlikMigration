@@ -14,6 +14,8 @@
 #     0 but prints Error, and a verify that used to re-check a stale target.
 #  3. A folder name freed by deleting the folder must be reusable: index.csv
 #     used to pin " (2)" on a same-named twin forever.
+#  4. A failed download must fail the app: an old folder left on disk from
+#     an earlier run used to be formatted and uploaded as if it were new.
 
 .tv_file <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 .tv_root <- if (length(.tv_file))
@@ -264,6 +266,53 @@ cr <- .fl_child(c("retargeting/retarget_loads.R", cov_in, cov_out,
 .tv_ok("and says the shortfall as a NOTE, not a failure",
        any(grepl("^NOTE: 2 lib:// occurrence", cr$out)) &&
        	!any(grepl("FAILED", cr$out, fixed = TRUE)), cr$out)
+
+.tv_section("a failed download fails the app - the old folder is never sent")
+# An app processed in an earlier run, so its folder holds an OLD script.
+# This run's download fails: nothing may be formatted or uploaded from it.
+.tv_env()
+unlink(c(STORE, file.path(TMP, "calls.log")), recursive = TRUE)
+dold <- .tv_app(APP1, "01 ESS QVD Builder - CDP",
+                files = c(script.qvs = TRUE, script_retargeted.qvs = TRUE))
+before <- unname(tools::md5sum(file.path(dold, "script_retargeted.qvs")))
+.tv_env(MOCK_QLIK_FAIL = "app unbuild")
+x <- .tv_quiet(fleet_main(c("fetch", "--apps", APP1, "--live", "--no-rollup")))
+m <- manifest_read(MANIFEST_DEFAULT)
+.tv_ok("fetch exits 2 and the row is blocked with the fetch error",
+       identical(x$rc, 2L) && m$stage[match(APP1, m$app_id)] == "blocked" &&
+       	startsWith(m$last_error[match(APP1, m$app_id)], "fetch: "),
+       c(x$rc, m$last_error[match(APP1, m$app_id)]))
+.tv_env()
+x <- .tv_quiet(fleet_main(c("process", "--apps", APP1, "--no-rollup")))
+m <- manifest_read(MANIFEST_DEFAULT)
+.tv_ok("process leaves the old folder alone and the app still blocked",
+       identical(x$rc, 2L) && !file.exists(file.path(dold, "script_styled.qvs")) &&
+       	identical(unname(tools::md5sum(file.path(dold, "script_retargeted.qvs"))), before) &&
+       	startsWith(m$last_error[match(APP1, m$app_id)], "fetch: "), x$rc)
+x <- .tv_quiet(fleet_main(c("upload", "--mode", "overwrite", "--apps", APP1,
+                            "--live", "--no-rollup")))
+calls <- if (file.exists(file.path(TMP, "calls.log")))
+	readLines(file.path(TMP, "calls.log")) else character(0)
+r <- .tv_res(APP1)
+.tv_ok("upload sends nothing for it and it is FAILED, saying why",
+       identical(x$rc, 2L) && !any(grepl("app build", calls, fixed = TRUE)) &&
+       	!is.null(r) && r$result == "FAILED" &&
+       	grepl("download failed", r$reason, fixed = TRUE), c(x$rc, calls, r$reason))
+x <- .tv_quiet(fleet_main(c("results", "--apps", APP1)))
+.tv_ok("the results screen names it FAILED with the reason, within 72 columns",
+       any(grepl("^FAILED  01 ESS QVD Builder - CDP", x$out)) &&
+       	any(grepl("download failed", x$out, fixed = TRUE)) &&
+       	# the detail path is this test's long tempdir, unbreakable by strwrap
+       	all(nchar(x$out[!grepl("fleetvm-", x$out, fixed = TRUE)]) <= 72L),
+       x$out)
+x <- .tv_quiet(fleet_main(c("fetch", "--apps", APP1, "--live", "--no-rollup")))
+x2 <- .tv_quiet(fleet_main(c("upload", "--mode", "overwrite", "--apps", APP1,
+                             "--live", "--no-rollup")))
+m <- manifest_read(MANIFEST_DEFAULT)
+.tv_ok("a download that works again clears it, and the app uploads",
+       identical(x$rc, 0L) && identical(x2$rc, 0L) &&
+       	!nzchar(m$last_error[match(APP1, m$app_id)]) && .tv_res(APP1)$result == "ok",
+       c(x$rc, x2$rc, m$last_error[match(APP1, m$app_id)]))
 
 .tv_env()
 unlink(TMP, recursive = TRUE)

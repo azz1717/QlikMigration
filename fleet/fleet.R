@@ -797,6 +797,11 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
 		dir <- .fl_app_dir(id, name = sel$app_name[i])
+		if (.fl_fetch_failed(sel[i, , drop = FALSE])) {
+			.fl_warn(.fl_label(m, id), ": the download failed, not formatted",
+			         " (any folder is an older copy)")
+			blocked <- blocked + 1L; next
+		}
 		if (!dir.exists(dir)) {
 			.fl_warn(.fl_label(m, id), ": not unbuilt yet, skipped")
 			skipped <- skipped + 1L; next
@@ -1270,6 +1275,16 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 # so the whole of this section is provable against diagnostics/mock_qlik.bat.
 # =========================================================================
 
+# A FAILED DOWNLOAD FAILS THE APP (2026-11-02). The row keeps last_error
+# "fetch: ..." until a fetch succeeds. Its folder, when one is left from an
+# earlier run, holds an OLD script: `process` must not restyle it and
+# `upload` must not send it - that would put last week's script over this
+# week's app. Both ask this, and the app ends FAILED with the reason.
+FETCH_FAILED <- "fetch: "
+.fl_fetch_failed <- function(row)
+	identical(.fl_str(row$stage), "blocked") &&
+		startsWith(.fl_str(row$last_error), FETCH_FAILED)
+
 #' `fetch` - unbuild every selected app from the tenant into fleet/apps/<id>/.
 #'
 #' Normally driven by `--stage listed`, which is the stage `add` leaves a row
@@ -1313,7 +1328,7 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 		r <- qc_unbuild(id, stage_dir)
 		if (dry) { planned <- planned + 1L; next }
 		if (qc_failed(r)) {
-			m <- .fl_block(m, id, paste0("fetch: ", .fl_fail_msg(r)))
+			m <- .fl_block(m, id, paste0(FETCH_FAILED, .fl_fail_msg(r)))
 			blocked <- blocked + 1L
 			next
 		}
@@ -1818,6 +1833,11 @@ fleet_upload_preflight <- function(row, app_dir, mode = "copy", to_space = NULL)
 	id <- .fl_str(row$app_id)
 	if (!nzchar(id) || startsWith(id, "local:"))
 		return(no("not matched to an app on the tenant yet (fleet.R reconcile-ids)"))
+	# Before the best-script fallback below: after a failed download, every
+	# script in the folder is from an EARLIER download (FETCH_FAILED).
+	if (.fl_fetch_failed(row))
+		return(no(paste0("the download failed and the folder holds only an",
+		                 " older copy. ", .fl_str(row$last_error))))
 	# THE BEST SCRIPT THIS APP HAS, never a refusal for not having the best
 	# one (Adam, 2026-09-23): "an app that is 30% styled and 20% remapped is
 	# better than a refused upload and 0% styled or retargeted". The stage
