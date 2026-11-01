@@ -68,6 +68,7 @@ each again to confirm the script, then print the results screen.
 ## Where results land
 `fleet/apps/<app name>/` - script_styled.qvs, script_retargeted.qvs,
 retarget_report.csv, dev_notes.txt, changes/, log.txt, upload.log,
+script_unlocked.qvs (Data Manager apps only),
 report.html. `fleet/master.csv` - every app and its stage;
 `fleet/master_loads.csv` - every load that still needs a hand.
 Run data stays on the machine (not in git).
