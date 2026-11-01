@@ -5,8 +5,8 @@
 # (fleet/manifest.csv, keyed by app id - the tenant has 578 duplicate app
 # NAMES, so nothing here may key on a name). The console UI added in M1 is a
 # menu that shells out to these same verbs, so every action stays
-# reproducible without the UI and testable offline against
-# the offline mock (diagnostics/mock_qlik.bat, git tag pre-restructure) (fleet/test_fleet.R).
+# reproducible without the UI and testable offline against a mock qlik-cli
+# (diagnostics/mock_qlik.bat + fleet/test_fleet*.R, git tag pre-restructure).
 #
 # M0 implemented spaces / apps / add / status. M1 adds import-unbuilt /
 # process / report / rollup and turns `status` into a reader of master.csv.
@@ -460,8 +460,7 @@ fleet_parse_args <- function(argv) {
 			                substr(ms$stage[i], 1L, 10L), ms$pct_retargeted[i],
 			                ms$blockers[i]))
 		.fl_rule()
-		.fl_say(MASTER_CSV, ": ", nrow(ms), " row(s); map_check findings ",
-		        if (is.null(ms$map_check_findings)) "-" else ms$map_check_findings[1])
+		.fl_say(MASTER_CSV, ": ", nrow(ms), " row(s)")
 	}
 	if (any(m$stage == "blocked")) 2L else 0L
 }
@@ -477,7 +476,6 @@ FLAGS_CSV <- file.path(FLEET_DIR, "flags.csv")
 MASTER_CSV <- file.path(FLEET_DIR, "master.csv")
 MASTER_LOADS_CSV <- file.path(FLEET_DIR, "master_loads.csv")
 MASTER_UNUSED_CSV <- file.path(FLEET_DIR, "master_unused.csv")
-MAP_CHECK_STATUS <- file.path(FLEET_DIR, "map_check_status.csv")
 FLEET_CHILD_TIMEOUT_S <- 300L
 
 # retarget_loads.R's own status vocabulary, named once here so master.csv and
@@ -497,10 +495,10 @@ FLEET_LOAD_INELIGIBLE <- c("out-of-scope", "commented", "geospatial",
                            "directory-statement")
 FLEET_LOAD_DONE <- c("retargeted", "already-mapped")
 
-# The local bundles on this machine (PLAN-fleet.md M1 acceptance): the 18
-# generator exports, the two example apps and the retarget trial app.
-.FL_LOCAL_SOURCES <- c("retargeting/unbuilt", "app-unbuilt", "app2-unbuilt",
-                       "retargeting/05 - Grant Acquittals Report")
+# Folders `import-unbuilt` reads when given none. Empty since the dev-PC
+# sample bundles left the repo (2026-11-02): pass the folder, e.g.
+# `fleet.R import-unbuilt <folder of unbuilt apps>`.
+.FL_LOCAL_SOURCES <- character(0)
 
 #' Where one app's artefacts live: `fleet/apps/<app name>/`.
 #'
@@ -765,19 +763,8 @@ fleet_bundle_dirs <- function(root) {
 
 # --- process --------------------------------------------------------------
 
-#' Run retargeting/map_check.R and report what it found. D13: `process` runs it
-#' FIRST and RECORDS the outcome, but does not block on it - today's map exits
-#' 1 on 85 duplicate CRM keys and that is Adam's data to settle, not a reason
-#' for the whole fleet to stop. Nothing else blocks either: an unresolved load
-#' is the tool's output, not its failure (Adam, 2026-09-14 - see process).
-fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
-	r <- .fl_child(c("retargeting/map_check.R"), log)
-	f <- file.path("retargeting", "map_check_findings.csv")
-	n <- if (file.exists(f)) tryCatch(nrow(read_csv_any(f)),
-	                                  error = function(e) NA_integer_) else 0L
-	list(exit = r$status, findings = as.integer(n))
-}
-
+# Nothing blocks: an unresolved load is the tool's output, not its failure
+# (Adam, 2026-09-14). The map is frozen (2026-11-02): no map check runs here.
 .fl_verb_process <- function(opts) {
 	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
 	m <- manifest_read(path)
@@ -787,12 +774,6 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 		return(1L)
 	}
 	if (!nrow(sel)) { .fl_say("nothing selected"); return(0L) }
-	mc <- fleet_map_check()
-	.fl_write_csv(data.frame(checked_at = .fl_now(), exit = mc$exit,
-	                         findings = mc$findings, stringsAsFactors = FALSE),
-	              MAP_CHECK_STATUS)
-	# The map check's verdict is for log.txt and master.csv, not the screen:
-	# the operator has no action to take on it mid-run.
 	blocked <- 0L; done <- 0L; skipped <- 0L; unresolved <- 0L
 	for (i in seq_len(nrow(sel))) {
 		id <- sel$app_id[i]
@@ -808,8 +789,8 @@ fleet_map_check <- function(log = tempfile("mapcheck", fileext = ".log")) {
 		}
 		.fl_say("formatting + retargeting: ", .fl_label(m, id))
 		log <- file.path(dir, "log.txt")
-		cat("\n=== process ", id, " [", .fl_now(), "]\nmap_check exit=", mc$exit,
-		    " findings=", mc$findings, "\n", sep = "", file = log, append = TRUE)
+		cat("\n=== process ", id, " [", .fl_now(), "]\n", sep = "", file = log,
+		    append = TRUE)
 		src <- file.path(dir, "script.qvs")
 		styled <- file.path(dir, "script_styled.qvs")
 		if (!file.exists(src)) {
@@ -1171,8 +1152,10 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 	path <- .fl_opt(opts, "manifest", MANIFEST_DEFAULT)
 	m <- manifest_read(path)
 	flags <- fleet_flags_read()
-	mcf <- .fl_read(MAP_CHECK_STATUS)
-	mc_findings <- if (is.null(mcf) || !nrow(mcf)) "" else as.character(mcf$findings[1])
+	# master.csv keeps its map_check_findings column, always "-": the map
+	# check no longer runs (2026-11-02), and a column that vanished would
+	# break anyone's saved filter on the file.
+	mc_findings <- "-"
 
 	rows <- NULL; loads <- NULL; unused <- NULL
 	for (i in seq_len(nrow(m))) {
@@ -1320,7 +1303,8 @@ fleet_readiness <- function(pct_retargeted, blocker_kinds = character(0)) {
 # =========================================================================
 # M2: fetch (unbuild from the tenant) and reconcile-ids (D12).
 # PLAN-fleet.md section 3. Every tenant call goes through fleet/qlik_api.R,
-# so the whole of this section is provable against the offline mock (diagnostics/mock_qlik.bat, git tag pre-restructure).
+# so the whole of this section is provable against the offline mock
+# (diagnostics/mock_qlik.bat, git tag pre-restructure).
 # =========================================================================
 
 # A FAILED DOWNLOAD FAILS THE APP (2026-11-02). The row keeps last_error

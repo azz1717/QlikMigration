@@ -7,7 +7,8 @@
 # SUBSTRATE: one PCRE pass produces a TOKEN VECTOR, then a recursive descent
 # walks it by index. The alternative - splitting the text into a character
 # vector and walking it one character at a time - is what
-# the old qlik_cli_unbuild.R (git tag pre-restructure)'s private .json_parse does, and it grows a
+# the old qlik_cli_unbuild.R's private .json_parse does (git tag
+# pre-restructure), and it grows a
 # string with c(out, ch) per character. That is quadratic on the big bundle
 # objects (app-unbuilt/objects/ has a 756 KB sheet), which is the whole
 # reason this file does not simply promote that one. CLAUDE.md sanctions a

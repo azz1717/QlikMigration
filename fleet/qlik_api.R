@@ -35,7 +35,8 @@ if (!exists("DRY_RUN", envir = globalenv(), inherits = FALSE)) DRY_RUN <- TRUE
 #' Locate qlik.exe. Env var QLIK_CLI_PATH wins over the config file.
 #'
 #' The env var is what lets a test (and only a test) point the whole stack at
-#' the offline mock (diagnostics/mock_qlik.bat, git tag pre-restructure): qlik_cli_path.txt is per-machine, gitignored and
+#' the offline mock (diagnostics/mock_qlik.bat, git tag pre-restructure):
+#' qlik_cli_path.txt is per-machine, gitignored and
 #' hand-written, so a test that overwrote it would destroy an operator's real
 #' setting and silently leave a mock path behind on a VM. Reading the file
 #' follows qlik_cli_unbuild.R exactly - blank lines and # comments dropped,
@@ -172,7 +173,8 @@ qc <- function(args, json = TRUE, timeout = .qc_opt("QC_TIMEOUT_S", 60L)) {
 #' The `next` page token of a listing reply, or NA when that was the last page.
 #'
 #' Shape (PLAN-fleet.md section 0, INFERRED from qlik.dev, mirrored by
-#' the offline mock (git tag pre-restructure)): links.next.href is a URL carrying `next=<token>`.
+#' the offline mock, git tag pre-restructure): links.next.href is a URL
+#' carrying `next=<token>`.
 #' A bare string token under links.next is accepted too. Anything else counts
 #' as "no more pages", so an unexpected shape ends the loop instead of
 #' spinning forever - the failure mode worth designing against here.
