@@ -326,7 +326,7 @@ copy_app <- function(app, space) {
 
 # 2g. Write a script into an app. Script only, never a reload.
 build_app <- function(app_id, script) {
-  qlik(c("app", "build", "--app", app_id, "--script", script, "--no-reload", "--silent"))
+  qlik(c("app", "build", "--app", app_id, "--script", script, "--no-reload"), timeout = 600)
 }
 
 # A script's lines for comparing: line endings and trailing blank lines ignored.
