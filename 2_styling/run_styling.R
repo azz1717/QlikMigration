@@ -1,7 +1,7 @@
 # run_styling.R — reformat a Qlik load script to the house style guide.
 #
 # HOW TO RUN IT (from a terminal, not from inside R). If Rscript is not on
-# PATH, use its full install path instead, or find_rscript.bat's lookup:
+# PATH, use the full path in rscript_path.txt:
 #
 #   Rscript run_styling.R in.qvs out.qvs
 #

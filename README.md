@@ -9,8 +9,8 @@ result. Base R only (R 4.3.1, no packages). How to run it: `RUNBOOK.md`.
   `qlik_cli_path.txt` and put the path to qlik.exe on its one line. Sign
   qlik-cli in (`qlik context use <name>`). First time on a tenant:
   `Rscript fleet/fleet.R doctor --space <id>` (read-only check).
-  R is found automatically (C: or D: Program Files\R). If it isn't, copy
-  `rscript_path.txt.example` to `rscript_path.txt` with the path to Rscript.exe.
+  `rscript_path.txt` holds the path to Rscript.exe (set to the VM's R 4.3.1);
+  change that one line if R is somewhere else.
 - **Migrate: double-click `RUN_MIGRATION.bat`.** Pick the space, the apps,
   where they go; type YES. Live by default - this writes to the cloud.
 - **Reports: double-click `RUN_REPORTS.bat`.** Pick the space and apps;
@@ -65,7 +65,7 @@ each again to confirm the script, then print the results screen.
 - `qlik_tokenizer.R` - script <-> tokens (styling never edits raw text).
 - `qlik_reserved_words.R` - the Qlik keyword and function list.
 - `comment_substream.R` - commented-out code as tokens (pass 8, retargeting).
-- `csv_read.R`, `json_read.R` - safe readers. `find_rscript.bat` - finds R.
+- `csv_read.R`, `json_read.R` - safe readers.
 
 ## Where results land
 `fleet/apps/<app name>/` - script_styled.qvs, script_retargeted.qvs,
