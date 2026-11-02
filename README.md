@@ -1,79 +1,76 @@
-# Qlik app migration tool
+# Qlik app migration
 
-Takes the apps in one Qlik Cloud space, tidies each load script to the house
-style, points every on-prem QVD load at its cloud view, and uploads the
-result. Base R only (R 4.3.1, no packages). How to run it: `RUNBOOK.md`.
+Takes the apps in one Qlik Cloud space, restyles each app's load script,
+points its on-prem QVD loads at the Qlik Cloud views, and puts the script
+back in the cloud. Run once. Base R only (R 4.3.1), talks to the cloud
+only through qlik-cli.
 
-## Run it
-- **Once per machine:** copy `qlik_cli_path.txt.example` to
-  `qlik_cli_path.txt` and put the path to qlik.exe on its one line. Sign
-  qlik-cli in (`qlik context use <name>`). First time on a tenant:
-  `Rscript fleet/fleet.R doctor --space <id>` (read-only check).
-  `rscript_path.txt` holds the path to Rscript.exe (set to the VM's R 4.3.1);
-  change that one line if R is somewhere else.
-- **Migrate: double-click `RUN_MIGRATION.bat`.** Pick the space, the apps,
-  where they go; type YES. Live by default - this writes to the cloud.
-- **Reports: double-click `RUN_REPORTS.bat`.** Pick the space and apps;
-  each gets a `report.html`. Nothing in the cloud changes.
+## Setup (once per machine)
+- `rscript_path.txt` - one line: the full path to Rscript.exe.
+- `qlik_cli_path.txt` - one line: the full path to qlik.exe.
+- qlik-cli signed in to the tenant (`qlik context use <name>`).
 
-## What each file does, in run order
-**Start and control** (`fleet/` - also where each machine's run data lives)
-- `RUN_MIGRATION.bat` / `RUN_REPORTS.bat` - find R, open the screens.
-- `fleet/console_ui.R` - the screens: asks the questions, runs one fleet.R
-  command per step, shows one results screen. Holds no logic.
-- `fleet/fleet.R` - the conductor. Every step is a command here (`fetch`,
-  `process`, `upload`, `verify`, `report`, ...), so it also runs without
-  the screens. Section headers say which step you are in.
-- `fleet/qlik_api.R` - the only file that talks to Qlik Cloud; every call is
-  logged to `fleet/audit.log`.
-- `fleet/flags.csv` - features the reports flag (GeoAnalytics, Inphinity,
-  REST, ...). Add a row to add a flag.
+## Run
+Double-click `RUN_MIGRATION.bat`. It asks:
+1. Which space are the apps in?
+2. Which apps? (`all`, or numbers like `1,3-5`)
+3. Where should they go? Back into the same space (overwrites the
+   originals), or into another space as copies named `<app> [mig]`.
+4. Type YES to start.
 
-**Step 1 - Download** (fleet.R `spaces`, `apps`, `add`, `fetch`): each app is
-unbuilt to `fleet/apps/<app name>/`. A failed download fails that app.
+Then, per app: download -> unlock a Data Manager section -> style ->
+retarget -> upload (script only, no reload) -> download again to check the
+script really landed -> tag the app (GeoAnalytics / Inphinity / NPrinting).
+One results screen at the end: `ok`, or `FAILED` with the reason.
 
-**Step 2 - Styling** (`2_styling/`, run by fleet.R `process`)
-- `run_styling.R` - runs the eight passes below, in this order.
-- `01_explicit_aliases.R` - every field gets an explicit `AS` name.
-- `02_bracket_references.R` - field names go in `[brackets]`.
-- `03_leading_commas.R` - commas move to the start of the line.
-- `04_spacing.R` - consistent spaces around commas, operators, brackets.
-- `05_keyword_case.R` - Qlik keywords and functions in UPPER case.
-- `06_vertical_layout.R` - indentation and blank lines.
-- `07_alias_alignment.R` - lines up the `AS` column.
-- `08_commented_code.R` - applies passes 1-7 to commented-out code too.
+## What you get
+- `output\<app name>\original.qvs` - the script as downloaded.
+- `output\<app name>\migrated.qvs` - the script that was uploaded.
+- `output\<app name>\notes.txt` - read this first: where the app went,
+  whether the check passed, how many loads were retargeted, the loads
+  NOT retargeted (your by-hand list, with line numbers and reasons), and
+  every qlik command run with its reply.
+- `output\migrated_apps.csv` - one row per app per run: date, app, from,
+  to, ok/FAILED, loads retargeted, GeoAnalytics, Inphinity, NPrinting.
 
-**Step 3 - Retargeting** (`3_retargeting/`, same `process` command)
-- `retarget_loads.R` - rewrites each on-prem QVD load to its cloud view;
-  what it cannot map goes in `dev_notes.txt` and the app still uploads.
-  Finishes by re-aligning the `AS` column with styling pass 7.
-- `retarget_shared.R` - its small helpers.
-- `qvd_field_map.csv` - THE MAP: on-prem QVD + field -> cloud view + field.
-  Generated and frozen; never hand-edit.
+## The files, in the order they run
+- `RUN_MIGRATION.bat` - reads `rscript_path.txt`, runs `migrate.R`.
+- `migrate.R` - the whole run: the questions, then each step above.
+- `flags.csv` - what to look for to mark GeoAnalytics, Inphinity Forms
+  and NPrinting, and the tag each one gets in the cloud.
+- `shared\qlik_tokenizer.R` - splits a script into pieces (words,
+  quoted names, comments...) so nothing inside a name or comment is
+  ever changed by accident. Everything else works on these pieces.
+- `shared\qlik_reserved_words.R` - Qlik's keywords and function names.
+- `2_styling\run_styling.R` - runs the eight styling steps in order:
+  - `01_explicit_aliases.R` - every field gets an explicit `AS` name.
+  - `02_bracket_references.R` - field names in `[brackets]`.
+  - `03_leading_commas.R` - commas move to the start of the line.
+  - `04_spacing.R` - spaces around commas, operators and brackets.
+  - `05_keyword_case.R` - Qlik keywords and functions in CAPITALS.
+  - `06_vertical_layout.R` - indentation and blank lines.
+  - `07_alias_alignment.R` - lines up the `AS` column with tabs.
+  - `08_commented_code.R` - the same style for commented-out code
+    (uses `shared\comment_substream.R`).
+- `3_retargeting\retarget_loads.R` - rewrites each on-prem QVD load to
+  its cloud view, using `qvd_field_map.csv` (the map of QVD fields to
+  view columns). `retarget_shared.R` finds the loads.
+- `shared\json_read.R`, `shared\csv_read.R` - read qlik's replies and
+  the CSV files (base R has no JSON reader).
 
-**Step 4 - Upload** (fleet.R `upload`, `verify`, `results`): overwrite the
-originals or upload copies named `<app> [mig]` into another space, download
-each again to confirm the script, then print the results screen.
+## What it sends to the cloud
+Reads: `space ls`, `app ls`, `app unbuild` (download and check),
+`item ls`, `item collections`, `collection ls`.
+Writes: `app copy` (copy mode only), `app space update` (only if a copy
+landed in the wrong space), `app build --no-reload` (the script),
+`collection create` / `collection item create` (the tags).
+Nothing else is changed: sheets, charts, measures, variables and data
+connections stay as they are. No app is ever reloaded.
 
-**Reports** (`reports/`, fleet.R `report`)
-- `render_report.R` - builds `report.html` (review + tech debt).
-- `usage_report.R` - `usage-*.csv`: unused tables, fields, variables.
-- `app_usage.R`, `script_loads.R`, `script_refs.R`, `script_debt.R`,
-  `json_strings.R` - the readers behind those two.
-
-**Shared building blocks** (`shared/`)
-- `qlik_tokenizer.R` - script <-> tokens (styling never edits raw text).
-- `qlik_reserved_words.R` - the Qlik keyword and function list.
-- `comment_substream.R` - commented-out code as tokens (pass 8, retargeting).
-- `csv_read.R`, `json_read.R` - safe readers.
-
-## Where results land
-`fleet/apps/<app name>/` - script_styled.qvs, script_retargeted.qvs,
-retarget_report.csv, dev_notes.txt, changes/, log.txt, upload.log,
-script_unlocked.qvs (Data Manager apps only),
-report.html. `fleet/master.csv` - every app and its stage;
-`fleet/master_loads.csv` - every load that still needs a hand.
-Run data stays on the machine (not in git).
-
-Everything removed for the handover (tests, offline mock, map-building tools
-and lineage data, diagnostics, sample app) is in git tag `pre-restructure`.
+## Good to know
+- Loads the map can't place are left exactly as written and listed in
+  notes.txt. Retargeting takes whatever it can: 5% is still 5% less by hand.
+- If retargeting itself breaks on an app, the styled script is uploaded
+  instead and the results screen says "styled only".
+- Data Manager apps: the locked "auto-generated" section is unlocked so the
+  new script sticks. Those tables can no longer be edited in Data Manager.
