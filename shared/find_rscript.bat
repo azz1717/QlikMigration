@@ -15,12 +15,21 @@ rem and the account cannot add one, so the directory scan is the real path.
 
 set "RS="
 set "PF86=%ProgramFiles(x86)%"
+set "RPATH_FILE=%~dp0..\rscript_path.txt"
+
+rem rscript_path.txt at the repo root (gitignored, like qlik_cli_path.txt) wins
+rem over any scan: first non-# line, quotes stripped. Ignored if that file
+rem does not exist.
+if exist "%RPATH_FILE%" for /f "usebackq eol=# delims=" %%L in ("%RPATH_FILE%") do if not defined RS set "RS=%%~L"
+if defined RS if not exist "%RS%" set "RS="
+if defined RS exit /b 0
 
 rem Standard install roots. Within each, R-* folders are scanned in ascending
 rem name order and the last match wins, so the newest version is preferred.
+rem D:\Program Files\R is the VM's (R-4.3.1).
 rem GOTCHA: %ProgramFiles(x86)% is copied to PF86 above and never used inline -
 rem the parentheses in its NAME break cmd's parser inside a parenthesised block.
-for %%D in ("%ProgramFiles%\R" "%PF86%\R" "C:\R" "D:\R") do call :scan %%D
+for %%D in ("%ProgramFiles%\R" "%PF86%\R" "D:\Program Files\R" "C:\R" "D:\R") do call :scan %%D
 
 if not defined RS for %%X in (Rscript.exe) do if not "%%~$PATH:X"=="" set "RS=%%~$PATH:X"
 

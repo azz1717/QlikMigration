@@ -58,3 +58,6 @@ report_mock.html
 *-view.html
 retargeting/retarget_columns.csv
 retargeting/retarget_payloads.json
+
+# Per-machine path to Rscript.exe (rscript_path.txt.example is the template)
+rscript_path.txt

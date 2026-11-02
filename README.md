@@ -9,6 +9,8 @@ result. Base R only (R 4.3.1, no packages). How to run it: `RUNBOOK.md`.
   `qlik_cli_path.txt` and put the path to qlik.exe on its one line. Sign
   qlik-cli in (`qlik context use <name>`). First time on a tenant:
   `Rscript fleet/fleet.R doctor --space <id>` (read-only check).
+  R is found automatically (C: or D: Program Files\R). If it isn't, copy
+  `rscript_path.txt.example` to `rscript_path.txt` with the path to Rscript.exe.
 - **Migrate: double-click `RUN_MIGRATION.bat`.** Pick the space, the apps,
   where they go; type YES. Live by default - this writes to the cloud.
 - **Reports: double-click `RUN_REPORTS.bat`.** Pick the space and apps;
