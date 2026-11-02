@@ -1,47 +1,24 @@
-#!/usr/bin/env Rscript
-# retarget_loads.R
-#
-# Mechanically retarget on-prem QVD loads in a STYLED Qlik script to their
-# Qlik Cloud equivalents, driven ONLY by 3_retargeting/qvd_field_map.csv.
-# Base R only. See docs/DESIGN.md sec 6.7 for the retargeting rule this
-# implements verbatim.
-#
-# Usage:
-#   Rscript 3_retargeting/retarget_loads.R <styled_in.qvs> <out.qvs>
-#       [--map 3_retargeting/qvd_field_map.csv]
-#       [--report <report.csv>] [--fields-report <fields.csv>]
-#       [--store <prefix>]   (full "lib://...:DataFiles/.../" prefix, must
-#                              end in '/'; overrides .RL_STORE_PREFIX below)
-#   Rscript 3_retargeting/retarget_loads.R --selftest
+# retarget_loads.R - point the on-prem QVD loads in a STYLED Qlik script at
+# their Qlik Cloud equivalents, driven ONLY by 3_retargeting/qvd_field_map.csv.
+# migrate.R sources this file (from the project folder) and calls
+# retarget_script() once per app.
 
-# ---- locate and source shared helpers -----------------------------------
-
-# Top-level on purpose: score_retarget.R needs this same bootstrap before it
-# can source anything shared, and docs/verify_docs.R's duplicate-body check
-# compares functions across files — the shared helpers live in
-# retarget_shared.R instead.
-.rl_argv <- commandArgs(trailingOnly = FALSE)
-.rl_file <- sub("^--file=", "", .rl_argv[grepl("^--file=", .rl_argv)])
-.RL_DIR  <- if (length(.rl_file) == 1 && nzchar(.rl_file))
-  dirname(normalizePath(.rl_file, winslash = "/")) else getwd()
-# this file lives at <root>/3_retargeting/retarget_loads.R
-.RL_ROOT <- if (basename(.RL_DIR) == "3_retargeting") dirname(.RL_DIR) else getwd()
-source(file.path(.RL_ROOT, "shared", "qlik_tokenizer.R"))
-source(file.path(.RL_ROOT, "shared", "csv_read.R"))
-source(file.path(.RL_ROOT, "3_retargeting", "retarget_shared.R"))
-# Pass 7 runs again as this pipeline's LAST step - see the call site.
-source(file.path(.RL_ROOT, "2_styling", "07_alias_alignment.R"))
+source("shared/qlik_tokenizer.R")
+source("shared/csv_read.R")
+source("3_retargeting/retarget_shared.R")
+# Pass 7 runs again as this pipeline's LAST step - see retarget_script().
+source("2_styling/07_alias_alignment.R")
 # The comment substream - how a commented-out LOAD becomes a token stream we
 # can retarget, and gets written back. See rl_retarget_comment_loads(). It
 # classifies field-shaped lines against QLIK_KEYWORDS, so the word list has
 # to come with it.
-source(file.path(.RL_ROOT, "shared", "qlik_reserved_words.R"))
-source(file.path(.RL_ROOT, "shared", "comment_substream.R"))
+source("shared/qlik_reserved_words.R")
+source("shared/comment_substream.R")
 
-# Qlik Cloud connection ("lib://...") name is environment config (the tenant
-# connection is provisioned per-environment, it is not part of the qvd field
-# map data), so it lives as a constant + CLI override here, not in
-# qvd_field_map.csv.
+# The lineage map: which on-prem QVD became which cloud file and fields.
+RL_MAP_PATH <- "3_retargeting/qvd_field_map.csv"
+
+# The Qlik Cloud folder every rewritten FROM path points into.
 .RL_STORE_PREFIX <- "lib://Curated Data Store:DataFiles/10 Landing Area/"
 
 # ---- small text helpers --------------------------------------------------
@@ -293,7 +270,7 @@ rl_join_detail <- function(existing, extra) {
 #' @param map_df qvd_field_map.csv contents (character columns)
 #' @param store_prefix full "lib://...:DataFiles/.../" cloud prefix (ending
 #'   in '/') used to build every rewritten FROM path; defaults to
-#'   .RL_STORE_PREFIX, overridable via --store.
+#'   .RL_STORE_PREFIX.
 #' @return list(tokens = edited tokens, report = data.frame, fields = data.frame)
 retarget_tokens <- function(tokens, map_df, store_prefix = .RL_STORE_PREFIX) {
   n <- nrow(tokens)
@@ -650,12 +627,11 @@ rl_add_tab_columns <- function(report, tokens) {
   report
 }
 
-# ---- DEV NOTES (developer-facing summary) ---------------------------------
-# Adam's directive: ultra-concise, developer-facing signal only - nothing
-# Qlik's own data load editor already surfaces at reload (missing
-# fields/variables/files). Built entirely from the report data.frame that
-# retarget_tokens() already produced, plus the same map_df/store_prefix the
-# run used, so it never touches the on-disk report/fields CSVs.
+# ---- notes for the developer -----------------------------------------------
+# Short, developer-facing signal only - nothing Qlik's own data load editor
+# already shows at reload (missing fields/variables/files). Built from the
+# report data.frame retarget_tokens() produced, plus the same map_df and
+# store_prefix the run used.
 
 # Recover the raw text of a bracketed/quoted report `old_path`/`new_path`
 # value with its outer delimiter stripped - report rows keep only text, not
@@ -704,17 +680,18 @@ rl_add_tab_columns <- function(report, tokens) {
 .rl_lead_for_row <- function(row, map_df, store_prefix) {
   key <- .rl_key_from_old_path(row$old_path)
   if (row$status == "not-in-map") {
-    return("no lineage found")
+    return("this QVD is not in the lineage map")
   }
   if (row$status == "multi-source") {
-    return(sprintf("generated by %s", .rl_generator_app(map_df, key)))
+    return(sprintf("the map has more than one cloud source for this QVD (made by %s)",
+                   .rl_generator_app(map_df, key)))
   }
   if (row$status == "field-mismatch") {
-    return(sprintf("field(s) %s not in lineage", .rl_strip_var_suffix(row$detail)))
+    return(sprintf("field(s) %s are not in the lineage map", .rl_strip_var_suffix(row$detail)))
   }
   if (row$status == "wildcard") {
     tgt <- .rl_wildcard_target(map_df, key, store_prefix)
-    return(sprintf("LOAD * not field-renamable; lineage target %s", tgt))
+    return(sprintf("LOAD * cannot be renamed field by field; the cloud file is %s", tgt))
   }
   if (row$status == "unusable-verdict") {
     parts <- strsplit(.rl_strip_var_suffix(row$detail), "; ", fixed = TRUE)[[1]]
@@ -740,8 +717,9 @@ rl_add_tab_columns <- function(report, tokens) {
   paste0(substr(rest, 1, slash - 1), ".", substr(rest, slash + 1, nchar(rest)))
 }
 
-# Build the DEV NOTES block (character vector, one element per line).
-rl_build_dev_notes <- function(report, map_df, store_prefix) {
+# The "what was retargeted" part of notes.txt: list(done, total, lines).
+# `unseen` = lib:// paths in the script that were not recognised as loads.
+rl_build_notes <- function(report, map_df, store_prefix, unseen) {
   qvd_load_status <- c("retargeted", "retargeted-pending-import", "not-in-map",
                         "multi-source", "field-mismatch", "wildcard", "unusable-verdict")
   rewritten_status <- c("retargeted", "retargeted-pending-import")
@@ -752,17 +730,20 @@ rl_build_dev_notes <- function(report, map_df, store_prefix) {
   n_rewritten <- sum(scoped$status %in% rewritten_status)
 
   untouched <- scoped[scoped$status %in% untouched_status, , drop = FALSE]
-  headline <- sprintf("Retargeted %d/%d qvd loads.%s", n_rewritten, nrow(scoped),
-                      if (nrow(untouched) > 0) " Not retargeted:" else "")
-  lines <- c("DEV NOTES", headline)
+  lines <- c(sprintf("Retargeted %d of %d loads.", n_rewritten, nrow(scoped)),
+             "", "NOT retargeted - do by hand:")
+  if (!nrow(untouched)) lines <- c(lines, "  (none)")
   for (i in seq_len(nrow(untouched))) {
     row <- untouched[i, ]
-    # WHERE THE EDITOR SHOWS IT, not where the file has it: tab name, then
-    # the line within that tab (Adam, 2026-09-16).
-    lines <- c(lines, sprintf("  %s  %s — %s", .rl_where(row),
+    # Where the data load editor shows it: tab name, then the line in that tab.
+    lines <- c(lines, sprintf("  %s: %s - %s", .rl_where(row),
                                .rl_key_from_old_path(row$old_path),
                                .rl_lead_for_row(row, map_df, store_prefix)))
   }
+  if (unseen > 0)
+    lines <- c(lines, sprintf(
+      "  %d other lib:// path(s) were not recognised as QVD loads and were left exactly as written.",
+      unseen))
 
   pending <- scoped[scoped$status == "retargeted-pending-import", , drop = FALSE]
   if (nrow(pending) > 0) {
@@ -771,112 +752,34 @@ rl_build_dev_notes <- function(report, map_df, store_prefix) {
       v <- .rl_view_from_new_path(pending$new_path[i], store_prefix)
       if (!(v %in% views)) views <- c(views, v)
     }
-    # Definitive since the schema-level rule (2026-08-26): Cloud iterates whole
-    # schemas (fixtures/loaded_schemas.csv), so a view in an unloaded schema
-    # has no qvd until the schema is added to the load configuration.
-    lines <- c(lines,
-      "Retargeted, but target schema is not in the cloud load configuration — will not load until it is added:",
+    # The cloud loads whole schemas, so a view in a schema it does not load
+    # has no QVD until that schema is added to the load configuration.
+    lines <- c(lines, "",
+      "Retargeted, but the cloud does not load these schemas yet - they will not load until added:",
       sprintf("  %s", views))
   }
 
-  lines
+  list(done = n_rewritten, total = nrow(scoped), lines = lines)
 }
 
-# ---- self-test ------------------------------------------------------------
+# ---- the one entry point ------------------------------------------------------
 
-rl_selftest <- function() {
-  txt <- "LOAD [Foo] AS [A]\n\t, [Bar] AS [B]\nFROM [lib://x];\n"
-  toks <- tokenize_qlik(txt)
-  before <- toks
-  after <- toks
-  # corrupt one alias: find the token whose text is "[A]" and whose prev
-  # non-trivia is the word AS
-  prevnt <- prev_non_trivia_idx(after$type)
-  alias_idx <- which(after$type == "BRACKET" & after$text == "[A]")
-  stopifnot(length(alias_idx) == 1)
-  stopifnot(after$type[prevnt[alias_idx]] == "WORD" && tolower(after$text[prevnt[alias_idx]]) == "as")
-  after$text[alias_idx] <- "[CORRUPTED]"
-
-  chk <- rl_check_alias_guard(before, after)
-  if (chk$ok) {
-    cat("SELFTEST FAILED: guard did not detect corrupted alias\n")
-    quit(status = 1)
-  }
-  cat(chk$diff, "\n", sep = "")
-  cat("GUARD OK\n")
-  quit(status = 0)
-}
-
-# ---- CLI --------------------------------------------------------------
-
-rl_main <- function() {
-  args <- commandArgs(trailingOnly = TRUE)
-
-  if ("--selftest" %in% args) { rl_selftest(); return(invisible(NULL)) }
-
-  pos <- character(0)
-  map_path <- file.path(.RL_ROOT, "3_retargeting", "qvd_field_map.csv")
-  report_path <- NA_character_
-  fields_report_path <- NA_character_
-  store_prefix <- .RL_STORE_PREFIX
-  notes_path <- NA_character_
-
-  i <- 1L
-  while (i <= length(args)) {
-    a <- args[i]
-    if (a == "--map") { map_path <- args[i + 1L]; i <- i + 2L; next }
-    if (a == "--report") { report_path <- args[i + 1L]; i <- i + 2L; next }
-    if (a == "--fields-report") { fields_report_path <- args[i + 1L]; i <- i + 2L; next }
-    if (a == "--store") { store_prefix <- args[i + 1L]; i <- i + 2L; next }
-    if (a == "--notes") { notes_path <- args[i + 1L]; i <- i + 2L; next }
-    pos <- c(pos, a)
-    i <- i + 1L
-  }
-
-  if (length(pos) < 2) {
-    cat("Usage: Rscript retarget_loads.R <styled_in.qvs> <out.qvs> [--map 3_retargeting/qvd_field_map.csv] [--report <report.csv>] [--fields-report <fields.csv>] [--store <prefix>] [--notes <file>]\n")
-    cat("       Rscript retarget_loads.R --selftest\n")
-    quit(status = 1)
-  }
-
-  in_path <- pos[1]; out_path <- pos[2]
-
-  if (!file.exists(in_path)) {
-    cat(sprintf("Input file not found: %s\n", in_path)); quit(status = 1)
-  }
-  if (!file.exists(map_path)) {
-    cat(sprintf("Map file not found: %s\n", map_path)); quit(status = 1)
-  }
-
+# Retarget the styled script in in_path, write the result to out_path, and
+# return rl_build_notes()'s summary of what was and was not retargeted.
+retarget_script <- function(in_path, out_path) {
   tokens <- read_qlik_script(in_path)
-  map_df <- read_csv_any(map_path)
-
+  map_df <- read_csv_any(RL_MAP_PATH)
+  store_prefix <- .RL_STORE_PREFIX
   before_tokens <- tokens
 
-  # independent total-occurrence count, computed on the UNMODIFIED source
-  full_text <- paste(tokens$text, collapse = "")
-  n_independent <- .rl_count_ci(full_text, "lib://")
+  # Every lib:// in the ORIGINAL text, to say how many were not seen as loads.
+  n_lib <- .rl_count_ci(paste(tokens$text, collapse = ""), "lib://")
 
   result <- retarget_tokens(tokens, map_df, store_prefix = store_prefix)
+  n_seen <- nrow(result$report)
 
-  # INFORMATIONAL ONLY (Adam, 2026-11-02: "we are retargeting all apps and
-  # taking whatever coverage we can get. if only 5% of tables are retargeted
-  # that's still 5% we didn't have to do manually."). This used to quit(1)
-  # when the load scanner saw fewer lib:// occurrences than a raw text count -
-  # e.g. a path built by LET into a variable - which threw away every load it
-  # HAD retargeted. A lib:// the scanner never saw is left exactly as written,
-  # so writing the rest cannot harm it; the shortfall is said, never fatal.
-  n_covered <- nrow(result$report)
-  if (n_covered != n_independent)
-    cat(sprintf("NOTE: %d lib:// occurrence(s) in the text, %d seen as loads - the other %d are left exactly as written (not a failure)\n",
-                n_independent, n_covered, n_independent - n_covered))
-
-  # Commented-out LOAD blocks, AFTER the coverage count (which counts raw
-  # lib:// occurrences in the ORIGINAL text, and must keep doing so) and
-  # BEFORE the guard (which reads live aliases only, so rewriting inside
-  # comments cannot move it either way - running it after keeps that true of
-  # the bytes actually written). Adam, 2026-09-16: the substream exists
-  # precisely so these can be reached.
+  # Commented-out LOAD blocks, after the lib:// count (which must count the
+  # original text) and before the guard (which reads live aliases only).
   cmt <- rl_retarget_comment_loads(result$tokens, map_df, store_prefix)
   if (!is.null(cmt$report) && nrow(cmt$report)) {
     result$tokens <- cmt$tokens
@@ -891,43 +794,19 @@ rl_main <- function() {
     result$report <- rl_add_tab_columns(result$report, result$tokens)
   }
 
+  # Safety check: retargeting must never change a field's alias.
   guard <- rl_check_alias_guard(before_tokens, result$tokens)
-  if (!guard$ok) {
-    cat(guard$diff, "\n", sep = "")
-    cat("Guard failed - refusing to write output.\n")
-    quit(status = 1)
-  }
+  if (!guard$ok)
+    stop("retargeting would have changed a field alias, so nothing was written: ",
+         guard$diff, call. = FALSE)
 
-  # RE-ALIGN, last thing before writing (Adam 2026-09-16). Retargeting
-  # rewrites the field side of a load - `[Table.Field%]` becomes `[Field]` with
-  # the old name carried over as the alias - so every tab of padding the
-  # styling pipeline computed for the OLD text is now the wrong width for the
-  # new one, and the AS column it produced is gone. Pass 7 is idempotent and
-  # touches whitespace only, so it cannot disturb the alias guard checked
-  # above; it just re-measures the block it is now looking at.
+  # Re-align, last thing before writing: retargeting rewrites the field side
+  # of a load, so the AS column styling computed is now the wrong width. Pass 7
+  # only touches whitespace, so it cannot disturb the guard checked above.
   aligned <- enforce_alias_alignment(result$tokens)
-  out_lines <- detokenize(aligned$tokens)
   con <- file(out_path, open = "w", encoding = "UTF-8")
-  writeLines(out_lines, con, useBytes = TRUE)
+  writeLines(detokenize(aligned$tokens), con, useBytes = TRUE)
   close(con)
 
-  if (!is.na(report_path)) rt_write_csv(result$report, report_path)
-  if (!is.na(fields_report_path)) rt_write_csv(result$fields, fields_report_path)
-
-  cat(sprintf("Wrote %s (%d of %d lib:// occurrences seen as loads, %d rewritten loads)\n",
-              out_path, n_covered, n_independent,
-              sum(result$report$status %in% c("retargeted", "retargeted-pending-import"))))
-
-  notes_lines <- rl_build_dev_notes(result$report, map_df, store_prefix)
-  cat(paste(notes_lines, collapse = "\n"), "\n", sep = "")
-  if (!is.na(notes_path)) {
-    con <- file(notes_path, open = "w", encoding = "UTF-8")
-    writeLines(notes_lines, con, useBytes = TRUE)
-    close(con)
-  }
-  invisible(NULL)
-}
-
-if (identical(environment(), globalenv()) && sys.nframe() == 0) {
-  rl_main()
+  rl_build_notes(result$report, map_df, store_prefix, max(0L, n_lib - n_seen))
 }

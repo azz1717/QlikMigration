@@ -1,4 +1,4 @@
-# json_read.R - a minimal JSON reader, shared. The mirror of json_write.R.
+# json_read.R - a minimal JSON reader, shared.
 #
 # Base R has no JSON parser and `jsonlite` is a development-machine oracle
 # that must not reach shipped tooling (INTERFACES.md), so every qlik-cli
@@ -14,9 +14,6 @@
 # reason this file does not simply promote that one. CLAUDE.md sanctions a
 # per-corpus substrate choice for phase-2/3 tooling (DESIGN 6.7); the token
 # stream invariant is the STYLING pipeline's, not this file's.
-# .json_parse in qlik_cli_unbuild.R stays where it is until PLAN-fleet.md's
-# M2 lifts that script's fetch helper into fleet/qlik_api.R; the two are not
-# textual twins (different algorithm), and the fold-in has a scheduled home.
 #
 # MAPPING: object -> named list, array -> unnamed list, string -> character,
 # number -> numeric, true/false -> logical, null -> NULL.
@@ -260,25 +257,4 @@ json_get <- function(x, ...) {
     }
   }
   x
-}
-
-#' Every named list inside a parsed reply that carries `key` - the shape
-#' every qlik-cli listing arrives in, whether the items sit at the top level,
-#' under "data", or nested one level deeper. Depth-first, source order.
-json_items <- function(x, key = "id") {
-  out <- list()
-  walk <- function(v) {
-    if (!is.list(v) || !length(v)) return(invisible(NULL))
-    # A matched item is NOT descended into. Qlik items nest an id inside
-    # `resourceAttributes` too, so descending would return the same app
-    # twice, once under the wrong id.
-    if (!is.null(names(v)) && key %in% names(v)) {
-      out[[length(out) + 1L]] <<- v
-      return(invisible(NULL))
-    }
-    for (e in v) walk(e)
-    invisible(NULL)
-  }
-  walk(x)
-  out
 }

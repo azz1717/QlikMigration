@@ -1,9 +1,5 @@
-# retarget_shared.R — helpers shared by retarget_loads.R and score_retarget.R
-#
-# Promoted 2026-08-26 when the scorecard's first build copied these bodies
-# verbatim from the rewriter (docs/verify_docs.R's duplicate-body check is
-# what caught it). The SCORING logic stays independent of the rewriter on
-# purpose; this file is only the plumbing both need.
+# retarget_shared.R - helpers retarget_loads.R uses to find the loads in a
+# token stream.
 #
 # Requires shared/qlik_tokenizer.R to be sourced first (find_load_segments,
 # next_non_trivia_idx, undelimit).
@@ -48,16 +44,4 @@ rt_table_label <- function(tokens, load_idx, prevnt) {
     }
   }
   ""
-}
-
-# write.csv with the quoting/encoding both reports use; a zero-row frame
-# still gets its header line.
-rt_write_csv <- function(df, path) {
-  if (nrow(df) == 0) {
-    con <- file(path, open = "w", encoding = "UTF-8")
-    on.exit(close(con))
-    writeLines(paste(sprintf('"%s"', names(df)), collapse = ","), con, useBytes = TRUE)
-    return(invisible(NULL))
-  }
-  write.csv(df, path, row.names = FALSE, fileEncoding = "UTF-8", na = "")
 }

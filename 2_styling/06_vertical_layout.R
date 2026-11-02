@@ -21,9 +21,9 @@
 #     real statement, with no ///$tab section in between, is treated as
 #     belonging to THAT statement for blank-line purposes: the two-blank-line
 #     gap goes above the comment, not between the comment and the code it
-#     describes - e.g. app-unbuilt/script.qvs's
-#         //These are the records of the actual cars...
-#         [Fleet Cars]:
+#     describes - e.g.
+#         //These are the grant records...
+#         [Grants]:
 #     stays glued together. Convention call 2026-08-17, CONFIRMED by Adam
 #     the same day - reviewed in output, working, no further work.
 #   - `///$tab` section markers (DESIGN §4.8/§6.2, Adam 2026-08-17): the

@@ -18,8 +18,8 @@
 #     becomes
 #         [streetname] AS [address]
 #   - Bare (unquoted) WORD tokens inside a LOAD field list also get
-#     bracketed, e.g. real cases at app-unbuilt/script.qvs:
-#         Fleet.Rego as [Fleet Car Rego]   ->  [Fleet.Rego] AS [Fleet Car Rego]
+#     bracketed, e.g.:
+#         Grant.Code as [Grant Code Text]  ->  [Grant.Code] AS [Grant Code Text]
 #         Electorate,                      ->  [Electorate] AS [Electorate]
 #     EXCEPT a reserved keyword (AS, AND, DISTINCT... - never a valid field
 #     name) or a word in CALL position (next non-trivia token is "(" - a
