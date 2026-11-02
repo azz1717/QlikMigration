@@ -417,8 +417,15 @@ migrate_app <- function(app, plan) {
     writeBin(charToRaw(dm$text), file.path(scratch, "unlocked.qvs"))
     # d. style it
     step("Styling", style_script(file.path(scratch, "unlocked.qvs"), file.path(scratch, "styled.qvs")))
-    # e + f. retarget it, writing migrated.qvs
-    rt <- step("Retargeting", retarget_script(file.path(scratch, "styled.qvs"), migrated))
+    # e + f. retarget it, writing migrated.qvs. If retargeting itself breaks,
+    #    the styled script goes up instead: a styled app beats no upload.
+    rt <- tryCatch(retarget_script(file.path(scratch, "styled.qvs"), migrated),
+                   error = function(e) {
+                     file.copy(file.path(scratch, "styled.qvs"), migrated, overwrite = TRUE)
+                     list(done = 0L, total = NA, lines = c(
+                       paste("Retargeting failed:", conditionMessage(e)),
+                       "The styled script was uploaded instead - retarget this app by hand."))
+                   })
     # g. upload: into the original, or into a checked copy in the other space
     target <- if (plan$copy) step("Copy", copy_app(app, plan$to)) else app$id
     step("Upload", build_app(target, migrated))
@@ -431,8 +438,11 @@ migrate_app <- function(app, plan) {
   }, error = function(e) conditionMessage(e))
 
   res <- list(app = app$label, result = if (nzchar(failed)) "FAILED" else "ok",
-              reason = failed, folder = dir,
-              retargeted = if (is.null(rt)) "" else paste(rt$done, "of", rt$total),
+              reason = if (nzchar(failed) || is.null(rt) || !is.na(rt$total)) failed
+                       else "styled only - retargeting failed, see notes.txt",
+              folder = dir,
+              retargeted = if (is.null(rt)) "" else if (is.na(rt$total)) "failed - styled only"
+                           else paste(rt$done, "of", rt$total),
               flags = if (is.null(flags)) setNames(rep("", nrow(FLAGS)), FLAGS$flag)
                       else ifelse(flags, "yes", "no"))
   write_notes(app, plan, res, target, checked, unlocked, rt)
