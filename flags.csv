@@ -1,0 +1,4 @@
+"flag","tag","where","pattern","note"
+"geoanalytics","mig:geoanalytics","script","geoanalytics|geooperation|idevio","Qlik GeoAnalytics connector calls in the script."
+"inphinity","mig:inphinity","script","inphinity","Inphinity Forms writes back through its own connector; the app cannot move without it."
+"nprinting","mig:nprint","script,objects,comments","nprint","A hint only: NPrinting lives outside the app, so only a comment, a variable or an object title can show it."

@@ -7,5 +7,5 @@ if not exist "%RS%" (
   pause
   exit /b 1
 )
-"%RS%" fleet/console_ui.R
+"%RS%" migrate.R
 pause

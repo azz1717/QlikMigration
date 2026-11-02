@@ -1,5 +1,8 @@
 # What stays on the machine and never goes into git. git is only the way the
-# scripts reach the VM; run data, tenant content and dev notes stay local.
+# scripts reach the VM; run output, tenant content and dev notes stay local.
+
+# What a migration run writes (one folder per app, plus migrated_apps.csv)
+output/
 
 # R session leftovers
 .Rhistory
@@ -8,54 +11,14 @@
 .Rproj.user/
 *.Rproj
 *.Rprof
-prof_*.out
-chunk_timings.rds
 
 # Claude Code settings for this machine, and the dev session rules
 .claude/settings.local.json
 CLAUDE.md
 
-# Per-machine path to qlik.exe (qlik_cli_path.txt.example is the template)
-qlik_cli_path.txt
-
-# Run data, one machine's own (fleet.R writes these; it starts fresh ones
-# when they are missing). Untracked 2026-11-02: the ledger is per machine.
-fleet/apps/
-fleet/audit.log
-fleet/spaces.csv
-fleet/selection.csv
-fleet/manifest.csv
-fleet/master.csv
-fleet/master_loads.csv
-fleet/master_unused.csv
-fleet/last_run.log
-fleet/last_upload.csv
-fleet/tags.csv
-fleet/tag_drift.csv
-fleet/map_check_status.csv
-
 # docs/ is its own LOCAL-ONLY git repo (design notes, decisions). Never give
-# it a remote. Commit doc edits inside docs/.
+# it a remote.
 docs/
 
-# Dev-PC data and old outputs, kept locally, never shipped
+# Dev-PC data, kept locally, never shipped
 fixtures/
-unbuilt/
-app-unbuilt/
-app2-unbuilt/
-baseline-substream/
-qlik_probe_out/
-qlik_unbuild_out/
-verify.R
-script_out.txt
-script_out2.txt
-scratch_full_out.qvs
-formatexample_after.txt
-script_qvs_out.txt
-report_app*.html
-report_mock.html
-*-report.html
-*-view.html
-retargeting/retarget_columns.csv
-retargeting/retarget_payloads.json
-
